@@ -1,5 +1,6 @@
 // For Bootstrap overrides.
 // @import './bootstrap-overrides.scss'
-
-// Bootstrap 4.1
+@import "~bootswatch/dist/superhero/variables";
+// Bootstrap 4.5
 @import "~bootstrap/scss/bootstrap";
+@import "~bootswatch/dist/superhero/bootswatch";

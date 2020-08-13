@@ -22,7 +22,8 @@
     "dev": "webpack-dashboard --title 'Elm Dev Server' --minimal -- npm run webpack-dev-server -- --env.mode development",
     "elm-analyse": "elm-analyse -s -o",
     "preprod": "rimraf dist",
-    "lint": "stylelint src/assets/styles"
+    "lint": "stylelint src/assets/styles",
+    "tauri": "tauri"
   },
   "license": "MIT",
   "browserslist": [
@@ -32,6 +33,7 @@
   "devDependencies": {
     "autoprefixer": "^9.8.6",
     "bootstrap": "^4.5.2",
+    "bootswatch": "^4.5.2",
     "compression-webpack-plugin": "^4.0.0",
     "copy-webpack-plugin": "^6.0.3",
     "css-loader": "^4.2.1",
@@ -61,5 +63,8 @@
     "webpack-dashboard": "^3.2.0",
     "webpack-dev-server": "^3.11.0",
     "webpack-merge": "^4.2.2"
+  },
+  "dependencies": {
+    "tauri": "^0.11.1"
   }
 }
