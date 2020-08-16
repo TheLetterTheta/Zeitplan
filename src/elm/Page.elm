@@ -17,7 +17,6 @@ under Other.
 type Page
     = Other
     | Home
-    | About
 
 
 {-| Take a page's Html and frames it with a header and footer.
@@ -31,7 +30,7 @@ in the header. (This comes up during slow page transitions.)
 -}
 view : Page -> { title : String, content : Html msg } -> Document msg
 view page { title, content } =
-    { title = title ++ " - Elm SPA"
+    { title = title ++ " - Zeitplan"
     , body =
         [ viewHeader page
         , content
@@ -43,12 +42,11 @@ view page { title, content } =
 viewHeader : Page -> Html msg
 viewHeader page =
     nav [ class "navbar navbar-expand-lg navbar-light bg-light" ]
-        [ div [ class "container" ]
+        [ div [ class "container-fluid" ]
             [ a [ class "navbar-brand", Route.href Route.Home ]
-                [ text "ElmSPA" ]
+                [ text "Zeitplan" ]
             , ul [ class "nav navbar-nav pull-xs-right" ] <|
-                navbarLink page Route.Home [ text "Home" ]
-                    :: viewMenu page
+                viewMenu page
             ]
         ]
 
@@ -59,8 +57,7 @@ viewMenu page =
         linkTo =
             navbarLink page
     in
-    [ linkTo Route.About [ text "About" ]
-    ]
+    []
 
 
 viewFooter : Html msg
@@ -80,9 +77,6 @@ isActive : Page -> Route -> Bool
 isActive page route =
     case ( page, route ) of
         ( Home, Route.Home ) ->
-            True
-
-        ( About, Route.About ) ->
             True
 
         _ ->

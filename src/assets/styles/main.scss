@@ -1,6 +1,14 @@
+// Local Variables
+@import "variables";
+@import "icons";
+
 // For Bootstrap overrides.
 // @import './bootstrap-overrides.scss'
 @import "~bootswatch/dist/superhero/variables";
 // Bootstrap 4.5
 @import "~bootstrap/scss/bootstrap";
 @import "~bootswatch/dist/superhero/bootswatch";
+
+#calendar > div > div > table > thead > tr > td > div > div {
+  overflow: hidden !important;
+}

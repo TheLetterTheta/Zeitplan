@@ -5,7 +5,6 @@ import Browser.Navigation as Nav
 import Html exposing (..)
 import Json.Decode exposing (Value)
 import Page
-import Page.About as About
 import Page.Blank as Blank
 import Page.Home as Home
 import Page.NotFound as NotFound
@@ -27,7 +26,6 @@ type Model
     = Redirect Session
     | NotFound Session
     | Home Home.Model
-    | About About.Model
 
 
 init : Value -> Url -> Nav.Key -> ( Model, Cmd Msg )
@@ -62,9 +60,6 @@ view model =
         Home home ->
             viewPage Page.Home GotHomeMsg (Home.view home)
 
-        About about ->
-            viewPage Page.About GotAboutMsg (About.view about)
-
 
 
 -- UPDATE
@@ -76,7 +71,6 @@ type Msg
     | ChangedUrl Url
     | ClickedLink Browser.UrlRequest
     | GotHomeMsg Home.Msg
-    | GotAboutMsg About.Msg
 
 
 toSession : Model -> Session
@@ -90,9 +84,6 @@ toSession page =
 
         Home home ->
             Home.toSession home
-
-        About about ->
-            About.toSession about
 
 
 changeRouteTo : Maybe Route -> Model -> ( Model, Cmd Msg )
@@ -111,10 +102,6 @@ changeRouteTo maybeRoute model =
         Just Route.Home ->
             Home.init session
                 |> updateWith Home GotHomeMsg model
-
-        Just Route.About ->
-            About.init session
-                |> updateWith About GotAboutMsg model
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -158,10 +145,6 @@ update msg model =
             Home.update subMsg home
                 |> updateWith Home GotHomeMsg model
 
-        ( GotAboutMsg subMsg, About about ) ->
-            About.update subMsg about
-                |> updateWith About GotAboutMsg model
-
         ( _, _ ) ->
             -- Disregard messages that arrived for the wrong page.
             ( model, Cmd.none )
@@ -189,9 +172,6 @@ subscriptions model =
 
         Home home ->
             Sub.map GotHomeMsg (Home.subscriptions home)
-
-        About about ->
-            Sub.map GotAboutMsg (About.subscriptions about)
 
 
 
