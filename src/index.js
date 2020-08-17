@@ -1,3 +1,9 @@
+// Fullcalendar
+import { Calendar } from '@fullcalendar/core';
+import timeGridPlugin from '@fullcalendar/timegrid';
+import bootstrapPlugin from '@fullcalendar/bootstrap';
+import interactionPlugin from '@fullcalendar/interaction';
+
 // Styles
 require('./assets/styles/main.scss');
 
@@ -9,6 +15,13 @@ import localforage from 'localforage';
 var Elm = require('./elm/Main.elm').Elm;
 const app = Elm.Main.init({});
 
+app.ports.destroyCalendar.subscribe(function() {
+	calendar.destroy();
+});
+
+app.ports.deleteUser.subscribe(function(u) {
+	localforage.removeItem(`${u.id}-events`, () => {});
+});
 
 app.ports.saveUsers.subscribe(function(users) {
 	localforage.setItem('users', users);
@@ -21,15 +34,27 @@ localforage.getItem('users')
 		}
 	});
 
-import { Calendar } from '@fullcalendar/core';
-import timeGridPlugin from '@fullcalendar/timegrid';
-import bootstrapPlugin from '@fullcalendar/bootstrap';
-import interactionPlugin from '@fullcalendar/interaction';
+app.ports.loadUserWithEvents.subscribe(function(newUser) {
+	calendarEl.classList.add('blur');
 
-document.addEventListener('DOMContentLoaded', function () {
-	var calendarEl = document.getElementById('calendar');
+	localforage.getItem(`${newUser.id}-events`)
+		.then(function(results) {
+			if (results && Array.isArray(results)) {
+				calendar.events = results;
+			}
+		})
+		.finally(function() {
+			calendarEl.classList.remove('blur');
+			calendar.render();
+		});
 
-	var calendar = new Calendar(calendarEl, {
+});
+
+const calendarEl = document.getElementById('calendar');
+let calendar;
+
+document.addEventListener('DOMContentLoaded', function() {
+	calendar = new Calendar(calendarEl, {
 		plugins: [
 			timeGridPlugin,
 			bootstrapPlugin,
@@ -45,6 +70,4 @@ document.addEventListener('DOMContentLoaded', function () {
 		initialView: 'timeGridWeek',
 		allDaySlot: false
 	});
-
-	calendar.render();
 });

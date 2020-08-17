@@ -1,14 +1,15 @@
 port module Page.Home exposing (Model, Msg, init, subscriptions, toSession, update, view)
 
 import Browser.Dom as Dom
-import Html exposing (Html, br, button, div, form, h1, i, input, label, li, p, text, ul)
+import Html exposing (Html, br, button, div, form, h1, h3, i, input, label, li, p, text, ul)
 import Html.Attributes exposing (attribute, class, for, id, name, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Html.Keyed
 import Json.Decode as Decode exposing (Decoder, Value, decodeValue, int, list, string)
 import Json.Decode.Pipeline exposing (required)
 import Session exposing (Session)
-import Task
+import Task as Task exposing (perform)
+import Time as Time exposing (Posix)
 
 
 
@@ -35,6 +36,7 @@ type alias Model =
     , selectedUser : Maybe User
     , newUserName : String
     , currentlyAddingUser : Bool
+    , expandParticipants : Bool
     }
 
 
@@ -46,6 +48,7 @@ init session =
       , selectedUser = Nothing
       , meetings = []
       , newUserName = ""
+      , expandParticipants = False
       }
     , Cmd.none
     )
@@ -55,10 +58,20 @@ init session =
 -- VIEW
 
 
-renderKeyedUser : User -> ( String, Html Msg )
-renderKeyedUser user =
+renderKeyedUser : Maybe User -> User -> ( String, Html Msg )
+renderKeyedUser selectedUser user =
+    let
+        classes =
+            "list-group-item list-group-item-action"
+                ++ (if Just user == selectedUser then
+                        " active"
+
+                    else
+                        ""
+                   )
+    in
     ( user.id
-    , button [ onClick (SelectUser user), class "list-group-item list-group-item-action" ]
+    , button [ onClick (SelectUser user), class classes ]
         [ text user.name ]
     )
 
@@ -100,19 +113,43 @@ newUserForm model =
         ]
 
 
-view : Model -> { title : String, content : Html Msg }
-view model =
-    { title = "Home"
-    , content =
-        div [ class "container-fluid" ]
-            [ h1 [] [ text "Configure Users" ]
+participantView : Model -> List (Html Msg)
+participantView model =
+    [ div [ class "mt-4 mx-0 border border-primary row shadow-lg bg-accent" ]
+        [ h1 [ class "col-auto mr-auto" ]
+            [ text "Setup Participants"
+            ]
+        , button
+            [ class "col-auto btn btn-lg"
+            , attribute "data-toggle" "collapse"
+            , attribute "data-target" "#participant-content"
+            , onClick ToggleExpandParticipants
+            ]
+            [ text ((String.fromInt <| List.length <| model.users) ++ " Total")
+            , let
+                icon =
+                    if model.expandParticipants then
+                        "fa-chevron-up"
+
+                    else
+                        "fa-chevron-down"
+              in
+              i [ class ("ml-1 fas " ++ icon) ] []
+            ]
+        , div [ id "participant-content", class "collapse container-fluid" ]
+            [ div [ class "row" ]
+                [ p [ class "col-12" ] [ text "Use this area to add participants that will be involved in meetings. Add new participants and setup their availability by blocking out times on their weekly schedule." ]
+                ]
             , div [ class "row" ]
                 [ div [ class "col-12" ] [ newUserForm model ] ]
             , div [ class "row p-2" ]
-                [ div [ class "col-12 p-0 pr-md-2 mb-2 mb-md-0 col-md-4" ]
+                [ div [ class "col-12 p-0 pr-md-2 mb-2 mb-md-0 col-md-3" ]
                     [ newUserButton model
                     , Html.Keyed.ul [ class "list-group" ]
-                        (List.map renderKeyedUser
+                        (List.map
+                            (renderKeyedUser
+                                model.selectedUser
+                            )
                             (model.users
                                 |> List.sortWith
                                     (\a ->
@@ -124,11 +161,36 @@ view model =
                             )
                         )
                     ]
-                , div [ class "col-sm-12 col-md-8" ]
-                    [ div [ id "calendar" ] []
+                , div [ class "col-sm-12 col-md-9" ]
+                    [ div [ class "row mb-2" ]
+                        (case model.selectedUser of
+                            Just user ->
+                                [ h3 [ class "col-auto mr-auto" ] [ text (user.name ++ "'s Schedule:") ]
+                                , button [ class "col-auto btn btn-danger", onClick (DeleteUser user) ]
+                                    [ i [ class "fas fa-trash mr-1" ] []
+                                    , text user.name
+                                    ]
+                                ]
+
+                            Nothing ->
+                                []
+                        )
+                    , div [ class "row" ]
+                        [ div [ class "col-12 p-0", id "calendar" ] []
+                        ]
                     ]
                 ]
             ]
+        ]
+    ]
+
+
+view : Model -> { title : String, content : Html Msg }
+view model =
+    { title = "Home"
+    , content =
+        div [ class "container-fluid" ]
+            (participantView model)
     }
 
 
@@ -141,7 +203,10 @@ type Msg
     | NewUser
     | UpdateUserName String
     | SaveUser
+    | SaveUserWithId Time.Posix
+    | ToggleExpandParticipants
     | LoadUsers Decode.Value
+    | DeleteUser User
     | NoOp
 
 
@@ -152,7 +217,27 @@ update msg model =
             ( model, Cmd.none )
 
         SelectUser s ->
-            ( { model | selectedUser = Just s }, Cmd.none )
+            if model.selectedUser == Just s then
+                ( model, Cmd.none )
+
+            else
+                ( { model | selectedUser = Just s }, loadUserWithEvents s )
+
+        ToggleExpandParticipants ->
+            ( { model | expandParticipants = not model.expandParticipants }, Cmd.none )
+
+        DeleteUser u ->
+            let
+                filteredUsers =
+                    List.filter (\user -> user /= u) model.users
+            in
+            ( { model | users = filteredUsers, selectedUser = Nothing }
+            , Cmd.batch
+                [ saveUsers filteredUsers
+                , deleteUser u
+                , destroyCalendar ()
+                ]
+            )
 
         NewUser ->
             ( { model
@@ -171,19 +256,17 @@ update msg model =
                     ( { model | users = data }, Cmd.none )
 
                 Err error ->
-                    ( { model
-                        | users =
-                            [ { id = "-1", name = Debug.toString error } ]
-                      }
-                    , Cmd.none
-                    )
+                    ( model, Cmd.none )
 
         SaveUser ->
+            ( model, Task.perform SaveUserWithId Time.now )
+
+        SaveUserWithId currentTimestamp ->
             let
                 newUser =
                     { id =
                         String.fromInt <|
-                            List.length model.users
+                            Time.posixToMillis currentTimestamp
                     , name = model.newUserName
                     }
 
@@ -255,3 +338,12 @@ port loadUsers : (Decode.Value -> msg) -> Sub msg
 
 
 port saveUsers : List User -> Cmd msg
+
+
+port destroyCalendar : () -> Cmd msg
+
+
+port deleteUser : User -> Cmd msg
+
+
+port loadUserWithEvents : User -> Cmd msg
