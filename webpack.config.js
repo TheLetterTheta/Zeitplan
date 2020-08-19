@@ -16,7 +16,6 @@ module.exports = ({ mode, presets } = { mode: "production", presets: [] }) => {
 
       entry: {
         main: path.join(__dirname, './src/index.js'),
-        vendor: path.join(__dirname, './src/assets/js/vendor.js'),
       },
 
       plugins: [

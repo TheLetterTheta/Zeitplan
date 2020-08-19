@@ -26,6 +26,15 @@ module.exports = () => ({
       },
       {
         test: /\.(sa|sc|c)ss$/,
+	include: /@fullcalendar.*\.css$/,
+        use: [
+          MiniCssExtractPlugin.loader,
+	  {loader: 'css-loader', options: { importLoaders: 1} },
+        ],
+      },
+      {
+        test: /\.(sa|sc|c)ss$/,
+	exclude: /@fullcalendar.*\.css$/,
         use: [
           MiniCssExtractPlugin.loader,
           'css-loader',
@@ -78,6 +87,9 @@ module.exports = () => ({
 
     new PurgecssPlugin({
       paths: glob.sync(path.join(__dirname, '../src/**/*.elm'), { nodir: true }),
+      whitelist: [ "fc" ],
+      whitelistPatterns: [/^fc-.*/g],
+      whitelistPatternsChildren: [/^fc-.*/g, /^fc$/]
     }),
 
     new CopyWebpackPlugin({

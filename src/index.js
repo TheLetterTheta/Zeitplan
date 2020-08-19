@@ -1,12 +1,12 @@
+// Styles
+require('./assets/styles/main.scss');
+
 // Fullcalendar
 import { Calendar } from '@fullcalendar/core';
 import bootstrapPlugin from '@fullcalendar/bootstrap';
 import interactionPlugin from '@fullcalendar/interaction';
-import localforage from 'localforage';
 import timeGridPlugin from '@fullcalendar/timegrid';
-
-// Styles
-require('./assets/styles/main.scss');
+import localforage from 'localforage';
 
 // Vendor JS is imported as an entry in webpack.config.js
 

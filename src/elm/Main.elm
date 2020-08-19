@@ -2,7 +2,10 @@ port module Main exposing (main)
 
 import Browser exposing (Document)
 import Browser.Dom as Dom
-import Html exposing (Html, br, button, div, form, h1, h3, h5, h6, i, input, label, li, mark, p, span, strong, text, ul)
+import FontAwesome.Icon as Icon exposing (Icon)
+import FontAwesome.Solid as Icon
+import FontAwesome.Styles as Icon
+import Html exposing (Html, br, button, div, form, h1, h3, h5, h6, i, input, label, li, mark, nav, p, span, strong, text, ul)
 import Html.Attributes as Attributes exposing (attribute, class, for, id, max, min, name, required, step, style, type_, value)
 import Html.Events exposing (onClick, onInput)
 import Html.Keyed
@@ -86,29 +89,36 @@ renderKeyedUser selectedUser user =
 newUserButton : Model -> Html Msg
 newUserButton model =
     let
-        ( buttonClass, buttonIcon, buttonText ) =
+        ( buttonClass, icon, buttonText ) =
             if not model.currentlyAddingUser then
-                ( "btn-success", "fa-user-plus", "Show" )
+                ( "btn-success", Icon.userPlus, "Show" )
 
             else
-                ( "btn-danger", "fa-user-times", "Hide" )
+                ( "btn-danger", Icon.userTimes, "Hide" )
 
         classList =
             buttonClass ++ " list-group-item list-group-item-action text-center"
     in
     button
-        [ id "new-user-btn"
-        , attribute "data-toggle" "collapse"
-        , attribute "data-target" "#new-user-form"
-        , class classList
+        [ class classList
         , onClick NewUser
         ]
-        [ i [ class ("fas " ++ buttonIcon) ] [], p [ class "m-0" ] [ text buttonText ] ]
+        [ Icon.viewIcon icon, p [ class "m-0" ] [ text buttonText ] ]
 
 
 newUserForm : Model -> Html Msg
 newUserForm model =
-    div [ class "collapse", id "new-user-form" ]
+    div
+        [ class <|
+            "collapse"
+                ++ (if model.currentlyAddingUser then
+                        " show"
+
+                    else
+                        ""
+                   )
+        , id "new-user-form"
+        ]
         [ div [ class "form-group" ]
             [ label [ for "name" ] [ text "Name" ]
             , div [ class "input-group" ]
@@ -128,28 +138,37 @@ participantView model =
             ]
         , button
             [ class "col-auto btn btn-lg"
-            , attribute "data-toggle" "collapse"
-            , attribute "data-target" "#participant-content"
             , onClick ToggleExpandParticipants
             ]
             [ span [ class "fa-2x" ]
                 [ span
                     [ class "badge badge-pill badge-info" ]
                     [ text (String.fromInt <| List.length <| model.users)
-                    , i [ class "fas fa-user-friends ml-2" ] []
+                    , span [ class "ml-2" ] [ Icon.viewIcon Icon.userFriends ]
                     ]
                 , let
                     icon =
-                        if model.expandParticipants then
-                            "fa-chevron-up"
+                        Icon.viewIcon <|
+                            if model.expandParticipants then
+                                Icon.chevronUp
 
-                        else
-                            "fa-chevron-down"
+                            else
+                                Icon.chevronDown
                   in
-                  i [ class ("ml-1 fas " ++ icon) ] []
+                  span [ class "ml-1" ] [ icon ]
                 ]
             ]
-        , div [ id "participant-content", class "collapse container-fluid" ]
+        , div
+            [ id "participant-content"
+            , class <|
+                "collapse container-fluid"
+                    ++ (if model.expandParticipants then
+                            " show"
+
+                        else
+                            ""
+                       )
+            ]
             [ div [ class "row" ]
                 [ p [ class "col-12 lead" ] [ text "Use this area to add participants that will be involved in meetings. Add new participants and setup their availability by blocking out times on their weekly schedule." ]
                 ]
@@ -176,7 +195,7 @@ participantView model =
                             Just user ->
                                 [ h3 [ class "col-auto mr-auto" ] [ text (user.name ++ "'s Schedule:") ]
                                 , button [ class "col-auto btn btn-danger", onClick (DeleteUser user) ]
-                                    [ i [ class "fas fa-trash mr-1" ] []
+                                    [ span [ class "mr-1" ] [ Icon.viewIcon Icon.trash ]
                                     , text user.name
                                     ]
                                 ]
@@ -253,7 +272,7 @@ renderMeeting model meeting =
             [ div [ class "row" ]
                 [ h5 [ class "mr-auto col-auto" ] [ text meeting.title ]
                 , button [ onClick (DeleteMeeting meeting), class "col-auto btn btn-sm btn-danger" ]
-                    [ i [ class "fas fa-trash" ] [] ]
+                    [ Icon.viewIcon Icon.trash ]
                 ]
             ]
         , div [ class "card-body" ]
@@ -274,8 +293,6 @@ meetingView model =
             ]
         , button
             [ class "col-auto btn btn-lg"
-            , attribute "data-toggle" "collapse"
-            , attribute "data-target" "#meeting-content"
             , onClick ToggleExpandMeetings
             ]
             [ span
@@ -283,20 +300,31 @@ meetingView model =
                 [ span [ class "badge badge-pill badge-info" ]
                     [ text
                         (String.fromInt <| List.length <| model.meetings)
-                    , i [ class "fas fa-calendar-alt ml-2" ] []
+                    , span [ class "ml-2" ] [ Icon.viewIcon Icon.calendarAlt ]
                     ]
                 , let
                     icon =
-                        if model.expandMeetings then
-                            "fa-chevron-up"
+                        Icon.viewIcon <|
+                            if model.expandMeetings then
+                                Icon.chevronUp
 
-                        else
-                            "fa-chevron-down"
+                            else
+                                Icon.chevronDown
                   in
-                  i [ class ("ml-1 fas " ++ icon) ] []
+                  span [ class "ml-1" ] [ icon ]
                 ]
             ]
-        , div [ id "meeting-content", class "collapse container-fluid" ]
+        , div
+            [ id "meeting-content"
+            , class <|
+                "collapse container-fluid"
+                    ++ (if model.expandMeetings then
+                            " show"
+
+                        else
+                            ""
+                       )
+            ]
             [ div [ class "row" ]
                 [ p [ class "col-12 lead" ]
                     [ text "Use this area to setup the types of meetings you will need in the final step. These will be batched all at once when computing the final results, so they need to all be setup now. "
@@ -360,7 +388,7 @@ meetingView model =
                                 , div [ class "card-footer" ]
                                     [ div [ class "justify-content-end row" ]
                                         [ button [ onClick AddMeeting, class "btn btn-success" ]
-                                            [ i [ class "fas fa-save mr-2" ] []
+                                            [ span [ class "mr-2" ] [ Icon.viewIcon Icon.save ]
                                             , text "Save"
                                             ]
                                         ]
@@ -385,9 +413,13 @@ meetingView model =
 
 view : Model -> Document Msg
 view model =
-    { title = "Home"
+    { title = "Zeitplan"
     , body =
-        [ div [ class "container" ]
+        [ Icon.css
+        , nav [ class "sticky-top navbar navbar-expand-lg navbar-dark bg-primary" ]
+            [ h3 [ class "navbar-brand" ] [ text "Zeitplan" ]
+            ]
+        , div [ class "container" ]
             (participantView model
                 ++ meetingView model
             )

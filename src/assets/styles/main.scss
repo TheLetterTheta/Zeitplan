@@ -9,10 +9,6 @@
 @import "~bootstrap/scss/bootstrap";
 @import "~bootswatch/dist/superhero/bootswatch";
 
-#calendar > div > div > table > thead > tr > td > div > div {
-  overflow: hidden !important;
-}
-
 div .blur {
   -webkit-filter: blur(5px);
   -moz-filter: blur(5px);
