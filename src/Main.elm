@@ -645,15 +645,11 @@ port deleteUser : User -> Cmd msg
 port loadUserWithEvents : User -> Cmd msg
 
 
-type alias Flags =
-    ()
-
-
 main : Program Flags Model Msg
 main =
     Browser.document
         { init = \_ -> init
         , subscriptions = subscriptions
-        , update = update
-        , view = view
+        , update = Home.update
+        , view = Home.view
         }

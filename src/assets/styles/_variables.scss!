@@ -1,0 +1,1 @@
+$body-bg: theme-color("primary");

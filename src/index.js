@@ -1,13 +1,12 @@
 // Fullcalendar
 import { Calendar } from '@fullcalendar/core';
-import timeGridPlugin from '@fullcalendar/timegrid';
 import bootstrapPlugin from '@fullcalendar/bootstrap';
 import interactionPlugin from '@fullcalendar/interaction';
+import localforage from 'localforage';
+import timeGridPlugin from '@fullcalendar/timegrid';
 
 // Styles
 require('./assets/styles/main.scss');
-
-import localforage from 'localforage';
 
 // Vendor JS is imported as an entry in webpack.config.js
 
@@ -23,13 +22,24 @@ app.ports.deleteUser.subscribe(function(u) {
 	localforage.removeItem(`${u.id}-events`, () => {});
 });
 
+app.ports.saveMeetings.subscribe(function(m) {
+	localforage.setItem('meetings', m);
+});
+
 app.ports.saveUsers.subscribe(function(users) {
 	localforage.setItem('users', users);
 });
 
+localforage.getItem('meetings')
+	.then(meetings => {
+		if (meetings && Array.isArray(meetings)) {
+			app.ports.loadMeetings.send(meetings);
+		}
+	});
+
 localforage.getItem('users')
 	.then(users => {
-		if (users) {
+		if (users && Array.isArray(users)) {
 			app.ports.loadUsers.send(users);
 		}
 	});

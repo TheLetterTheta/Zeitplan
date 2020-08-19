@@ -6,7 +6,10 @@
   "ctx": {},
   "tauri": {
     "embeddedServer": {
-      "active": true
+      "active": false
+    },
+    "allowlist": {
+      "event": true
     },
     "bundle": {
       "active": true,
@@ -21,7 +24,7 @@
       "resources": [],
       "externalBin": [],
       "copyright": "",
-      "category": "Application",
+      "category": "Business",
       "shortDescription": "",
       "longDescription": "",
       "deb": {
