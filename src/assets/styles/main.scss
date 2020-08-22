@@ -3,7 +3,8 @@
 
 // For Bootstrap overrides.
 // @import './bootstrap-overrides.scss'
-@import "~bootswatch/dist/superhero/variables";
+// journal, cosmo, superhero, flatly, minty
+@import "~bootswatch/dist/minty/variables";
 
 // Bootstrap 4.5
 @import "~bootstrap/scss/bootstrap";
@@ -17,4 +18,24 @@ div .blur {
   filter: blur(5px);
   background-color: rgba(128, 128, 128, 0.5);
   pointer-events: none;
+}
+
+.fc-daygrid-day-events {
+  min-height: 1rem !important;
+}
+
+.fc {
+  min-width: (90px*8);
+}
+
+.calendar-container {
+  overflow-x: auto;
+}
+
+.close {
+  font-size: 1.2rem;
+}
+
+.fc-timegrid-event-condensed .fc-event-time::after {
+  content: none;
 }

@@ -14,7 +14,7 @@ fn main() {
         Ok(command) => {
           match command {
             // definitions for your custom commands from Cmd here
-            MyCustomCommand { argument } => {
+            Test { argument } => {
               //  your command code
               println!("{}", argument);
             }
