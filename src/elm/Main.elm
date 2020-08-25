@@ -483,17 +483,22 @@ calculateMeetingComplexity m =
 
 
 renderMeetingParticipant : List User -> String -> Html Msg
-renderMeetingParticipant participants id =
+renderMeetingParticipant availableUserList id =
     case
         Maybe.map (\user -> user.name) <|
             List.head <|
-                List.filter (\user -> user.id == id) participants
+                List.filter (\user -> user.id == id) availableUserList
     of
         Just name ->
-            span [ class "badge badge-primary mr-1" ] [ text name ]
+            li [ class "badge badge-secondary mr-1" ] [ text name ]
 
         Nothing ->
-            span [] []
+            li [] []
+
+
+renderKeyedMeetingParticipant : List User -> String -> ( String, Html Msg )
+renderKeyedMeetingParticipant participants participant =
+    ( participant, lazy (renderMeetingParticipant participants) participant )
 
 
 renderKeyedMeeting : Model -> Meeting -> ( String, Html Msg )
@@ -510,10 +515,12 @@ renderKeyedMeeting model meeting =
                         ]
                     ]
                 , div [ class "card-body" ]
-                    [ p [ class "card-text text-muted" ]
+                    [ span [ class "card-text text-muted" ]
                         [ text <| String.fromInt m.duration ++ " minutes with "
-                        , span [ class "card-text text-muted" ]
-                            (List.map (renderMeetingParticipant model.participants) m.participantIds)
+                        , Html.Keyed.ul
+                            [ class "d-inline p-0"
+                            ]
+                            (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
                         ]
                     ]
                 ]
@@ -542,9 +549,9 @@ newMeetingForm model =
                     , value <| String.fromInt model.meetingDuration
                     , id "timespan-input"
                     , class "custom-range"
-                    , Attributes.min "15"
+                    , Attributes.min "30"
                     , Attributes.max "120"
-                    , step "15"
+                    , step "30"
                     ]
                     []
                 ]
@@ -561,7 +568,7 @@ newMeetingForm model =
                         , p [ class "card-text" ]
                             (text "Participants: "
                                 :: (model.meetingParticipants
-                                        |> List.map (\u -> span [ class "badge badge-primary mr-1" ] [ text u.name ])
+                                        |> List.map (\u -> span [ class "badge badge-secondary mr-1" ] [ text u.name ])
                                    )
                             )
                         ]
@@ -580,7 +587,7 @@ newMeetingForm model =
 
 participantView : Model -> List (Html Msg)
 participantView model =
-    [ div [ class "mt-4 mx-0 border border-primary row" ]
+    [ div [ class "mt-4 mx-0 border border-secondary row" ]
         [ h1 [ class "display-4 col-auto mr-auto" ]
             [ text "Setup Participants"
             ]
@@ -651,7 +658,7 @@ participantView model =
 
 meetingView : Model -> List (Html Msg)
 meetingView model =
-    [ div [ class "mt-4 mx-0 border border-primary row" ]
+    [ div [ class "mt-4 mx-0 border border-secondary row" ]
         [ h1 [ class "display-4 col-auto mr-auto" ]
             [ text "Configure Meetings"
             ]
@@ -719,7 +726,7 @@ meetingView model =
 
 finalStep : Model -> List (Html Msg)
 finalStep model =
-    [ div [ class "mt-4 mx-0 border border-primary row" ]
+    [ div [ class "mt-4 mx-0 border border-secondary row" ]
         [ h1 [ class "display-4 col-auto mr-auto" ]
             [ text "Run Scheduler" ]
         , div [ class "container-fluid overflow-auto" ]
@@ -731,7 +738,7 @@ finalStep model =
                 [ div [ class "col-12 calendar-container" ]
                     [ div [ id "final-calendar" ] []
                     ]
-                , button [ class "btn btn-lg btn-block m-1 btn-success", onClick RunScheduler ] [ text "RUN!" ]
+                , button [ class "btn btn-lg btn-block m-1 btn-secondary", onClick RunScheduler ] [ text "RUN!" ]
                 ]
             ]
         ]
@@ -742,8 +749,8 @@ renderFooter : Model -> Html Msg
 renderFooter model =
     footer [ id "footer", class "bg-dark mt-4 position-sticky" ]
         [ div [ class "container-fluid text-center" ]
-            [ blockquote [ class "blockquote" ]
-                [ p [] [ text "This project was made with love for Professor Victor Drescher at Southeastern Louisiana University. He bleieved in this project when I was incapable of finishing." ]
+            [ blockquote [ class "blockquote mb-0" ]
+                [ p [] [ text "This project was made with love for Professor Victor Drescher at Southeastern Louisiana University. He believed in this project when I was incapable of finishing." ]
                 , footer [ class "blockquote-footer" ] [ text "Made possible in Elm, with major help from the Fullcalendar library. The desktop application is running on Tauri, and the primary calculations are written in Rust" ]
                 ]
             ]

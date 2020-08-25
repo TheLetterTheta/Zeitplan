@@ -8,7 +8,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import localforage from 'localforage';
 import dayjs from 'dayjs'
-// import { promisified } from 'tauri/api/tauri';
+import { promisified } from 'tauri/api/tauri';
 var weekOfYear = require('dayjs/plugin/weekOfYear');
 dayjs.extend(weekOfYear);
 
@@ -26,7 +26,6 @@ const participantCalendarEl = document.getElementById('participant-calendar');
 let participantCalendar;
 
 const FINAL_CALENDAR_ID = 'FINAL_CALENDAR_ID';
-let finalCalendarEventSource;
 let finalCalendarEvents;
 const finalCalendarEl = document.getElementById('final-calendar');
 let finalCalendar;
@@ -49,29 +48,62 @@ app.ports.saveUsers.subscribe(function(users) {
 
 
 app.ports.processWithTauri.subscribe(async function({users, meetings}) {
-	console.log({users, meetings});
-
 	users = new Set(meetings.flatMap(m => m.participantIds));
-	let userMap = new Map();
+	meetings.forEach((m) => m.duration = m.duration / 30);
+	let userMap = [];
 	for (let id of users) {
 		const userEvents = await localforage.getItem(`${id}-events`)
 			.then(d => {
 				if (d && d instanceof Map) {
-					return Array.from(d.values())
+					return mapEventsToSlotIndexArray(d);
 				} else {
 					return []
 				}
 			});
-		userMap.set(id, userEvents);
+		userMap.push({id, events: userEvents});
 	}
-	// promisified({
-	// 	cmd: 'test',
-	// 	data: true
-	// })
-	// 	.then(r => console.log(r))
-	// 	.catch(e => console.error(e));
+
+	let availableTimeRange = await localforage.getItem('final-calendar')
+		.then((d) => {
+			if (d && d instanceof Map) {
+				return mapEventsToSlotIndexArray(d);
+			}
+			else {
+				return []
+			}
+		});
+
+	promisified({
+		cmd: 'computeMeetingSpace',
+	 	payload: { users: userMap, meetings: meetings, availableTimeRange: availableTimeRange }
+	  })
+	  .then(r => console.log(r))
+	  .catch(e => console.error(e));
 
 });
+
+function mapEventsToSlotIndexArray(events) {
+	// We know that the events do not overlap, as defined in our FullCalendar initialization. Therefore, we can push the events to an array in a simple for...of loop
+	let eventTimesAsNumbers = [];
+	for (const event of events.values()){
+		eventTimesAsNumbers.push(eventToThirtyMinuteSlotIndexArray(event));
+	}
+	return eventTimesAsNumbers.flat();
+}
+
+function eventToThirtyMinuteSlotIndexArray(event) {
+	let start = dayjs(event.start);
+	let end = dayjs(event.end);
+
+	return range(
+		end.diff(start, 'm')/30,
+		(start.day() * 48) + (start.hour() * 2) + start.minute() / 30
+	);
+}
+
+function range(size, startAt = 0) {
+    return [...Array(size).keys()].map(i => i + startAt);
+}
 
 localforage.getItem('meetings')
 	.then(meetings => {
@@ -175,7 +207,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		selectOverlap: false,
 		eventOverlap: false,
 		// themeSystem: 'bootstrap',
-		eventBackgroundColor: 'var(--info)',
+		eventBackgroundColor: 'var(--info-less-opaque)',
 		eventBorderColor: 'white',
 		selectMirror: false,
 		headerToolbar: false,
@@ -230,7 +262,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		selectOverlap: false,
 		eventOverlap: false,
 		// themeSystem: 'bootstrap',
-		eventBackgroundColor: "var(--dark)",
+		eventBackgroundColor: "var(--dark-less-opaque)",
 		eventBorderColor: "var(--primary)",
 		selectMirror: false,
 		headerToolbar: false,
@@ -251,8 +283,6 @@ document.addEventListener('DOMContentLoaded', function() {
 		initialView: 'timeGridWeek',
 		allDaySlot: true
 	});
-
-	finalCalendarEventSource = finalCalendar.getEventSourceById(FINAL_CALENDAR_ID);
 	finalCalendar.render();
 });
 

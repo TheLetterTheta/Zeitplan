@@ -1,10 +1,10 @@
-// Local Variables
-@import "variables";
-
 // For Bootstrap overrides.
 // @import './bootstrap-overrides.scss'
 // journal, cosmo, superhero, flatly, minty
 @import "~bootswatch/dist/minty/variables";
+
+// Local Variables
+@import "variables";
 
 // Bootstrap 4.5
 @import "~bootstrap/scss/bootstrap";

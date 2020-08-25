@@ -9,7 +9,8 @@
       "active": false
     },
     "allowlist": {
-      "event": true
+      "event": true,
+      "notification": true
     },
     "bundle": {
       "active": true,
@@ -23,10 +24,10 @@
       ],
       "resources": [],
       "externalBin": [],
-      "copyright": "",
-      "category": "Business",
-      "shortDescription": "",
-      "longDescription": "",
+      "copyright": "MIT",
+      "category": "Productivity",
+      "shortDescription": "A student scheduling app",
+      "longDescription": "A scheduling app built around a private instructor's specifications. Searches for availability across multiple users and multiple required meetings simultaneoulsy, to allow for a better fit.",
       "deb": {
         "depends": []
       },
@@ -37,7 +38,9 @@
       "exceptionDomain": ""
     },
     "window": {
-      "title": "Zeitplan"
+      "title": "Zeitplan",
+      "width": 992,
+      "height": 1145
     },
     "security": {
       "csp": "default-src blob: data: filesystem: ws: http: https: 'unsafe-eval' 'unsafe-inline'"

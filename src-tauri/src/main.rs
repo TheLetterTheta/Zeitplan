@@ -10,15 +10,22 @@ fn main() {
     .invoke_handler(|_webview, arg| {
       use cmd::Cmd::*;
       match serde_json::from_str(arg) {
-        Err(_) => {}
+        Err(e) => Err(e.to_string()),
         Ok(command) => {
           match command {
             // definitions for your custom commands from Cmd here
-            Test { argument } => {
-              //  your command code
-              println!("{}", argument);
-            }
+            ComputeMeetingSpace { payload, callback, error } => tauri::execute_promise(
+                _webview,
+                move || {
+                  //  your command code
+                  println!("{:?}", payload);
+                  Ok("did it")
+                },
+                callback,
+                error,
+            ),
           }
+          Ok(())
         }
       }
     })
