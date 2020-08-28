@@ -39,3 +39,7 @@ div .blur {
 .fc-timegrid-event-condensed .fc-event-time::after {
   content: none;
 }
+
+.list-group-item + .list-group-item {
+  min-height: 50px;
+}

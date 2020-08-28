@@ -6,7 +6,7 @@
   "ctx": {},
   "tauri": {
     "embeddedServer": {
-      "active": false
+      "active": true
     },
     "allowlist": {
       "event": true,
@@ -14,7 +14,7 @@
     },
     "bundle": {
       "active": true,
-      "identifier": "com.tauri.dev",
+      "identifier": "com.zeitplan.dev",
       "icon": [
         "icons/32x32.png",
         "icons/128x128.png",
@@ -43,7 +43,7 @@
       "height": 1145
     },
     "security": {
-      "csp": "default-src blob: data: filesystem: ws: http: https: 'unsafe-eval' 'unsafe-inline'"
+      "csp": "default-src blob: data: file: filesystem: ws: http: https: 'unsafe-eval' 'unsafe-inline'"
     },
     "inliner": {
       "active": true

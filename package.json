@@ -19,6 +19,7 @@
     "prod": "npm run webpack -- --env.mode production",
     "prod:analyze": "npm run prod -- --env.presets analyze",
     "prod:compress": "npm run prod -- --env.presets compress",
+    "dev:prod": "webpack-dashboard --title 'Elm Dev Server' --minimal -- npm run webpack-dev-server -- --env.mode production --env.presets compress",
     "dev": "webpack-dashboard --title 'Elm Dev Server' --minimal -- npm run webpack-dev-server -- --env.mode development",
     "elm-analyse": "elm-analyse -s -o",
     "preprod": "rimraf dist",
@@ -75,6 +76,7 @@
     "@fullcalendar/interaction": "^5.3.0",
     "@fullcalendar/timegrid": "^5.3.0",
     "dayjs": "^1.8.33",
+    "glob-all": "^3.2.1",
     "localforage": "^1.9.0",
     "tauri": "^0.12.0"
   }

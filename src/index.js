@@ -2,15 +2,29 @@
 require('./assets/styles/main.scss');
 
 // Fullcalendar
-import { Calendar, EventSource } from '@fullcalendar/core';
+import {
+	Calendar,
+	EventSource
+} from '@fullcalendar/core';
 // import bootstrapPlugin from '@fullcalendar/bootstrap';
 import interactionPlugin from '@fullcalendar/interaction';
 import timeGridPlugin from '@fullcalendar/timegrid';
-import localforage from 'localforage';
+const localforage = require('localforage');
 import dayjs from 'dayjs'
-import { promisified } from 'tauri/api/tauri';
+import {
+	promisified
+} from 'tauri/api/tauri';
 var weekOfYear = require('dayjs/plugin/weekOfYear');
 dayjs.extend(weekOfYear);
+
+localforage.config({
+	driver: localforage.INDEXEDDB, // Force WebSQL; same as using setDriver()
+	name: 'zeitplan',
+	version: 1.0,
+	size: 4980736, // Size of database, in bytes. WebSQL-only for now.
+	storeName: 'zeitplan_key_value_pairs', // Should be alphanumeric, with underscores.
+	description: 'storage used for users, meetings, and events'
+});
 
 // Vendor JS is imported as an entry in webpack.config.js
 
@@ -46,12 +60,11 @@ app.ports.saveUsers.subscribe(function(users) {
 	localforage.setItem('users', users);
 });
 
-
-app.ports.processWithTauri.subscribe(async function({users, meetings}) {
-	users = new Set(meetings.flatMap(m => m.participantIds));
+async function getMeetingAvailability(meetings) {
+	let userSet = new Set(meetings.flatMap(m => m.participantIds));
 	meetings.forEach((m) => m.duration = m.duration / 30);
 	let userMap = [];
-	for (let id of users) {
+	for (let id of userSet) {
 		const userEvents = await localforage.getItem(`${id}-events`)
 			.then(d => {
 				if (d && d instanceof Map) {
@@ -60,35 +73,110 @@ app.ports.processWithTauri.subscribe(async function({users, meetings}) {
 					return []
 				}
 			});
-		userMap.push({id, events: userEvents});
+		userMap.push({
+			id,
+			events: userEvents
+		});
 	}
 
 	let availableTimeRange = await localforage.getItem('final-calendar')
 		.then((d) => {
 			if (d && d instanceof Map) {
 				return mapEventsToSlotIndexArray(d);
-			}
-			else {
+			} else {
 				return []
 			}
 		});
 
+	const payload = {
+		users: userMap,
+		meetings: meetings,
+		availableTimeRange: availableTimeRange
+	};
+
+	let start = new Date();
 	promisified({
-		cmd: 'computeMeetingSpace',
-	 	payload: { users: userMap, meetings: meetings, availableTimeRange: availableTimeRange }
-	  })
-	  .then(r => console.log(r))
-	  .catch(e => console.error(e));
+			cmd: 'computeMeetingSpace',
+			payload: payload
+		})
+		.then(r => {
+			console.log(`Took ${Math.abs(new Date() - start)} milliseconds`);
+			console.log(r);
+		})
+		.catch(e => console.error(e));
+}
+
+app.ports.getMeetingTimes.subscribe(getMeetingAvailability);
+
+
+app.ports.processWithTauri.subscribe(async function({
+	users,
+	meetings
+}) {
+	let userSet = new Set(meetings.flatMap(m => m.participantIds));
+	meetings.forEach((m) => m.duration = m.duration / 30);
+	let userMap = [];
+	for (let id of userSet) {
+		const userEvents = await localforage.getItem(`${id}-events`)
+			.then(d => {
+				if (d && d instanceof Map) {
+					return mapEventsToSlotIndexArray(d);
+				} else {
+					return []
+				}
+			});
+		userMap.push({
+			id,
+			events: userEvents
+		});
+	}
+
+	let availableTimeRange = await localforage.getItem('final-calendar')
+		.then((d) => {
+			if (d && d instanceof Map) {
+				return mapEventsToSlotIndexArray(d);
+			} else {
+				return []
+			}
+		});
+
+	const payload = {
+		users: userMap,
+		meetings: meetings,
+		availableTimeRange: availableTimeRange
+	};
+
+	let start = new Date();
+	promisified({
+			cmd: 'computeScheduleFromMeetings',
+			payload: payload
+		})
+		.then(r => {
+			console.log(`Took ${Math.abs(new Date() - start)} milliseconds`);
+			console.log(r);
+		})
+		.catch(e => console.error(e));
 
 });
 
 function mapEventsToSlotIndexArray(events) {
 	// We know that the events do not overlap, as defined in our FullCalendar initialization. Therefore, we can push the events to an array in a simple for...of loop
 	let eventTimesAsNumbers = [];
-	for (const event of events.values()){
+	for (const event of events.values()) {
 		eventTimesAsNumbers.push(eventToThirtyMinuteSlotIndexArray(event));
 	}
 	return eventTimesAsNumbers.flat();
+}
+
+function mapSlotIndexArrayToEvents(title, indexArray) {
+	const start = dayjs('2020-03-01').add(indexArray[0] * 30, 'minute');
+	const end = start.add(indexArray.len() * 30, 'minute');
+
+	return {
+		title: title,
+		startText: start,
+		endText: end,
+	};
 }
 
 function eventToThirtyMinuteSlotIndexArray(event) {
@@ -96,13 +184,13 @@ function eventToThirtyMinuteSlotIndexArray(event) {
 	let end = dayjs(event.end);
 
 	return range(
-		end.diff(start, 'm')/30,
+		end.diff(start, 'm') / 30,
 		(start.day() * 48) + (start.hour() * 2) + start.minute() / 30
 	);
 }
 
 function range(size, startAt = 0) {
-    return [...Array(size).keys()].map(i => i + startAt);
+	return [...Array(size).keys()].map(i => i + startAt);
 }
 
 localforage.getItem('meetings')
@@ -131,25 +219,30 @@ app.ports.loadUserWithEvents.subscribe(function(newUser) {
 });
 
 function saveDate(d) {
-	return { id: d.id, start: d.start, end: d.end, allDay: d.allDay };
+	return {
+		id: d.id,
+		start: d.start,
+		end: d.end,
+		allDay: d.allDay
+	};
 }
 
 function loadUserEvents() {
 	return new Promise((resolve, reject) => {
 		localforage.getItem(`${selectedUserID}-events`)
-		.then(function(results) {
-			if (results && results instanceof Map) {
-				selectedUserEvents = results;
-				resolve(Array.from(results.values()));
-			} else {
+			.then(function(results) {
+				if (results && results instanceof Map) {
+					selectedUserEvents = results;
+					resolve(Array.from(results.values()));
+				} else {
+					selectedUserEvents = new Map();
+					reject(new Error("Invalid Database State"));
+				}
+			})
+			.catch(function(e) {
 				selectedUserEvents = new Map();
-				reject(new Error("Invalid Database State"));
-			}
-		})
-		.catch(function(e) {
-			selectedUserEvents = new Map();
-			reject(e);
-		});
+				reject(e);
+			});
 	})
 }
 
@@ -157,7 +250,7 @@ function loadFinalCalendarEvents() {
 	return new Promise((resolve, reject) => {
 		localforage.getItem("final-calendar")
 			.then(function(results) {
-				if (results && results instanceof Map){
+				if (results && results instanceof Map) {
 					finalCalendarEvents = results;
 					resolve(Array.from(results.values()));
 				} else {
@@ -183,7 +276,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		initialDate: '2020-03-01',
 		editable: true,
 		unselectAuto: false,
-		eventContent: function(e) { 
+		eventContent: function(e) {
 			return eventInnerHtml(e, 'text-dark', function() {
 				selectedUserEvents.delete(e.event.id);
 				localforage.setItem(`${selectedUserID}-events`, selectedUserEvents);
@@ -201,7 +294,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			d.id = dayjs().unix().toString();
 
 			participantCalendar.addEvent(d, selectedUserEventSource);
-			selectedUserEvents.set(d.id,saveDate(d));
+			selectedUserEvents.set(d.id, saveDate(d));
 			localforage.setItem(`${selectedUserID}-events`, selectedUserEvents);
 		},
 		selectOverlap: false,
@@ -239,7 +332,7 @@ document.addEventListener('DOMContentLoaded', function() {
 		editable: true,
 		unselectAuto: false,
 		eventContent: function(e) {
-			return eventInnerHtml(e, 'text-white', function() { 
+			return eventInnerHtml(e, 'text-white', function() {
 				finalCalendarEvents.delete(e.event.id);
 				localforage.setItem("final-calendar", finalCalendarEvents);
 				e.event.remove()
@@ -256,7 +349,7 @@ document.addEventListener('DOMContentLoaded', function() {
 			d.id = dayjs().unix().toString();
 
 			finalCalendar.addEvent(d, selectedUserEventSource);
-			finalCalendarEvents.set(d.id,saveDate(d));
+			finalCalendarEvents.set(d.id, saveDate(d));
 			localforage.setItem("final-calendar", finalCalendarEvents);
 		},
 		selectOverlap: false,
@@ -266,17 +359,15 @@ document.addEventListener('DOMContentLoaded', function() {
 		eventBorderColor: "var(--primary)",
 		selectMirror: false,
 		headerToolbar: false,
-		eventSources: [
-			{
-				events: function(fetchInfo, successCallback, failureCallback) {
-					loadFinalCalendarEvents()
+		eventSources: [{
+			events: function(fetchInfo, successCallback, failureCallback) {
+				loadFinalCalendarEvents()
 					.then(d =>
 						successCallback(d))
 					.catch(_ => successCallback([]));
-				},
-				id: SELECTED_USER_CALENDAR_ID
-			}
-		],
+			},
+			id: SELECTED_USER_CALENDAR_ID
+		}],
 		dayHeaderFormat: {
 			'weekday': 'short'
 		},
@@ -286,15 +377,15 @@ document.addEventListener('DOMContentLoaded', function() {
 	finalCalendar.render();
 });
 
-function eventInnerHtml(e, textClass, deleteCallback){
+function eventInnerHtml(e, textClass, deleteCallback) {
 	let container = document.createElement('div');
-	container.classList.add('d-flex','align-items-center', 'flex-wrap', 'justify-content-between', 'p-0', 'flex-fill', textClass);
+	container.classList.add('d-flex', 'align-items-center', 'flex-wrap', 'justify-content-between', 'p-0', 'flex-fill', textClass);
 
 	let deleteButton = document.createElement('button');
 	deleteButton.type = "button";
 	deleteButton.ariaLabel = "Close";
 	deleteButton.classList.add('close');
-	
+
 	let deleteText = document.createElement('span');
 	deleteText.innerHTML = '&times;';
 	deleteText.ariaHidden = true;
@@ -311,8 +402,8 @@ function eventInnerHtml(e, textClass, deleteCallback){
 		timeText.classList.add('fc-event-title');
 		let innerText = start.format('ddd');
 
-		if (! start.add(1, 'day').isSame(end, 'day') ) {
-			innerText += '-'  + end.subtract(1, 'day').format('ddd')
+		if (!start.add(1, 'day').isSame(end, 'day')) {
+			innerText += '-' + end.subtract(1, 'day').format('ddd')
 		}
 
 		timeText.appendChild(document.createTextNode(innerText));
@@ -323,5 +414,8 @@ function eventInnerHtml(e, textClass, deleteCallback){
 
 	container.appendChild(timeText);
 	container.appendChild(deleteButton)
-	return { domNodes: [ container ] };
+
+	return {
+		domNodes: [container]
+	};
 }

@@ -1,11 +1,19 @@
 const path = require('path');
-const glob = require('glob');
+const glob = require('glob-all');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CopyWebpackPlugin = require('copy-webpack-plugin')
 const TerserPlugin = require('terser-webpack-plugin');
 const PurgecssPlugin = require('purgecss-webpack-plugin');
 const ImageminPlugin = require('imagemin-webpack-plugin').default;
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
+
+const paths = glob.sync([
+	      path.join(__dirname, '../src/**/*.elm'),
+	      path.join(__dirname, '../src/index.js'),
+	      path.join(__dirname, '../node_modules/@fullcalendar/**/*.js'),
+      ], { nodir: true });
+
+console.log(paths);
 
 module.exports = () => ({
   output: {
@@ -86,10 +94,8 @@ module.exports = () => ({
     }),
 
     new PurgecssPlugin({
-      paths: glob.sync(path.join(__dirname, '../src/**/*.elm'), { nodir: true }),
-      whitelist: [ "fc" ],
-      whitelistPatterns: [/^fc-.*/g],
-      whitelistPatternsChildren: [/^fc-.*/g, /^fc$/]
+      paths: paths,
+      whitelist: ["fc-highlight"]
     }),
 
     new CopyWebpackPlugin({

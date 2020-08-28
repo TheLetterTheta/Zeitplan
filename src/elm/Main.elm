@@ -176,7 +176,10 @@ update msg model =
                 | meetingParticipants = []
                 , meetings = newMeetings
               }
-            , saveMeetings newMeetings
+            , Cmd.batch
+                [ saveMeetings newMeetings
+                , getMeetingTimes [ newMeeting ]
+                ]
             )
 
         DeleteMeeting meeting ->
@@ -252,9 +255,16 @@ update msg model =
                 filteredMeetingUsers =
                     List.filter (\user -> user /= u) model.meetingParticipants
 
+                ( modifiedMeetings, untouchedMeetings ) =
+                    model.meetings
+                        |> List.partition (\m -> List.member u.id m.participantIds)
+
+                updatedModifiedMeetings =
+                    modifiedMeetings
+                        |> List.map (\m -> { m | participantIds = List.filter (\id -> id /= u.id) m.participantIds })
+
                 updatedMeetings =
-                    List.filter (\meeting -> List.length meeting.participantIds > 0) <|
-                        List.map (\meeting -> { meeting | participantIds = List.filter (\id -> id /= u.id) meeting.participantIds }) model.meetings
+                    updatedModifiedMeetings ++ untouchedMeetings
             in
             ( { model
                 | participants = filteredUsers
@@ -266,6 +276,7 @@ update msg model =
                 [ saveUsers filteredUsers
                 , deleteUser u
                 , destroyCalendar ()
+                , getMeetingTimes updatedModifiedMeetings
                 , saveMeetings updatedMeetings
                 ]
             )
@@ -819,6 +830,9 @@ port processWithTauri : { users : List User, meetings : List Meeting } -> Cmd ms
 
 
 port saveMeetings : List Meeting -> Cmd msg
+
+
+port getMeetingTimes : List Meeting -> Cmd msg
 
 
 port destroyCalendar : () -> Cmd msg
