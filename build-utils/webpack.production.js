@@ -13,8 +13,6 @@ const paths = glob.sync([
 	      path.join(__dirname, '../node_modules/@fullcalendar/**/*.js'),
       ], { nodir: true });
 
-console.log(paths);
-
 module.exports = () => ({
   output: {
     filename: '[name].[contenthash].js'

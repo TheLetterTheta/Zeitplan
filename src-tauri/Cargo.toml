@@ -24,3 +24,10 @@ embedded-server = [ "tauri/embedded-server" ]
 [[bin]]
 name = "Zeitplan"
 path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+incremental = false
+opt-level = 3
