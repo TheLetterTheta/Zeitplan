@@ -1,11 +1,11 @@
 [package]
 name = "zeitplan"
 version = "0.1.0"
-description = "Scheduler"
+description = "A scheduling app built around a private instructor's specifications. Searches for availability across multiple users and multiple required meetings simultaneously, to allow for a better fit."
 authors = [ "Nicholas Dolan <nicholas.dolan1@gmail.com>" ]
-license = "MIT"
+license = "All rights reserved"
 repository = ""
-default-run = "app"
+default-run = "Zeitplan"
 edition = "2018"
 build = "src/build.rs"
 
@@ -20,8 +20,7 @@ winres = "0.1"
 
 [features]
 embedded-server = [ "tauri/embedded-server" ]
-no-server = [ "tauri/no-server" ]
 
 [[bin]]
-name = "app"
+name = "Zeitplan"
 path = "src/main.rs"

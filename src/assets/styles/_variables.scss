@@ -1,7 +1,5 @@
-$fa-font-path: "~@fortawesome/fontawesome-pro/webfonts";
-
 // Impoort Font awesome
-@import "~@fortawesome/fontawesome-pro/scss/fontawesome";
+@import "~@fortawesome/fontawesome-free/scss/fontawesome";
 
 $theme-colors :(
   "dark-less-opaque": rgba($dark, 0.8),

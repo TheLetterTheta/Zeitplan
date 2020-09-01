@@ -4,6 +4,8 @@ import Animation exposing (percent, px, rad)
 import Animation.Spring.Presets exposing (stiff)
 import Browser exposing (Document)
 import Browser.Dom as Dom
+import Debug
+import Dict
 import FontAwesome.Icon as Icon exposing (Icon)
 import FontAwesome.Solid as Icon
 import FontAwesome.Styles as Icon
@@ -33,6 +35,13 @@ type alias Meeting =
     , title : String
     , participantIds : List String
     , duration : Int
+    , expandTimeslots : Bool
+    }
+
+
+type alias MeetingTimeslot =
+    { ord : Int
+    , time : String
     }
 
 
@@ -70,6 +79,13 @@ rotateStart =
     Animation.interrupt [ Animation.to [ Animation.rotate (rad 0) ] ]
 
 
+type alias ResultStatus =
+    { status : String
+    , time : String
+    , ord : Int
+    }
+
+
 type alias Model =
     { participants : List User
     , selectedUser : Maybe User
@@ -80,12 +96,14 @@ type alias Model =
     , meetingParticipants : List User
     , meetingDuration : Int
     , meetingTitle : String
+    , meetingTimes : Dict.Dict String (List MeetingTimeslot)
     , meetings : List Meeting
     , userDropdownStyle : Animation.State
     , meetingDropdownStyle : Animation.State
     , participantsChevronAnimationStyle : Animation.State
     , meetingChevronAnimationStyle : Animation.State
     , newUserAnimationStyle : Animation.State
+    , results : Dict.Dict String ResultStatus
     }
 
 
@@ -106,6 +124,8 @@ init =
       , participantsChevronAnimationStyle = initialChevronStyle
       , meetingChevronAnimationStyle = initialChevronStyle
       , newUserAnimationStyle = initialDropdownStyle
+      , results = Dict.empty
+      , meetingTimes = Dict.empty
       }
     , Cmd.none
     )
@@ -125,6 +145,7 @@ type Msg
     | ToggleExpandParticipants
     | ToggleExpandMeetings
     | ToggleUserMeeting User
+    | ToggleExpandMeetingTime Meeting
     | LoadUsers Decode.Value
     | LoadMeetings Decode.Value
     | DeleteUser User
@@ -134,6 +155,10 @@ type Msg
     | Animate Animation.Msg
     | SetMeetingTitle String
     | SaveMeetingWithId Time.Posix
+    | SaveMeetingAvailableTimeslots Decode.Value
+    | DisplayComputedSchedule Decode.Value
+    | RefreshMeetingsWithUserId Decode.Value
+    | RefreshAllMeetings ()
     | NoOp
 
 
@@ -144,12 +169,12 @@ update msg model =
             ( model, Cmd.none )
 
         RunScheduler ->
-            ( model, processWithTauri { users = model.participants, meetings = model.meetings } )
+            ( model, processWithTauri model.meetings )
 
         LoadMeetings jsValue ->
             case decodeValue decodeMeetings jsValue of
                 Ok data ->
-                    ( { model | meetings = data }, Cmd.none )
+                    ( { model | meetings = data }, getMeetingTimes data )
 
                 Err error ->
                     ( model, Cmd.none )
@@ -167,6 +192,7 @@ update msg model =
                     , title = model.meetingTitle
                     , participantIds = List.map (\u -> u.id) model.meetingParticipants
                     , duration = model.meetingDuration
+                    , expandTimeslots = False
                     }
 
                 newMeetings =
@@ -181,6 +207,38 @@ update msg model =
                 , getMeetingTimes [ newMeeting ]
                 ]
             )
+
+        SaveMeetingAvailableTimeslots jsValue ->
+            case decodeValue decodeTimeslots jsValue of
+                Ok data ->
+                    ( { model | meetingTimes = Dict.union data model.meetingTimes }, Cmd.none )
+
+                Err error ->
+                    ( model, Cmd.none )
+
+        DisplayComputedSchedule jsValue ->
+            case decodeValue decodeResults jsValue of
+                Ok data ->
+                    ( { model | results = data }, Cmd.none )
+
+                Err _ ->
+                    ( { model | results = Dict.empty }, Cmd.none )
+
+        RefreshMeetingsWithUserId jsValue ->
+            case decodeValue Decode.string jsValue of
+                Ok userId ->
+                    let
+                        affectedMeetings =
+                            model.meetings
+                                |> List.filter (\m -> List.member userId m.participantIds)
+                    in
+                    ( model, getMeetingTimes affectedMeetings )
+
+                Err _ ->
+                    ( model, Cmd.none )
+
+        RefreshAllMeetings _ ->
+            ( model, getMeetingTimes model.meetings )
 
         DeleteMeeting meeting ->
             let
@@ -262,6 +320,7 @@ update msg model =
                 updatedModifiedMeetings =
                     modifiedMeetings
                         |> List.map (\m -> { m | participantIds = List.filter (\id -> id /= u.id) m.participantIds })
+                        |> List.filter (\m -> List.length m.participantIds > 0)
 
                 updatedMeetings =
                     updatedModifiedMeetings ++ untouchedMeetings
@@ -314,6 +373,25 @@ update msg model =
             , Cmd.none
             )
 
+        ToggleExpandMeetingTime meeting ->
+            let
+                updatedMeetings =
+                    model.meetings
+                        |> List.map
+                            (\m ->
+                                if meeting == m then
+                                    { m | expandTimeslots = not m.expandTimeslots }
+
+                                else
+                                    m
+                            )
+            in
+            ( { model
+                | meetings = updatedMeetings
+              }
+            , Cmd.none
+            )
+
         ToggleExpandParticipants ->
             let
                 ( dropdownStyle, chevronStyle ) =
@@ -362,23 +440,6 @@ update msg model =
               }
             , Cmd.none
             )
-
-
-
--- SUBSCRIPTIONS
-
-
-subscriptions : Model -> Sub Msg
-subscriptions model =
-    Sub.batch
-        [ loadUsers LoadUsers
-        , loadMeetings LoadMeetings
-        , Animation.subscription Animate [ model.userDropdownStyle ]
-        , Animation.subscription Animate [ model.meetingDropdownStyle ]
-        , Animation.subscription Animate [ model.participantsChevronAnimationStyle ]
-        , Animation.subscription Animate [ model.meetingChevronAnimationStyle ]
-        , Animation.subscription Animate [ model.newUserAnimationStyle ]
-        ]
 
 
 
@@ -517,7 +578,7 @@ renderKeyedMeeting model meeting =
     ( meeting.id
     , lazy
         (\m ->
-            li [ class "card" ]
+            li [ class "card mb-1" ]
                 [ div [ class "card-header" ]
                     [ div [ class "row" ]
                         [ h5 [ class "mr-auto col-auto" ] [ text m.title ]
@@ -534,6 +595,46 @@ renderKeyedMeeting model meeting =
                             (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
                         ]
                     ]
+                , let
+                    displayTimes =
+                        Dict.get meeting.id model.meetingTimes
+
+                    times =
+                        displayTimes
+                            |> Maybe.map (\val -> List.sortBy .ord val)
+                  in
+                  case times of
+                    Just meetingTimes ->
+                        div [ class "border border-primary card-footer" ]
+                            [ div [ class "row align-items-center" ]
+                                [ p [ class "col-auto my-0 mr-auto" ]
+                                    [ text <|
+                                        String.fromInt <|
+                                            List.length meetingTimes
+                                    , text " Times Available"
+                                    ]
+                                , button
+                                    [ class "col-auto btn btn-sm"
+                                    , onClick (ToggleExpandMeetingTime meeting)
+                                    ]
+                                    [ Icon.viewIcon Icon.chevronDown ]
+                                ]
+                            , if meeting.expandTimeslots then
+                                ul [ class "d-flex flex-column" ]
+                                    (List.map
+                                        (\time ->
+                                            li []
+                                                [ text time.time ]
+                                        )
+                                        meetingTimes
+                                    )
+
+                              else
+                                div [] []
+                            ]
+
+                    Nothing ->
+                        div [] []
                 ]
         )
         meeting
@@ -739,7 +840,7 @@ finalStep : Model -> List (Html Msg)
 finalStep model =
     [ div [ class "mt-4 mx-0 border border-secondary row" ]
         [ h1 [ class "display-4 col-auto mr-auto" ]
-            [ text "Run Scheduler" ]
+            [ text "Select Available Times" ]
         , div [ class "container-fluid overflow-auto" ]
             [ div [ class "row" ]
                 [ p [ class "col-12 lead" ]
@@ -749,7 +850,7 @@ finalStep model =
                 [ div [ class "col-12 calendar-container" ]
                     [ div [ id "final-calendar" ] []
                     ]
-                , button [ class "btn btn-lg btn-block m-1 btn-secondary", onClick RunScheduler ] [ text "RUN!" ]
+                , button [ class "btn btn-lg btn-block m-1 btn-secondary", onClick RunScheduler ] [ text "Recompute Schedule" ]
                 ]
             ]
         ]
@@ -768,6 +869,93 @@ renderFooter model =
         ]
 
 
+renderResults : Model -> List (Html Msg)
+renderResults model =
+    [ div [ class "mt-4 mx-0 border border-secondary row" ]
+        [ h1 [ class "display-4 col-12" ]
+            [ text "Computed Schedule"
+            ]
+        , div [ class "container-fluid mx-1" ]
+            [ Html.Keyed.ul
+                [ style "max-height" "50vh"
+                , style "overflow-y" "auto"
+                , class "p-0 result-container"
+                ]
+                (model.meetings
+                    |> List.filter (\m -> Dict.member m.id model.results)
+                    |> List.map
+                        (renderKeyedResultMeeting model)
+                )
+            ]
+        ]
+    ]
+
+
+renderKeyedResultMeeting : Model -> Meeting -> ( String, Html Msg )
+renderKeyedResultMeeting model meeting =
+    ( meeting.id
+    , lazy
+        (\m ->
+            let
+                meetingResult =
+                    Dict.get meeting.id model.results
+
+                ( cardStyle, textStyle, timeText ) =
+                    case meetingResult of
+                        Just result ->
+                            if result.status == "Scheduled" then
+                                ( " border-success"
+                                , " text-success"
+                                , Nothing
+                                )
+
+                            else
+                                ( " border-danger"
+                                , " text-danger"
+                                , Just "Sorry, unable to schedule this meeting"
+                                )
+
+                        Nothing ->
+                            ( " d-none", " d-none", Nothing )
+            in
+            case meetingResult of
+                Just result ->
+                    li
+                        [ class <| "p-0 mb-1 card" ++ cardStyle
+                        ]
+                        [ div [ class "card-header" ]
+                            [ div [ class "row" ]
+                                [ h3 [ class <| "col-auto" ++ textStyle ] [ text m.title ]
+                                ]
+                            ]
+                        , div [ class "card-body" ]
+                            [ span [ class <| "card-text" ++ textStyle ]
+                                [ text <| String.fromInt m.duration ++ " minutes with "
+                                , Html.Keyed.ul
+                                    [ class "d-inline p-0"
+                                    ]
+                                    (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
+                                ]
+                            ]
+                        , div [ class "card-footer" ]
+                            [ h6 [ class textStyle ]
+                                (case timeText of
+                                    Nothing ->
+                                        [ text result.time ]
+
+                                    Just t ->
+                                        [ text t ]
+                                )
+                            ]
+                        ]
+
+                Nothing ->
+                    div [] []
+        )
+        meeting
+    )
+
+
 view : Model -> Document Msg
 view model =
     { title = "Zeitplan"
@@ -781,6 +969,7 @@ view model =
             (participantView model
                 ++ meetingView model
                 ++ finalStep model
+                ++ renderResults model
             )
         , renderFooter model
         ]
@@ -815,6 +1004,29 @@ meetingDecoder =
         |> Pipeline.required "title" string
         |> Pipeline.required "participantIds" (list string)
         |> Pipeline.required "duration" int
+        |> Pipeline.hardcoded False
+
+
+decodeMeetingTimeslot : Decoder MeetingTimeslot
+decodeMeetingTimeslot =
+    Decode.succeed MeetingTimeslot
+        |> Pipeline.required "ord" int
+        |> Pipeline.required "time" string
+
+
+decodeTimeslots : Decoder (Dict.Dict String (List MeetingTimeslot))
+decodeTimeslots =
+    Decode.dict (list decodeMeetingTimeslot)
+
+
+decodeResults : Decoder (Dict.Dict String ResultStatus)
+decodeResults =
+    Decode.dict
+        (Decode.succeed ResultStatus
+            |> Pipeline.required "status" string
+            |> Pipeline.required "time" string
+            |> Pipeline.optional "ord" int -1
+        )
 
 
 port loadUsers : (Decode.Value -> msg) -> Sub msg
@@ -823,10 +1035,16 @@ port loadUsers : (Decode.Value -> msg) -> Sub msg
 port loadMeetings : (Decode.Value -> msg) -> Sub msg
 
 
+port saveMeetingTimeslots : (Decode.Value -> msg) -> Sub msg
+
+
+port renderComputedSchedule : (Decode.Value -> msg) -> Sub msg
+
+
 port saveUsers : List User -> Cmd msg
 
 
-port processWithTauri : { users : List User, meetings : List Meeting } -> Cmd msg
+port processWithTauri : List Meeting -> Cmd msg
 
 
 port saveMeetings : List Meeting -> Cmd msg
@@ -842,6 +1060,33 @@ port deleteUser : User -> Cmd msg
 
 
 port loadUserWithEvents : User -> Cmd msg
+
+
+port updateUser : (Decode.Value -> msg) -> Sub msg
+
+
+port updateMainCalendar : (() -> msg) -> Sub msg
+
+
+
+-- SUBSCRIPTIONS
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ loadUsers LoadUsers
+        , loadMeetings LoadMeetings
+        , saveMeetingTimeslots SaveMeetingAvailableTimeslots
+        , renderComputedSchedule DisplayComputedSchedule
+        , updateUser RefreshMeetingsWithUserId
+        , updateMainCalendar RefreshAllMeetings
+        , Animation.subscription Animate [ model.userDropdownStyle ]
+        , Animation.subscription Animate [ model.meetingDropdownStyle ]
+        , Animation.subscription Animate [ model.participantsChevronAnimationStyle ]
+        , Animation.subscription Animate [ model.meetingChevronAnimationStyle ]
+        , Animation.subscription Animate [ model.newUserAnimationStyle ]
+        ]
 
 
 type alias Flags =

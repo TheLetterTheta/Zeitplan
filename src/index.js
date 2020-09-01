@@ -1,6 +1,9 @@
 // Styles
 require('./assets/styles/main.scss');
 
+// Polyfills
+import 'array-flat-polyfill';
+
 // Fullcalendar
 import {
 	Calendar,
@@ -9,8 +12,14 @@ import {
 // import bootstrapPlugin from '@fullcalendar/bootstrap';
 import interactionPlugin from '@fullcalendar/interaction';
 import timeGridPlugin from '@fullcalendar/timegrid';
+
+// localforage
 const localforage = require('localforage');
+
+// Dayjs
 import dayjs from 'dayjs'
+
+// Tauri
 import {
 	promisified
 } from 'tauri/api/tauri';
@@ -60,91 +69,31 @@ app.ports.saveUsers.subscribe(function(users) {
 	localforage.setItem('users', users);
 });
 
-async function getMeetingAvailability(meetings) {
-	let userSet = new Set(meetings.flatMap(m => m.participantIds));
-	meetings.forEach((m) => m.duration = m.duration / 30);
-	let userMap = [];
-	for (let id of userSet) {
-		const userEvents = await localforage.getItem(`${id}-events`)
-			.then(d => {
-				if (d && d instanceof Map) {
-					return mapEventsToSlotIndexArray(d);
-				} else {
-					return []
-				}
-			});
-		userMap.push({
-			id,
-			events: userEvents
-		});
+app.ports.getMeetingTimes.subscribe(async function(meetings){
+	if (meetings.length == 0) {
+		return;
+	}
+	let newTimes = await getMeetingAvailability(meetings);
+
+	newTimes = newTimes
+		.reduce(function(map, obj) {
+			map[obj.id] = obj.timeslots
+				.map(t => ({
+					ord: t.start,
+					time: timeToReadableTime(t)
+				}));
+			return map;
+		}, {});
+	app.ports.saveMeetingTimeslots.send(newTimes);
+});
+
+
+app.ports.processWithTauri.subscribe(async function(meetings) {
+	if (meetings.length == 0) {
+		return;
 	}
 
-	let availableTimeRange = await localforage.getItem('final-calendar')
-		.then((d) => {
-			if (d && d instanceof Map) {
-				return mapEventsToSlotIndexArray(d);
-			} else {
-				return []
-			}
-		});
-
-	const payload = {
-		users: userMap,
-		meetings: meetings,
-		availableTimeRange: availableTimeRange
-	};
-
-	let start = new Date();
-	promisified({
-			cmd: 'computeMeetingSpace',
-			payload: payload
-		})
-		.then(r => {
-			console.log(`Took ${Math.abs(new Date() - start)} milliseconds`);
-			console.log(r);
-		})
-		.catch(e => console.error(e));
-}
-
-app.ports.getMeetingTimes.subscribe(getMeetingAvailability);
-
-
-app.ports.processWithTauri.subscribe(async function({
-	users,
-	meetings
-}) {
-	let userSet = new Set(meetings.flatMap(m => m.participantIds));
-	meetings.forEach((m) => m.duration = m.duration / 30);
-	let userMap = [];
-	for (let id of userSet) {
-		const userEvents = await localforage.getItem(`${id}-events`)
-			.then(d => {
-				if (d && d instanceof Map) {
-					return mapEventsToSlotIndexArray(d);
-				} else {
-					return []
-				}
-			});
-		userMap.push({
-			id,
-			events: userEvents
-		});
-	}
-
-	let availableTimeRange = await localforage.getItem('final-calendar')
-		.then((d) => {
-			if (d && d instanceof Map) {
-				return mapEventsToSlotIndexArray(d);
-			} else {
-				return []
-			}
-		});
-
-	const payload = {
-		users: userMap,
-		meetings: meetings,
-		availableTimeRange: availableTimeRange
-	};
+	const payload = await processMeetingUsers(meetings)
 
 	let start = new Date();
 	promisified({
@@ -152,12 +101,91 @@ app.ports.processWithTauri.subscribe(async function({
 			payload: payload
 		})
 		.then(r => {
-			console.log(`Took ${Math.abs(new Date() - start)} milliseconds`);
-			console.log(r);
+			r = r
+			.map(v => {
+				v.ord = v.times[0] || 0;
+				const len = 1 + v.times.pop() - v.ord;
+				v.time = timeToReadableTime({
+					start: v.ord,
+					length: len
+				});
+				return v;
+			})
+			.reduce(function(map, obj) {
+				map[obj.id] = { ord: obj.ord, status: obj.status, time: obj.time};
+				return map;
+			}, {});
+
+			app.ports.renderComputedSchedule.send(r);
 		})
 		.catch(e => console.error(e));
 
 });
+
+function timeToReadableTime(t) {
+	const start = dayjs('2020-03-01').add(t.start * 30, 'minute');
+	const end = start.add(t.length * 30, 'minute');
+	
+	if (start.isSame(end, 'day')) {
+		const format = 'dddd [from] HH:mm'
+		const formatTimeOnly = 'HH:mm';
+		return `${start.format(format)}-${end.format(formatTimeOnly)}`;
+	}
+
+	const format = 'dddd [at] HH:mm';
+	return `${start.format(format)}-${end.format(format)}`;
+}
+
+async function getMeetingAvailability(meetings) {
+	const payload = await processMeetingUsers(meetings);
+
+	let start = new Date();
+	try {
+		return await promisified({
+			cmd: 'computeMeetingSpace',
+			payload: payload
+		})
+	} catch (e) {
+		console.error(e);
+		return [];
+	}
+}
+
+async function processMeetingUsers(meetings) {
+
+	let userSet = new Set(meetings.flatMap(m => m.participantIds));
+	meetings.forEach((m) => m.duration = m.duration / 30);
+	let userMap = [];
+	for (let id of userSet) {
+		const userEvents = await localforage.getItem(`${id}-events`)
+			.then(d => {
+				if (d && d instanceof Map) {
+					return mapEventsToSlotIndexArray(d);
+				} else {
+					return []
+				}
+			});
+		userMap.push({
+			id,
+			events: userEvents
+		});
+	}
+
+	let availableTimeRange = await localforage.getItem('final-calendar')
+		.then((d) => {
+			if (d && d instanceof Map) {
+				return mapEventsToSlotIndexArray(d);
+			} else {
+				return []
+			}
+		});
+
+	return {
+		users: userMap,
+		meetings: meetings,
+		availableTimeRange: availableTimeRange
+	}
+}
 
 function mapEventsToSlotIndexArray(events) {
 	// We know that the events do not overlap, as defined in our FullCalendar initialization. Therefore, we can push the events to an array in a simple for...of loop
@@ -166,17 +194,6 @@ function mapEventsToSlotIndexArray(events) {
 		eventTimesAsNumbers.push(eventToThirtyMinuteSlotIndexArray(event));
 	}
 	return eventTimesAsNumbers.flat();
-}
-
-function mapSlotIndexArrayToEvents(title, indexArray) {
-	const start = dayjs('2020-03-01').add(indexArray[0] * 30, 'minute');
-	const end = start.add(indexArray.len() * 30, 'minute');
-
-	return {
-		title: title,
-		startText: start,
-		endText: end,
-	};
 }
 
 function eventToThirtyMinuteSlotIndexArray(event) {
@@ -233,6 +250,7 @@ function loadUserEvents() {
 			.then(function(results) {
 				if (results && results instanceof Map) {
 					selectedUserEvents = results;
+					app.ports.updateUser.send(selectedUserID);
 					resolve(Array.from(results.values()));
 				} else {
 					selectedUserEvents = new Map();
@@ -252,6 +270,7 @@ function loadFinalCalendarEvents() {
 			.then(function(results) {
 				if (results && results instanceof Map) {
 					finalCalendarEvents = results;
+					app.ports.updateMainCalendar.send(null);
 					resolve(Array.from(results.values()));
 				} else {
 					finalCalendarEvents = new Map();
@@ -279,7 +298,8 @@ document.addEventListener('DOMContentLoaded', function() {
 		eventContent: function(e) {
 			return eventInnerHtml(e, 'text-dark', function() {
 				selectedUserEvents.delete(e.event.id);
-				localforage.setItem(`${selectedUserID}-events`, selectedUserEvents);
+				localforage.setItem(`${selectedUserID}-events`, selectedUserEvents)
+					.then(_ => app.ports.updateUser.send(selectedUserID));
 				e.event.remove()
 			})
 		},
@@ -288,14 +308,16 @@ document.addEventListener('DOMContentLoaded', function() {
 		navLinks: false,
 		eventChange: function(d) {
 			selectedUserEvents.set(d.event.id, saveDate(d.event));
-			localforage.setItem(`${selectedUserID}-events`, selectedUserEvents);
+			localforage.setItem(`${selectedUserID}-events`, selectedUserEvents)
+					.then(_ => app.ports.updateUser.send(selectedUserID));
 		},
 		select: function(d) {
 			d.id = dayjs().unix().toString();
 
 			participantCalendar.addEvent(d, selectedUserEventSource);
 			selectedUserEvents.set(d.id, saveDate(d));
-			localforage.setItem(`${selectedUserID}-events`, selectedUserEvents);
+			localforage.setItem(`${selectedUserID}-events`, selectedUserEvents)
+					.then(_ => app.ports.updateUser.send(selectedUserID));
 		},
 		selectOverlap: false,
 		eventOverlap: false,
@@ -334,7 +356,8 @@ document.addEventListener('DOMContentLoaded', function() {
 		eventContent: function(e) {
 			return eventInnerHtml(e, 'text-white', function() {
 				finalCalendarEvents.delete(e.event.id);
-				localforage.setItem("final-calendar", finalCalendarEvents);
+				localforage.setItem("final-calendar", finalCalendarEvents)
+					.then(_ => app.ports.updateMainCalendar.send(null));
 				e.event.remove()
 			});
 		},
@@ -343,14 +366,16 @@ document.addEventListener('DOMContentLoaded', function() {
 		navLinks: false,
 		eventChange: function(d) {
 			finalCalendarEvents.set(d.event.id, saveDate(d.event));
-			localforage.setItem("final-calendar", finalCalendarEvents);
+			localforage.setItem("final-calendar", finalCalendarEvents)
+					.then(_ => app.ports.updateMainCalendar.send(null));
 		},
 		select: function(d) {
 			d.id = dayjs().unix().toString();
 
 			finalCalendar.addEvent(d, selectedUserEventSource);
 			finalCalendarEvents.set(d.id, saveDate(d));
-			localforage.setItem("final-calendar", finalCalendarEvents);
+			localforage.setItem("final-calendar", finalCalendarEvents)
+					.then(_ => app.ports.updateMainCalendar.send(null));
 		},
 		selectOverlap: false,
 		eventOverlap: false,

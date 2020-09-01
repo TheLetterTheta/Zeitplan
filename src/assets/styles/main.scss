@@ -43,3 +43,16 @@ div .blur {
 .list-group-item + .list-group-item {
   min-height: 50px;
 }
+
+.result-container {
+  display: grid;
+  align-items: space-between;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  grid-gap: 1rem;
+}
+
+.result-container > li {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+  grid-gap: 1rem;
+}

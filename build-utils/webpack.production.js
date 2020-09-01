@@ -98,11 +98,11 @@ module.exports = () => ({
       whitelist: ["fc-highlight"]
     }),
 
-    new CopyWebpackPlugin({
-      patterns: [
-        {from: 'src/assets/images', to: 'assets/images'},
-      ]
-    }),
+//    new CopyWebpackPlugin({
+//      patterns: [
+//        {from: 'src/assets/images', to: 'assets/images'},
+//      ]
+//    }),
 
     new ImageminPlugin({
       test: /\.(jpe?g|png|gif|svg)$/i,
