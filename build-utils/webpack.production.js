@@ -3,7 +3,6 @@ const glob = require('glob-all');
 const MiniCssExtractPlugin = require("mini-css-extract-plugin");
 const CopyWebpackPlugin = require('copy-webpack-plugin')
 const TerserPlugin = require('terser-webpack-plugin');
-const PurgecssPlugin = require('purgecss-webpack-plugin');
 const ImageminPlugin = require('imagemin-webpack-plugin').default;
 const OptimizeCSSAssetsPlugin = require('optimize-css-assets-webpack-plugin');
 
@@ -65,7 +64,6 @@ module.exports = () => ({
 
   optimization: {
     minimizer: [
-      // https://elm-lang.org/0.19.0/optimize
       new TerserPlugin({
         extractComments: false,
         terserOptions: {
@@ -90,17 +88,6 @@ module.exports = () => ({
     new MiniCssExtractPlugin({
       filename: 'assets/css/[name].[contenthash].css',
     }),
-
-    new PurgecssPlugin({
-      paths: paths,
-      whitelist: ["fc-highlight"]
-    }),
-
-//    new CopyWebpackPlugin({
-//      patterns: [
-//        {from: 'src/assets/images', to: 'assets/images'},
-//      ]
-//    }),
 
     new ImageminPlugin({
       test: /\.(jpe?g|png|gif|svg)$/i,

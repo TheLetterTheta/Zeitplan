@@ -15,9 +15,11 @@
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
             "lattyware/elm-fontawesome": "4.0.0",
-            "mdgriffith/elm-style-animation": "4.0.0"
+            "mdgriffith/elm-style-animation": "4.0.0",
+            "rundis/elm-bootstrap": "5.2.0"
         },
         "indirect": {
+            "avh4/elm-color": "1.0.0",
             "elm/bytes": "1.0.7",
             "elm/file": "1.0.1",
             "elm/svg": "1.0.1",

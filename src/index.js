@@ -122,17 +122,53 @@ app.ports.processWithTauri.subscribe(async function(meetings) {
 
 });
 
+app.ports.processAllWithTauri.subscribe(async function(meetings) {
+	if (meetings.length == 0) {
+		return;
+	}
+
+	const payload = await processMeetingUsers(meetings)
+
+	let start = new Date();
+	promisified({
+			cmd: 'computeAllMeetingCombinations',
+			payload: payload
+		})
+		.then(r => {
+			r = r
+			.map(v => {
+				const len = v[1][1] - v[1][0] + 1;
+				const r = {};
+				r.id = v[0];
+				r.ord = v[1][0];
+				r.time = timeToReadableTime({
+					start: v[1][0],
+					length: len
+				});
+				return r;
+			})
+			.reduce(function(map, obj) {
+				map[obj.id] = { ord: obj.ord, status: "Scheduled", time: obj.time};
+				return map;
+			}, {});
+		
+			app.ports.renderComputedSchedule.send(r);
+		})
+		.catch(e => console.error(e));
+
+});
+
 function timeToReadableTime(t) {
 	const start = dayjs('2020-03-01').add(t.start * 30, 'minute');
 	const end = start.add(t.length * 30, 'minute');
 	
 	if (start.isSame(end, 'day')) {
-		const format = 'dddd [from] HH:mm'
-		const formatTimeOnly = 'HH:mm';
+		const format = 'dddd [from] h:mm A'
+		const formatTimeOnly = 'h:mm A';
 		return `${start.format(format)}-${end.format(formatTimeOnly)}`;
 	}
 
-	const format = 'dddd [at] HH:mm';
+	const format = 'dddd [at] h:mm A';
 	return `${start.format(format)}-${end.format(format)}`;
 }
 

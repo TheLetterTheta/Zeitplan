@@ -1,7 +1,21 @@
 port module Main exposing (main)
 
-import Animation exposing (percent, px, rad)
+import Animation exposing (rad)
 import Animation.Spring.Presets exposing (stiff)
+import Bootstrap.Badge as Badge
+import Bootstrap.Button as Button
+import Bootstrap.Form as Form
+import Bootstrap.Form.Checkbox as Checkbox
+import Bootstrap.Form.Input as Input
+import Bootstrap.Form.InputGroup as InputGroup
+import Bootstrap.Grid as Grid
+import Bootstrap.Grid.Col as Col
+import Bootstrap.Grid.Row as Row
+import Bootstrap.Navbar as Navbar
+import Bootstrap.Utilities.Border as Border
+import Bootstrap.Utilities.Display as Display
+import Bootstrap.Utilities.Flex as Flex
+import Bootstrap.Utilities.Spacing as Spacing
 import Browser exposing (Document)
 import Browser.Dom as Dom
 import Debug
@@ -9,9 +23,9 @@ import Dict
 import FontAwesome.Icon as Icon exposing (Icon)
 import FontAwesome.Solid as Icon
 import FontAwesome.Styles as Icon
-import Html exposing (Html, blockquote, br, button, div, footer, form, h1, h3, h5, h6, i, input, label, li, mark, nav, p, span, strong, text, ul)
-import Html.Attributes as Attributes exposing (attribute, class, for, id, max, min, name, required, step, style, type_, value)
-import Html.Events exposing (onClick, onInput)
+import Html exposing (Html, blockquote, button, div, footer, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
+import Html.Attributes as Attributes exposing (attribute, class, for, id, max, min, name, required, src, step, style, type_, value)
+import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed
 import Html.Lazy exposing (lazy)
 import Json.Decode as Decode exposing (Decoder, Value, decodeValue, int, list, string)
@@ -88,46 +102,54 @@ type alias ResultStatus =
 
 type alias Model =
     { participants : List User
-    , selectedUser : Maybe User
-    , newUserName : String
-    , isExpandToggleNewUserForm : Bool
-    , isExpandParticipants : Bool
     , isExpandMeetings : Bool
-    , meetingParticipants : List User
-    , meetingDuration : Int
-    , meetingTitle : String
-    , meetingTimes : Dict.Dict String (List MeetingTimeslot)
-    , meetings : List Meeting
-    , userDropdownStyle : Animation.State
-    , meetingDropdownStyle : Animation.State
-    , participantsChevronAnimationStyle : Animation.State
+    , isExpandParticipants : Bool
+    , isExpandToggleNewUserForm : Bool
     , meetingChevronAnimationStyle : Animation.State
+    , meetingDropdownStyle : Animation.State
+    , meetingDuration : Int
+    , meetingParticipants : List User
+    , meetingTimes : Dict.Dict String (List MeetingTimeslot)
+    , meetingTitle : String
+    , meetings : List Meeting
+    , navbarState : Navbar.State
     , newUserAnimationStyle : Animation.State
+    , newUserName : String
+    , participantsChevronAnimationStyle : Animation.State
     , results : Dict.Dict String ResultStatus
+    , selectedUser : Maybe User
+    , useComplexComputation : Bool
+    , userDropdownStyle : Animation.State
     }
 
 
 init : ( Model, Cmd Msg )
 init =
+    let
+        ( navbarState, navbarCmd ) =
+            Navbar.initialState NavbarMsg
+    in
     ( { isExpandToggleNewUserForm = False
-      , participants = []
-      , selectedUser = Nothing
-      , meetings = []
-      , newUserName = ""
-      , isExpandParticipants = False
       , isExpandMeetings = False
-      , meetingParticipants = []
-      , meetingDuration = 60
-      , meetingTitle = ""
-      , userDropdownStyle = initialDropdownStyle
-      , meetingDropdownStyle = initialDropdownStyle
-      , participantsChevronAnimationStyle = initialChevronStyle
+      , isExpandParticipants = False
       , meetingChevronAnimationStyle = initialChevronStyle
-      , newUserAnimationStyle = initialDropdownStyle
-      , results = Dict.empty
+      , meetingDropdownStyle = initialDropdownStyle
+      , meetingDuration = 60
+      , meetingParticipants = []
       , meetingTimes = Dict.empty
+      , meetingTitle = ""
+      , meetings = []
+      , navbarState = navbarState
+      , newUserAnimationStyle = initialDropdownStyle
+      , newUserName = ""
+      , participants = []
+      , participantsChevronAnimationStyle = initialChevronStyle
+      , results = Dict.empty
+      , selectedUser = Nothing
+      , useComplexComputation = False
+      , userDropdownStyle = initialDropdownStyle
       }
-    , Cmd.none
+    , navbarCmd
     )
 
 
@@ -137,28 +159,30 @@ init =
 
 type Msg
     = SelectUser User
-    | ToggleNewUserForm
-    | UpdateUserName String
+    | AddMeeting
+    | Animate Animation.Msg
     | DeleteMeeting Meeting
+    | DeleteUser User
+    | DisplayComputedSchedule Decode.Value
+    | LoadMeetings Decode.Value
+    | LoadUsers Decode.Value
+    | NavbarMsg Navbar.State
+    | RefreshAllMeetings ()
+    | RefreshMeetingsWithUserId Decode.Value
+    | RunScheduler
+    | SaveMeetingAvailableTimeslots Decode.Value
+    | SaveMeetingWithId Time.Posix
     | SaveUser
     | SaveUserWithId Time.Posix
-    | ToggleExpandParticipants
-    | ToggleExpandMeetings
-    | ToggleUserMeeting User
-    | ToggleExpandMeetingTime Meeting
-    | LoadUsers Decode.Value
-    | LoadMeetings Decode.Value
-    | DeleteUser User
-    | AddMeeting
     | SetMeetingLength Int
-    | RunScheduler
-    | Animate Animation.Msg
     | SetMeetingTitle String
-    | SaveMeetingWithId Time.Posix
-    | SaveMeetingAvailableTimeslots Decode.Value
-    | DisplayComputedSchedule Decode.Value
-    | RefreshMeetingsWithUserId Decode.Value
-    | RefreshAllMeetings ()
+    | ToggleExpandMeetingTime Meeting
+    | ToggleExpandMeetings
+    | ToggleExpandParticipants
+    | ToggleNewUserForm
+    | ToggleUseComplexComputation Bool
+    | ToggleUserMeeting User
+    | UpdateUserName String
     | NoOp
 
 
@@ -168,8 +192,18 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
+        NavbarMsg navbarState ->
+            ( { model | navbarState = navbarState }, Cmd.none )
+
+        ToggleUseComplexComputation checkVal ->
+            ( { model | useComplexComputation = checkVal }, Cmd.none )
+
         RunScheduler ->
-            ( model, processWithTauri model.meetings )
+            if model.useComplexComputation then
+                ( model, processAllWithTauri model.meetings )
+
+            else
+                ( model, processWithTauri model.meetings )
 
         LoadMeetings jsValue ->
             case decodeValue decodeMeetings jsValue of
@@ -481,32 +515,41 @@ renderKeyedUser activeUser user =
 newUserButton : Model -> Html Msg
 newUserButton model =
     let
-        ( buttonClass, icon, buttonText ) =
+        ( buttonType, icon, buttonText ) =
             if not model.isExpandToggleNewUserForm then
-                ( "btn-success", Icon.userPlus, "Show" )
+                ( Button.success, Icon.userPlus, "Show" )
 
             else
-                ( "btn-danger", Icon.userTimes, "Hide" )
+                ( Button.danger, Icon.userTimes, "Hide" )
 
         classList =
-            buttonClass ++ " list-group-item list-group-item-action text-center"
+            "list-group-item-action text-center"
     in
-    button
-        [ class classList
-        , onClick ToggleNewUserForm
+    Button.button
+        [ buttonType
+        , Button.attrs
+            [ class classList
+            , onClick ToggleNewUserForm
+            ]
         ]
-        [ Icon.viewIcon icon, p [ class "m-0" ] [ text buttonText ] ]
+        [ Icon.viewIcon icon, p [ Spacing.m0 ] [ text buttonText ] ]
 
 
 newUserForm : Model -> Html Msg
 newUserForm model =
     div (Animation.render model.newUserAnimationStyle)
-        [ div [ class "form-group" ]
-            [ label [ for "name" ] [ text "Name" ]
-            , div [ class "input-group" ]
-                [ input [ type_ "text", value model.newUserName, onInput UpdateUserName, id "new-user-name-input", class "form-control" ] []
-                , div [ class "input-group-append" ]
-                    [ button [ onClick SaveUser, class "btn btn-success", type_ "submit" ] [ text "ADD" ] ]
+        [ Form.form [ onSubmit SaveUser ]
+            [ Form.group []
+                [ Form.label [ for "name" ] [ text "Name" ]
+                , InputGroup.config
+                    (InputGroup.text
+                        [ Input.placeholder "User name"
+                        , Input.attrs [ value model.newUserName, onInput UpdateUserName, id "new-user-name-input" ]
+                        ]
+                    )
+                    |> InputGroup.successors
+                        [ InputGroup.button [ Button.success, Button.attrs [ onClick SaveUser ] ] [ text "ADD" ] ]
+                    |> InputGroup.view
                 ]
             ]
         ]
@@ -562,7 +605,7 @@ renderMeetingParticipant availableUserList id =
                 List.filter (\user -> user.id == id) availableUserList
     of
         Just name ->
-            li [ class "badge badge-secondary mr-1" ] [ text name ]
+            Badge.pillSecondary [ Spacing.mr1 ] [ text name ]
 
         Nothing ->
             li [] []
@@ -578,19 +621,24 @@ renderKeyedMeeting model meeting =
     ( meeting.id
     , lazy
         (\m ->
-            li [ class "card mb-1" ]
+            li [ Spacing.mb1, class "card" ]
                 [ div [ class "card-header" ]
-                    [ div [ class "row" ]
-                        [ h5 [ class "mr-auto col-auto" ] [ text m.title ]
-                        , button [ onClick (DeleteMeeting m), class "col-auto btn btn-sm btn-danger" ]
-                            [ Icon.viewIcon Icon.trash ]
+                    [ Grid.row []
+                        [ Grid.col []
+                            [ h5 [ Spacing.mrAuto ] [ text m.title ]
+                            ]
+                        , Grid.col [ Col.xsAuto ]
+                            [ Button.button [ Button.attrs [ onClick (DeleteMeeting m) ], Button.danger ]
+                                [ Icon.viewIcon Icon.trash ]
+                            ]
                         ]
                     ]
                 , div [ class "card-body" ]
                     [ span [ class "card-text text-muted" ]
                         [ text <| String.fromInt m.duration ++ " minutes with "
                         , Html.Keyed.ul
-                            [ class "d-inline p-0"
+                            [ Spacing.p0
+                            , Display.inline
                             ]
                             (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
                         ]
@@ -605,22 +653,26 @@ renderKeyedMeeting model meeting =
                   in
                   case times of
                     Just meetingTimes ->
-                        div [ class "border border-primary card-footer" ]
-                            [ div [ class "row align-items-center" ]
-                                [ p [ class "col-auto my-0 mr-auto" ]
-                                    [ text <|
-                                        String.fromInt <|
-                                            List.length meetingTimes
-                                    , text " Times Available"
+                        div [ Border.all, Border.primary, class "card-footer" ]
+                            [ Grid.row [ Row.middleXs ]
+                                [ Grid.col []
+                                    [ p [ Spacing.mrAuto, Spacing.my0 ]
+                                        [ text <|
+                                            String.fromInt <|
+                                                List.length meetingTimes
+                                        , text " Times Available"
+                                        ]
                                     ]
-                                , button
-                                    [ class "col-auto btn btn-sm"
-                                    , onClick (ToggleExpandMeetingTime meeting)
+                                , Grid.col [ Col.xsAuto ]
+                                    [ Button.button
+                                        [ Button.small
+                                        , Button.attrs [ onClick (ToggleExpandMeetingTime meeting) ]
+                                        ]
+                                        [ Icon.viewIcon Icon.chevronDown ]
                                     ]
-                                    [ Icon.viewIcon Icon.chevronDown ]
                                 ]
                             , if meeting.expandTimeslots then
-                                ul [ class "d-flex flex-column" ]
+                                ul []
                                     (List.map
                                         (\time ->
                                             li []
@@ -641,19 +693,26 @@ renderKeyedMeeting model meeting =
     )
 
 
-newMeetingForm : Model -> Html Msg
+newMeetingForm : Model -> Grid.Column Msg
 newMeetingForm model =
-    div [ class "col-md-4 col-12" ]
+    Grid.col [ Col.md4 ]
         (if List.length model.meetingParticipants == 0 then
             [ h1 [ class "text-danger" ] [ text "A participant is required to schedule a meeting" ] ]
 
          else
-            [ div [ class "form-group" ]
-                [ label [ class "col-form-label col-form-label-lg form-control-label", for "meeting-title" ] [ text "Title*" ]
-                , input [ type_ "text", value model.meetingTitle, onInput SetMeetingTitle, Attributes.required True, id "meeting-title", class "form-control form-control-lg" ] []
+            [ Form.group []
+                [ Form.label [ class "col-form-label-lg", for "meeting-title" ] [ text "Title*" ]
+                , Input.text
+                    [ Input.value model.meetingTitle
+                    , Input.onInput SetMeetingTitle
+                    , Input.placeholder "Meeting title"
+                    , Input.large
+                    , Input.id "meeting-title"
+                    , Input.attrs [ Attributes.required True ]
+                    ]
                 ]
-            , div [ class "form-group" ]
-                [ label [ for "timespan-input" ]
+            , Form.group []
+                [ Form.label [ for "timespan-input" ]
                     [ text <| "Meeting Length: " ++ String.fromInt model.meetingDuration ++ " Minutes" ]
                 , input
                     [ onInput (SetMeetingLength << inputToInt 60)
@@ -680,15 +739,17 @@ newMeetingForm model =
                         , p [ class "card-text" ]
                             (text "Participants: "
                                 :: (model.meetingParticipants
-                                        |> List.map (\u -> span [ class "badge badge-secondary mr-1" ] [ text u.name ])
+                                        |> List.map (\u -> Badge.badgeSecondary [ Spacing.mr1 ] [ text u.name ])
                                    )
                             )
                         ]
                     , div [ class "card-footer" ]
-                        [ div [ class "justify-content-end row" ]
-                            [ button [ onClick AddMeeting, class "btn btn-success" ]
-                                [ span [ class "mr-2" ] [ Icon.viewIcon Icon.save ]
-                                , text "Save"
+                        [ Grid.row [ Row.attrs [ Flex.justifyEnd ] ]
+                            [ Grid.col [ Col.xsAuto ]
+                                [ Button.button [ Button.success, Button.attrs [ onClick AddMeeting ] ]
+                                    [ span [ Spacing.mr2 ] [ Icon.viewIcon Icon.save ]
+                                    , text "Save"
+                                    ]
                                 ]
                             ]
                         ]
@@ -697,198 +758,235 @@ newMeetingForm model =
         )
 
 
-participantView : Model -> List (Html Msg)
+participantView : Model -> Html Msg
 participantView model =
-    [ div [ class "mt-4 mx-0 border border-secondary row" ]
-        [ h1 [ class "display-4 col-auto mr-auto" ]
-            [ text "Setup Participants"
-            ]
-        , button
-            [ class "col-auto btn btn-lg"
-            , onClick ToggleExpandParticipants
-            ]
-            [ span [ class "fa-2x" ]
-                [ span
-                    [ class "badge badge-pill badge-info" ]
-                    [ text (String.fromInt <| List.length <| model.participants)
-                    , span [ class "ml-2" ] [ Icon.viewIcon Icon.userFriends ]
-                    ]
-                , let
-                    icon =
-                        Icon.viewStyled (Animation.render model.participantsChevronAnimationStyle) Icon.chevronDown
-                  in
-                  span [ class "ml-1" ] [ icon ]
+    Grid.row [ Row.attrs [ Spacing.mx0, Spacing.mt4, Border.all, Border.secondary ] ]
+        [ Grid.col [ Col.xs ]
+            [ h1 [ class "display-4" ]
+                [ text "Setup Participants"
                 ]
             ]
-        , div
-            (Animation.render model.userDropdownStyle
-                ++ [ class "container-fluid overflow-auto" ]
-            )
-            [ div [ class "row" ]
-                [ p [ class "col-12 lead" ] [ text "Use this area to add participants that will be involved in meetings. Add new participants and setup their availability by blocking out times on their weekly schedule." ]
+        , Grid.col [ Col.xsAuto ]
+            [ Button.button
+                [ Button.large
+                , Button.attrs [ onClick ToggleExpandParticipants ]
                 ]
-            , div [ class "row" ]
-                [ div [ class "col-12" ] [ lazy newUserForm model ] ]
-            , div [ class "row p-2" ]
-                [ div [ class "col-12 p-0 pr-md-2 mb-2 mb-md-0 col-md-3" ]
-                    [ newUserButton model
-                    , Html.Keyed.ul
-                        [ class "list-group"
-                        , style "max-height" "50vh"
-                        , style "overflow-y" "auto"
+                [ span [ class "fa-2x" ]
+                    [ Badge.pillInfo
+                        []
+                        [ text (String.fromInt <| List.length <| model.participants)
+                        , span [ Spacing.ml2 ] [ Icon.viewIcon Icon.userFriends ]
                         ]
-                        (List.map
-                            (renderKeyedUser
-                                model.selectedUser
+                    , let
+                        icon =
+                            Icon.viewStyled (Animation.render model.participantsChevronAnimationStyle) Icon.chevronDown
+                      in
+                      span [ Spacing.ml1 ] [ icon ]
+                    ]
+                ]
+            ]
+        , Grid.col [ Col.xs12 ]
+            [ Grid.containerFluid
+                (class "overflow-auto"
+                    :: Animation.render model.userDropdownStyle
+                )
+                [ Grid.row []
+                    [ Grid.col []
+                        [ p [ class "lead" ] [ text "Use this area to add participants that will be involved in meetings. Add new participants and setup their availability by blocking out times on their weekly schedule." ]
+                        ]
+                    ]
+                , Grid.row []
+                    [ Grid.col [] [ lazy newUserForm model ] ]
+                , Grid.row [ Row.attrs [ Spacing.p2 ] ]
+                    [ Grid.col [ Col.md3, Col.attrs [ Spacing.mb2, Spacing.mb0Md, Spacing.p0, Spacing.pr2Md ] ]
+                        [ newUserButton model
+                        , Html.Keyed.ul
+                            [ class "list-group"
+                            , style "max-height" "50vh"
+                            , style "overflow-y" "auto"
+                            ]
+                            (List.map
+                                (renderKeyedUser
+                                    model.selectedUser
+                                )
+                                (sortedUsers model.participants)
                             )
-                            (sortedUsers model.participants)
-                        )
-                    ]
-                , div [ class "col-sm-12 col-md-9" ]
-                    [ div [ class "row mb-2" ]
-                        (case model.selectedUser of
-                            Just user ->
-                                [ h3 [ class "col-auto mr-auto" ] [ text (user.name ++ "'s Schedule:") ]
-                                , button [ class "col-auto btn btn-danger", onClick (DeleteUser user) ]
-                                    [ span [ class "mr-1" ] [ Icon.viewIcon Icon.trash ]
-                                    , text user.name
+                        ]
+                    , Grid.col [ Col.sm12, Col.md9 ]
+                        [ Grid.row [ Row.attrs [ Spacing.mb2 ] ]
+                            (case model.selectedUser of
+                                Just user ->
+                                    [ Grid.col [] [ h3 [ Spacing.mrAuto ] [ text (user.name ++ "'s Schedule:") ] ]
+                                    , Grid.col [ Col.xsAuto ]
+                                        [ Button.button [ Button.danger, Button.attrs [ onClick (DeleteUser user) ] ]
+                                            [ span [ Spacing.mr1 ] [ Icon.viewIcon Icon.trash ]
+                                            , text user.name
+                                            ]
+                                        ]
                                     ]
-                                ]
 
-                            Nothing ->
-                                []
-                        )
-                    , div [ class "row calendar-container" ]
-                        [ div [ class "col-12 p-0", id "participant-calendar" ] []
+                                Nothing ->
+                                    []
+                            )
+                        , Grid.row [ Row.attrs [ class "calendar-container" ] ]
+                            [ Grid.col [ Col.attrs [ Spacing.p0, id "participant-calendar" ] ] []
+                            ]
                         ]
                     ]
                 ]
             ]
         ]
-    ]
 
 
-meetingView : Model -> List (Html Msg)
+meetingView : Model -> Html Msg
 meetingView model =
-    [ div [ class "mt-4 mx-0 border border-secondary row" ]
-        [ h1 [ class "display-4 col-auto mr-auto" ]
-            [ text "Configure Meetings"
-            ]
-        , button
-            [ class "col-auto btn btn-lg"
-            , onClick ToggleExpandMeetings
-            ]
-            [ span
-                [ class "fa-2x" ]
-                [ span [ class "badge badge-pill badge-info" ]
-                    [ text
-                        (String.fromInt <| List.length <| model.meetings)
-                    , span [ class "ml-2" ] [ Icon.viewIcon Icon.calendarAlt ]
-                    ]
-                , let
-                    icon =
-                        Icon.viewStyled (Animation.render model.meetingChevronAnimationStyle) Icon.chevronDown
-                  in
-                  span [ class "ml-1" ] [ icon ]
+    Grid.row [ Row.attrs [ Spacing.mt4, Spacing.mx0, Border.all, Border.secondary ] ]
+        [ Grid.col [ Col.attrs [ Spacing.mrAuto ] ]
+            [ h1 [ class "display-4" ]
+                [ text "Configure Meetings"
                 ]
             ]
-        , div
-            (Animation.render model.meetingDropdownStyle
-                ++ [ class "container-fluid overflow-auto" ]
-            )
-            [ div [ class "row" ]
-                [ p [ class "col-12 lead" ]
-                    [ text "Use this area to setup the types of meetings you will need in the final step. These will be batched all at once when computing the final results, so they need to all be setup now. "
-                    , mark [] [ strong [] [ text "It is expected that YOU are a participant in each of the meetings. You do not need to setup your own schedule yet. That will happen in the final step." ] ]
+        , Grid.col [ Col.xsAuto ]
+            [ Button.button
+                [ Button.large
+                , Button.attrs [ onClick ToggleExpandMeetings ]
+                ]
+                [ span
+                    [ class "fa-2x" ]
+                    [ Badge.pillInfo []
+                        [ text
+                            (String.fromInt <| List.length <| model.meetings)
+                        , span [ Spacing.ml2 ] [ Icon.viewIcon Icon.calendarAlt ]
+                        ]
+                    , let
+                        icon =
+                            Icon.viewStyled (Animation.render model.meetingChevronAnimationStyle) Icon.chevronDown
+                      in
+                      span [ Spacing.ml1 ] [ icon ]
                     ]
                 ]
-            , div [ class "row p-2" ]
-                [ div [ class "col-12 p-0 pr-md-2 mb-2 mb-md-0 col-md-3" ]
-                    [ h3 [ class "text-truncate" ] [ text "Participants*" ]
-                    , Html.Keyed.ul
-                        [ class "list-group"
-                        , style "max-height" "50vh"
-                        , style "overflow-y" "auto"
+            ]
+        , Grid.col [ Col.xs12 ]
+            [ Grid.containerFluid
+                (Animation.render model.meetingDropdownStyle
+                    ++ [ class "overflow-auto" ]
+                )
+                [ Grid.row []
+                    [ Grid.col [ Col.xs12 ]
+                        [ p [ class "lead" ]
+                            [ text "Use this area to setup the types of meetings you will need in the final step. These will be batched all at once when computing the final results, so they need to all be setup now. "
+                            , mark [] [ strong [] [ text "It is expected that YOU are a participant in each of the meetings. You do not need to setup your own schedule yet. That will happen in the final step." ] ]
+                            ]
                         ]
-                        (List.map
-                            (renderKeyedMeetingUser model.meetingParticipants)
-                            (sortedUsers model.participants)
-                        )
                     ]
-                , newMeetingForm model
-                , div
-                    [ class "col-md-5 p-0 col-12"
-                    ]
-                    [ h3 [] [ text "Meetings:" ]
-                    , Html.Keyed.ul
-                        [ style "max-height" "50vh"
-                        , style "overflow-y" "auto"
-                        , class "p-0"
+                , Grid.row [ Row.attrs [ Spacing.p2 ] ]
+                    [ Grid.col [ Col.md3, Col.attrs [ Spacing.mb2, Spacing.mb0Md, Spacing.p0, Spacing.pr2Md ] ]
+                        [ h3 [ class "text-truncate" ] [ text "Participants*" ]
+                        , Html.Keyed.ul
+                            [ class "list-group"
+                            , style "max-height" "50vh"
+                            , style "overflow-y" "auto"
+                            ]
+                            (List.map
+                                (renderKeyedMeetingUser model.meetingParticipants)
+                                (sortedUsers model.participants)
+                            )
                         ]
-                        (List.map
-                            (renderKeyedMeeting model)
-                            model.meetings
-                        )
+                    , newMeetingForm model
+                    , Grid.col [ Col.md5, Col.attrs [ Spacing.p0 ] ]
+                        [ h3 [] [ text "Meetings:" ]
+                        , Html.Keyed.ul
+                            [ style "max-height" "50vh"
+                            , style "overflow-y" "auto"
+                            , Spacing.p0
+                            ]
+                            (List.map
+                                (renderKeyedMeeting model)
+                                model.meetings
+                            )
+                        ]
                     ]
                 ]
             ]
         ]
-    ]
 
 
-finalStep : Model -> List (Html Msg)
+finalStep : Model -> Html Msg
 finalStep model =
-    [ div [ class "mt-4 mx-0 border border-secondary row" ]
-        [ h1 [ class "display-4 col-auto mr-auto" ]
-            [ text "Select Available Times" ]
-        , div [ class "container-fluid overflow-auto" ]
-            [ div [ class "row" ]
-                [ p [ class "col-12 lead" ]
-                    [ text "This is the last step. Here you will define your availability in the calendar below. Zeitplan will use these times (and only these times) to attempt to schedule each of the meetings defined above. This could take a long time to run! Please be patient, and try not to get frustrated." ]
-                ]
-            , div [ class "row" ]
-                [ div [ class "col-12 calendar-container" ]
-                    [ div [ id "final-calendar" ] []
+    Grid.row [ Row.attrs [ Spacing.mt4, Spacing.mx0, Border.all, Border.secondary ] ]
+        [ Grid.col [ Col.xsAuto, Col.attrs [ Spacing.mrAuto ] ]
+            [ h1 [ class "display-4" ]
+                [ text "Select Available Times" ]
+            ]
+        , Grid.col [ Col.xs12 ]
+            [ Grid.containerFluid [ class "overflow-auto" ]
+                [ Grid.row []
+                    [ Grid.col []
+                        [ p [ class "lead" ]
+                            [ text "This is the last step. Here you will define your availability in the calendar below. Zeitplan will use these times (and only these times) to attempt to schedule each of the meetings defined above. This could take a long time to run! Please be patient, and try not to get frustrated." ]
+                        ]
                     ]
-                , button [ class "btn btn-lg btn-block m-1 btn-secondary", onClick RunScheduler ] [ text "Recompute Schedule" ]
+                , Grid.row []
+                    [ Grid.col [ Col.attrs [ class "calendar-container" ] ]
+                        [ div [ id "final-calendar" ] []
+                        ]
+                    ]
+                , Grid.row []
+                    [ Grid.col []
+                        [ Button.button [ Button.block, Button.large, Button.secondary, Button.attrs [ onClick RunScheduler, Spacing.m1 ] ] [ text "Recompute Schedule" ]
+                        , div [ Spacing.m1 ]
+                            [ Checkbox.checkbox
+                                [ Checkbox.attrs [ Spacing.ml1 ]
+                                , Checkbox.danger
+                                , Checkbox.onCheck ToggleUseComplexComputation
+                                , Checkbox.inline
+                                , Checkbox.checked model.useComplexComputation
+                                ]
+                                "Try all combinations. DANGER: This has the potential to run for a VERY long time"
+                            ]
+                        ]
+                    ]
                 ]
             ]
         ]
-    ]
 
 
 renderFooter : Model -> Html Msg
 renderFooter model =
-    footer [ id "footer", class "bg-dark mt-4 position-sticky" ]
-        [ div [ class "container-fluid text-center" ]
-            [ blockquote [ class "blockquote mb-0" ]
-                [ p [] [ text "This project was made with love for Professor Victor Drescher at Southeastern Louisiana University. He believed in this project even before I was capable of finishing." ]
-                , footer [ class "blockquote-footer" ] [ text "Made possible in Elm, with major help from the Fullcalendar library. The desktop application is running on Tauri, and the primary computations are written in Rust" ]
+    footer [ id "footer", Spacing.mt4, class "bg-dark position-sticky" ]
+        [ Grid.containerFluid [ class "text-center" ]
+            [ blockquote [ Spacing.mb0, class "blockquote" ]
+                [ p [] [ text "This project was made possible thanks to Professor Victor Drescher at Southeastern Louisiana University." ]
+                , footer [ class "blockquote-footer" ] [ text "UI thanks to Elm + Bootstrap + Bootswatch + Fullcalendar. Any complicated logic is handled in Rust thanks to the wonderful work being done on the Tauri Project." ]
                 ]
             ]
         ]
 
 
-renderResults : Model -> List (Html Msg)
+renderResults : Model -> Html Msg
 renderResults model =
-    [ div [ class "mt-4 mx-0 border border-secondary row" ]
-        [ h1 [ class "display-4 col-12" ]
-            [ text "Computed Schedule"
-            ]
-        , div [ class "container-fluid mx-1" ]
-            [ Html.Keyed.ul
-                [ style "max-height" "50vh"
-                , style "overflow-y" "auto"
-                , class "p-0 result-container"
+    Grid.row [ Row.attrs [ Spacing.mx0, Spacing.mt4, Border.all, Border.secondary ] ]
+        [ Grid.col [ Col.xs12 ]
+            [ h1 [ class "display-4" ]
+                [ text "Computed Schedule"
                 ]
-                (model.meetings
-                    |> List.filter (\m -> Dict.member m.id model.results)
-                    |> List.map
-                        (renderKeyedResultMeeting model)
-                )
+            ]
+        , Grid.col [ Col.xs12 ]
+            [ Grid.containerFluid [ Spacing.mx1 ]
+                [ Html.Keyed.ul
+                    [ style "max-height" "50vh"
+                    , style "overflow-y" "auto"
+                    , class "result-container"
+                    , Spacing.p0
+                    ]
+                    (model.meetings
+                        |> List.filter (\m -> Dict.member m.id model.results)
+                        |> List.map
+                            (renderKeyedResultMeeting model)
+                    )
+                ]
             ]
         ]
-    ]
 
 
 renderKeyedResultMeeting : Model -> Meeting -> ( String, Html Msg )
@@ -904,35 +1002,40 @@ renderKeyedResultMeeting model meeting =
                     case meetingResult of
                         Just result ->
                             if result.status == "Scheduled" then
-                                ( " border-success"
+                                ( Border.success
                                 , " text-success"
                                 , Nothing
                                 )
 
                             else
-                                ( " border-danger"
+                                ( Border.danger
                                 , " text-danger"
                                 , Just "Sorry, unable to schedule this meeting"
                                 )
 
                         Nothing ->
-                            ( " d-none", " d-none", Nothing )
+                            ( Display.none, " d-none", Nothing )
             in
             case meetingResult of
                 Just result ->
                     li
-                        [ class <| "p-0 mb-1 card" ++ cardStyle
+                        [ class "card"
+                        , Border.all
+                        , cardStyle
+                        , Spacing.mb1
+                        , Spacing.p0
                         ]
                         [ div [ class "card-header" ]
-                            [ div [ class "row" ]
-                                [ h3 [ class <| "col-auto" ++ textStyle ] [ text m.title ]
+                            [ Grid.row []
+                                [ Grid.col [] [ h3 [ class textStyle ] [ text m.title ] ]
                                 ]
                             ]
                         , div [ class "card-body" ]
                             [ span [ class <| "card-text" ++ textStyle ]
                                 [ text <| String.fromInt m.duration ++ " minutes with "
                                 , Html.Keyed.ul
-                                    [ class "d-inline p-0"
+                                    [ Display.inline
+                                    , Spacing.p0
                                     ]
                                     (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
                                 ]
@@ -961,16 +1064,27 @@ view model =
     { title = "Zeitplan"
     , body =
         [ Icon.css
-        , nav [ class "sticky-top navbar navbar-expand-lg navbar-dark bg-primary" ]
-            [ h3 [ class "navbar-brand" ]
-                [ text "Zeitplan" ]
+        , Navbar.config NavbarMsg
+            |> Navbar.attrs [ class "sticky-top" ]
+            |> Navbar.withAnimation
+            |> Navbar.primary
+            |> Navbar.brand []
+                [ img
+                    [ src "Zeitplan.svg"
+                    , style "width" "30px"
+                    ]
+                    []
+                , h1
+                    [ Spacing.ml2, class "navbar-brand" ]
+                    [ text "Zeitplan" ]
+                ]
+            |> Navbar.view model.navbarState
+        , Grid.container []
+            [ participantView model
+            , meetingView model
+            , finalStep model
+            , renderResults model
             ]
-        , div [ class "container" ]
-            (participantView model
-                ++ meetingView model
-                ++ finalStep model
-                ++ renderResults model
-            )
         , renderFooter model
         ]
     }
@@ -1068,6 +1182,9 @@ port updateUser : (Decode.Value -> msg) -> Sub msg
 port updateMainCalendar : (() -> msg) -> Sub msg
 
 
+port processAllWithTauri : List Meeting -> Cmd msg
+
+
 
 -- SUBSCRIPTIONS
 
@@ -1081,6 +1198,7 @@ subscriptions model =
         , renderComputedSchedule DisplayComputedSchedule
         , updateUser RefreshMeetingsWithUserId
         , updateMainCalendar RefreshAllMeetings
+        , Navbar.subscriptions model.navbarState NavbarMsg
         , Animation.subscription Animate [ model.userDropdownStyle ]
         , Animation.subscription Animate [ model.meetingDropdownStyle ]
         , Animation.subscription Animate [ model.participantsChevronAnimationStyle ]

@@ -24,7 +24,7 @@
       ],
       "resources": [],
       "externalBin": [],
-      "copyright": "MIT",
+      "copyright": "GPLv3",
       "category": "Productivity",
       "shortDescription": "A student scheduling app",
       "longDescription": "A scheduling app built around a private instructor's specifications. Searches for availability across multiple users and multiple required meetings simultaneoulsy, to allow for a better fit.",

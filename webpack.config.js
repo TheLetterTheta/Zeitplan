@@ -29,7 +29,8 @@ module.exports = ({ mode, presets } = { mode: "production", presets: [] }) => {
 
         new CopyWebpackPlugin({
           patterns: [
-            { from: 'src/assets/favicon.ico' }
+            { from: 'src/assets/favicon.ico' },
+	    { from: 'src/assets/images/Zeitplan.svg' }
           ]
         }),
       ]

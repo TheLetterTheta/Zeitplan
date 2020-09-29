@@ -54,6 +54,11 @@ fn main() {
               callback,
               error,
             ),
+            ComputeAllMeetingCombinations{
+                payload,
+                callback,
+                error,
+            } => tauri::execute_promise( _webview, move || Ok(payload.compute_all_possible_timespans()), callback, error),
           }
           Ok(())
         }

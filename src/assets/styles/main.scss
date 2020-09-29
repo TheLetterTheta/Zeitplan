@@ -50,9 +50,3 @@ div .blur {
   grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
   grid-gap: 1rem;
 }
-
-.result-container > li {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
-  grid-gap: 1rem;
-}
