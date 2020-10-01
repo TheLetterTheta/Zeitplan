@@ -1,25 +1,38 @@
 matrix:
         include:
                 - language: rust
+                  addons:
+                          apt:
+                                  sources:
+                                          sourceline: "deb http://ftp.us.debian.org/debian unstable main contrib"
+                                          key_url: "https://ftp-master.debian.org/keys/archive-key-10.asc"
+                                  update: true
+                                  packages:
+                                          - libwebkit2gtk-4.0-dev 
+                                          - build-essential 
+                                          - curl 
+                                          - libssl-dev 
+                                          - libgtk-3-dev
+                                          - appmenu-gtk3-module 
                   rust:
                           - stable
-
-                  cache: cargo
+                          - beta
+                          - nightly
+                  cache: 
+                          - cargo
+                          - apt
                   before_script:
-                          - sudo apt update && sudo apt install libwebkit2gtk-4.0-dev \
-                            build-essential \
-                            curl \
-                            libssl-dev \
-                            appmenu-gtk3-module \
-                            libgtk-3-dev
                           - cd src-tauri
-                  script:
-                          - cargo test
-                          - cargo build
+                  jobs:
+                          allow_failures:
+                                  - rust: nightly
+                          fast_finish: true
 
                 - language: node_js
                   node_js:
                           - "stable"
+                  install:
+                          - yarn
                   cache:
                           - yarn
                   script:
