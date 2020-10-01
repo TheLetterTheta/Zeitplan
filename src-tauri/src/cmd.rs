@@ -167,7 +167,7 @@ impl ComputeMeetingSpacePayload {
     // vector. We cast it to a VecDeque, and enqueue all current meetings. When we
     // encounter a meeting that cannot be scheduled, we can push_front the previous
     // meeting (which should be the next-most available meeting by times)
-    let mut meeting_available_times = Vec::from(meeting_available_times);
+    // let mut meeting_available_times = Vec::from(meeting_available_times);
 
     // We will use this to track the "scheduled" meetings so far. We will also use
     // this as a stack to undo the last scheduled meeting to re-enqueue it to the
@@ -178,7 +178,7 @@ impl ComputeMeetingSpacePayload {
     let mut scheduled_event_set: HashSet<u16> =
       HashSet::with_capacity(meeting_available_times.len());
 
-    while let Some(not_scheduled) = meeting_available_times.pop() {
+    for not_scheduled in meeting_available_times {
       match not_scheduled.available_times {
         Some(ref timespans) => {
           let mut remaining_timespans: Vec<u16> = timespans
@@ -188,9 +188,13 @@ impl ComputeMeetingSpacePayload {
 
           remaining_timespans.par_sort_unstable();
 
-          match remaining_timespans.par_windows(not_scheduled.duration).find_any(|w| 
-            w.len() <= 1 || w.last() == w.first().map(|v| v + (w.len() as u16 - 1)).as_ref()
-          ) {
+          match remaining_timespans
+              .par_windows(not_scheduled.duration)
+              .find_any(|window| window.len() <= 1 || match (window.first(), window.last()) {
+                  (Some(first), Some(&last)) => last == first - 1 + window.len() as u16,
+                  _ => false
+              })
+          {
             Some(available_timeslot) => {
               for time in available_timeslot {
                 scheduled_event_set.insert(*time);
@@ -311,10 +315,6 @@ fn is_valid_configuration(times: &Vec<(String, (u16, u16))>) -> bool {
     // Because they are consecutive at this point, we can assert that if a.1 (end) >= b.1
     // (beginning), the times overlap.
     ! timespans.iter().tuple_windows().any(|(a, b)| a.0 == b.0 || a.1 >= b.0 )
-}
-
-fn do_times_overlap(a_start: u16, a_end: u16, b_start: u16, b_end: u16) -> bool {
-    a_start.max(b_start) <= a_end.min(b_end)
 }
 
 pub fn check_timespan_duration(times: Vec<u16>, duration: usize) -> Vec<MeetingTimeslot> {

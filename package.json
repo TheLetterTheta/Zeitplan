@@ -5,7 +5,7 @@
   "contributors": [
     "Nicholas Dolan <nicholas.dolan1@gmail.com>"
   ],
-  "license": "GPLv3",
+  "license": "GPL-3.0-or-later",
   "engines": {
     "node": ">=10.19.0"
   },
