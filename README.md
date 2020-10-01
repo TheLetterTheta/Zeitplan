@@ -1,4 +1,5 @@
 # Zeitplan
+[![Build Status](https://travis-ci.com/TheLetterTheta/Zeitplan.svg?branch=main)](https://travis-ci.com/TheLetterTheta/Zeitplan)
 
 # Info
 Zeitplan is a scheduling application with a very specific use case.
