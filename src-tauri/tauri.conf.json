@@ -24,7 +24,7 @@
       ],
       "resources": [],
       "externalBin": [],
-      "copyright": "GPLv3",
+      "copyright": "GPL-3.0-or-later",
       "category": "Productivity",
       "shortDescription": "A student scheduling app",
       "longDescription": "A scheduling app built around a private instructor's specifications. Searches for availability across multiple users and multiple required meetings simultaneoulsy, to allow for a better fit.",

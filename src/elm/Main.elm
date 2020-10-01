@@ -1,4 +1,4 @@
-port module Main exposing (main)
+port module Main exposing (Meeting, MeetingTimeslot, ResultStatus, User, decodeMeetings, decodeResults, decodeTimeslots, decodeUsers, main)
 
 import Animation exposing (rad)
 import Animation.Spring.Presets exposing (stiff)
@@ -523,10 +523,11 @@ newUserButton model =
                 ( Button.danger, Icon.userTimes, "Hide" )
 
         classList =
-            "list-group-item-action text-center"
+            "text-center"
     in
     Button.button
         [ buttonType
+        , Button.block
         , Button.attrs
             [ class classList
             , onClick ToggleNewUserForm
@@ -634,7 +635,7 @@ renderKeyedMeeting model meeting =
                         ]
                     ]
                 , div [ class "card-body" ]
-                    [ span [ class "card-text text-muted" ]
+                    [ span [ class "card-text" ]
                         [ text <| String.fromInt m.duration ++ " minutes with "
                         , Html.Keyed.ul
                             [ Spacing.p0
@@ -653,7 +654,7 @@ renderKeyedMeeting model meeting =
                   in
                   case times of
                     Just meetingTimes ->
-                        div [ Border.all, Border.primary, class "card-footer" ]
+                        div [ Border.top, Border.primary, class "card-footer" ]
                             [ Grid.row [ Row.middleXs ]
                                 [ Grid.col []
                                     [ p [ Spacing.mrAuto, Spacing.my0 ]
@@ -666,7 +667,7 @@ renderKeyedMeeting model meeting =
                                 , Grid.col [ Col.xsAuto ]
                                     [ Button.button
                                         [ Button.small
-                                        , Button.attrs [ onClick (ToggleExpandMeetingTime meeting) ]
+                                        , Button.attrs [ class "text-muted", onClick (ToggleExpandMeetingTime meeting) ]
                                         ]
                                         [ Icon.viewIcon Icon.chevronDown ]
                                     ]
@@ -766,7 +767,7 @@ participantView model =
                 [ text "Setup Participants"
                 ]
             ]
-        , Grid.col [ Col.xsAuto ]
+        , Grid.col [ Col.xsAuto, Col.attrs [ Spacing.pr0 ] ]
             [ Button.button
                 [ Button.large
                 , Button.attrs [ onClick ToggleExpandParticipants ]
@@ -781,7 +782,7 @@ participantView model =
                         icon =
                             Icon.viewStyled (Animation.render model.participantsChevronAnimationStyle) Icon.chevronDown
                       in
-                      span [ Spacing.ml1 ] [ icon ]
+                      span [ Spacing.ml1, class "text-muted" ] [ icon ]
                     ]
                 ]
             ]
@@ -816,8 +817,8 @@ participantView model =
                         [ Grid.row [ Row.attrs [ Spacing.mb2 ] ]
                             (case model.selectedUser of
                                 Just user ->
-                                    [ Grid.col [] [ h3 [ Spacing.mrAuto ] [ text (user.name ++ "'s Schedule:") ] ]
-                                    , Grid.col [ Col.xsAuto ]
+                                    [ Grid.col [ Col.attrs [ Spacing.p0 ] ] [ h3 [ Spacing.mrAuto ] [ text (user.name ++ "'s Schedule:") ] ]
+                                    , Grid.col [ Col.xsAuto, Col.attrs [ Spacing.p0 ] ]
                                         [ Button.button [ Button.danger, Button.attrs [ onClick (DeleteUser user) ] ]
                                             [ span [ Spacing.mr1 ] [ Icon.viewIcon Icon.trash ]
                                             , text user.name
@@ -846,7 +847,7 @@ meetingView model =
                 [ text "Configure Meetings"
                 ]
             ]
-        , Grid.col [ Col.xsAuto ]
+        , Grid.col [ Col.xsAuto, Col.attrs [ Spacing.pr0 ] ]
             [ Button.button
                 [ Button.large
                 , Button.attrs [ onClick ToggleExpandMeetings ]
@@ -862,7 +863,7 @@ meetingView model =
                         icon =
                             Icon.viewStyled (Animation.render model.meetingChevronAnimationStyle) Icon.chevronDown
                       in
-                      span [ Spacing.ml1 ] [ icon ]
+                      span [ Spacing.ml1, class "text-muted" ] [ icon ]
                     ]
                 ]
             ]
@@ -953,11 +954,11 @@ finalStep model =
 
 renderFooter : Model -> Html Msg
 renderFooter model =
-    footer [ id "footer", Spacing.mt4, class "bg-dark position-sticky" ]
-        [ Grid.containerFluid [ class "text-center" ]
+    footer [ id "footer", Spacing.mt4, class "bg-dark-less-opaque position-sticky" ]
+        [ Grid.containerFluid [ class "text-center text-white" ]
             [ blockquote [ Spacing.mb0, class "blockquote" ]
                 [ p [] [ text "This project was made possible thanks to Professor Victor Drescher at Southeastern Louisiana University." ]
-                , footer [ class "blockquote-footer" ] [ text "UI thanks to Elm + Bootstrap + Bootswatch + Fullcalendar. Any complicated logic is handled in Rust thanks to the wonderful work being done on the Tauri Project." ]
+                , footer [ class "text-white text-muted blockquote-footer" ] [ text "UI thanks to Elm + Bootstrap + Bootswatch + Fullcalendar. Any complicated logic is handled in Rust thanks to the wonderful work being done on the Tauri Project." ]
                 ]
             ]
         ]

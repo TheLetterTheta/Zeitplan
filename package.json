@@ -5,7 +5,7 @@
   "contributors": [
     "Nicholas Dolan <nicholas.dolan1@gmail.com>"
   ],
-  "license": "GPLv3",
+  "license": "GPL-3.0-or-later",
   "engines": {
     "node": ">=10.19.0"
   },
@@ -18,6 +18,8 @@
     "dev:prod": "webpack-dashboard --title 'Elm Dev Server' --minimal -- npm run webpack-dev-server -- --env.mode production --env.presets compress",
     "dev": "webpack-dashboard --title 'Elm Dev Server' --minimal -- npm run webpack-dev-server -- --env.mode development",
     "elm-analyse": "elm-analyse -s -o",
+    "test": "elm-test 'src/elm/*Tests.elm'",
+    "text": "elm test",
     "preprod": "rimraf dist",
     "lint": "stylelint src/assets/styles",
     "tauri": "tauri"
@@ -32,6 +34,7 @@
     "elm": "^0.19.1-3",
     "elm-analyse": "^0.16.5",
     "elm-hot-webpack-loader": "^1.1.7",
+    "elm-test": "^0.19.1-revision4",
     "elm-webpack-loader": "^6.0.1",
     "file-loader": "^6.0.0",
     "html-webpack-plugin": "^4.3.0",
@@ -58,9 +61,6 @@
     "webpack-merge": "^4.2.2"
   },
   "dependencies": {
-    "@fortawesome/fontawesome-free": "^5.14.0",
-    "@fortawesome/fontawesome-svg-core": "^1.2.30",
-    "@fortawesome/free-solid-svg-icons": "^5.14.0",
     "@fullcalendar/bootstrap": "^5.3.0",
     "@fullcalendar/core": "^5.3.0",
     "@fullcalendar/daygrid": "^5.3.0",
