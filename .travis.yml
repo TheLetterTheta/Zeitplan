@@ -3,6 +3,7 @@ matrix:
                 - language: rust
                   addons:
                           apt:
+                                  update: true
                                   sources:
                                           - debian-sid
                                   packages:
