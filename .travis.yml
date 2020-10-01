@@ -18,8 +18,8 @@ matrix:
                           - beta
                           - nightly
                   cache: 
-                          - cargo
-                          - apt
+                          cargo: true
+                          apt: true
                   before_script:
                           - cd src-tauri
                   jobs:
