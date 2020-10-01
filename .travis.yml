@@ -16,13 +16,17 @@ matrix:
                                           - appmenu-gtk3-module 
                   rust:
                           - stable
-
-                  cache: cargo
+                          - beta
+                          - nightly
+                  cache: 
+                          - cargo
+                          - apt
                   before_script:
                           - cd src-tauri
-                  script:
-                          - cargo test
-                          - cargo build
+                  jobs:
+                          allow_failures:
+                                  - rust: nightly
+                          fast_finish: true
 
                 - language: node_js
                   node_js:
