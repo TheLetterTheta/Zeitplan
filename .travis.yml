@@ -33,7 +33,7 @@ matrix:
                   install:
                           - yarn
                   cache:
-                          - yarn
+                          yarn: true
                   script:
                           - yarn install
                           - yarn test
