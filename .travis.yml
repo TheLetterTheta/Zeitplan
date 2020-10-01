@@ -6,7 +6,6 @@ matrix:
                                   sources:
                                           sourceline: "deb http://ftp.us.debian.org/debian unstable main contrib"
                                           key_url: "https://ftp-master.debian.org/keys/archive-key-10.asc"
-                                  update: true
                                   packages:
                                           - libwebkit2gtk-4.0-dev 
                                           - build-essential 
@@ -16,13 +15,17 @@ matrix:
                                           - appmenu-gtk3-module 
                   rust:
                           - stable
-
-                  cache: cargo
+                          - beta
+                          - nightly
+                  cache: 
+                          cargo: true
+                          apt: true
                   before_script:
                           - cd src-tauri
-                  script:
-                          - cargo test
-                          - cargo build
+                  jobs:
+                          allow_failures:
+                                  - rust: nightly
+                          fast_finish: true
 
                 - language: node_js
                   node_js:
@@ -30,7 +33,7 @@ matrix:
                   install:
                           - yarn
                   cache:
-                          - yarn
+                          yarn: true
                   script:
                           - yarn install
                           - yarn test
