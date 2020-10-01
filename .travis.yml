@@ -3,9 +3,9 @@ matrix:
                 - language: rust
                   addons:
                           apt:
-                                  update: true
                                   sources:
-                                          - "https://packages.debian.org/src:appmenu-gtk-module"
+                                          - debian-sid
+                                  update: true
                                   packages:
                                           - libwebkit2gtk-4.0-dev 
                                           - build-essential 
