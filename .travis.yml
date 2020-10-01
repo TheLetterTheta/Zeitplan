@@ -1,0 +1,28 @@
+matrix:
+        include:
+                - language: rust
+                  rust:
+                          - stable
+
+                  cache: cargo
+                  before_script:
+                          - sudo apt update && sudo apt install libwebkit2gtk-4.0-dev \
+                            build-essential \
+                            curl \
+                            libssl-dev \
+                            appmenu-gtk3-module \
+                            libgtk-3-dev
+                          - cd src-tauri
+                  script:
+                          - cargo test
+                          - cargo build
+
+                - language: node_js
+                  node_js:
+                          - "stable"
+                  cache:
+                          - yarn
+                  script:
+                          - yarn install
+                          - yarn test
+                          - yarn prod

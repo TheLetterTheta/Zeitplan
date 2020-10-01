@@ -1,4 +1,4 @@
-port module Main exposing (main)
+port module Main exposing (Meeting, MeetingTimeslot, ResultStatus, User, decodeMeetings, decodeResults, decodeTimeslots, decodeUsers, main)
 
 import Animation exposing (rad)
 import Animation.Spring.Presets exposing (stiff)
