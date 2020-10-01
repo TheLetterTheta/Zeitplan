@@ -4,7 +4,7 @@ matrix:
                   addons:
                           apt:
                                   sources:
-                                          sourceline: "deb http://ftp.us.debian.org/debian main"
+                                          sourceline: "deb http://ftp.us.debian.org/debian main contrib"
                                           key_url: "https://ftp-master.debian.org/keys/archive-key-10.asc"
                                   update: true
                                   packages:
