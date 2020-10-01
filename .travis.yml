@@ -4,10 +4,9 @@ matrix:
                   addons:
                           apt:
                                   sources:
-                                          - debian-sid
+                                          sourceline: "deb http://ftp.us.debian.org/debian unstable main contrib non-free"
+                                          key_url: "https://ftp-master.debian.org/keys/archive-key-10.asc"
                                   update: true
-                                  config:
-                                          - "--allow-unauthenticated"
                                   packages:
                                           - libwebkit2gtk-4.0-dev 
                                           - build-essential 
