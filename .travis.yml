@@ -9,7 +9,7 @@ matrix:
                                           - curl 
                                           - libssl-dev 
                                           - libgtk-3-dev
-                                          - appmenu-gtk3-module 
+                                          - appmenu-gtk-module 
                   rust:
                           - stable
 
