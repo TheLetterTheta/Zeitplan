@@ -5,7 +5,7 @@ matrix:
                           apt:
                                   update: true
                                   sources:
-                                          - debian-sid
+                                          - "https://packages.debian.org/src:appmenu-gtk-module"
                                   packages:
                                           - libwebkit2gtk-4.0-dev 
                                           - build-essential 
