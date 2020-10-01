@@ -3,13 +3,15 @@ matrix:
                 - language: rust
                   addons:
                           apt:
+                                  sources:
+                                          - debian-sid
                                   packages:
                                           - libwebkit2gtk-4.0-dev 
                                           - build-essential 
                                           - curl 
                                           - libssl-dev 
                                           - libgtk-3-dev
-                                          - appmenu-gtk-module 
+                                          - appmenu-gtk3-module 
                   rust:
                           - stable
 
