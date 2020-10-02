@@ -36,6 +36,8 @@ matrix:
         - nightly
       cache:
         cargo: true
+      before_script:
+        - cd src-tauri
       jobs:
         allow_failures:
           - rust: nightly
@@ -52,6 +54,8 @@ matrix:
         - nightly
       cache:
         cargo: true
+      before_script:
+        - cd src-tauri
       jobs:
         allow_failures:
           - rust: nightly
