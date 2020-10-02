@@ -2,7 +2,7 @@ matrix:
   include:
     - language: rust
       os: linux
-        dist: xenial
+      dist: xenial
       addons:
         apt:
           sources:
@@ -30,8 +30,6 @@ matrix:
         fast_finish: true
     - language: rust
       os: windows
-      before_script:
-        - cargo install tauri-bundler --force
       rust:
         - stable
         - beta
@@ -48,8 +46,6 @@ matrix:
         homebrew:
           packages:
             - gcc
-      before_script:
-        - cargo install tauri-bundler --force
       rust:
         - stable
         - beta
