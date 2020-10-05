@@ -12,7 +12,9 @@ build = "src/build.rs"
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
+sled = "0.34"
 tauri = { version = "0.9", features = [ "event", "notification" ] }
+tauri-api = "0.7"
 itertools = "0.9"
 rayon = "1.4"
 
