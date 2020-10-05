@@ -2,6 +2,7 @@ port module Main exposing (Meeting, MeetingTimeslot, ResultStatus, User, decodeM
 
 import Animation exposing (rad)
 import Animation.Spring.Presets exposing (stiff)
+import Bootstrap.Alert as Alert
 import Bootstrap.Badge as Badge
 import Bootstrap.Button as Button
 import Bootstrap.Form as Form
@@ -622,7 +623,7 @@ renderKeyedMeeting model meeting =
     ( meeting.id
     , lazy
         (\m ->
-            li [ Spacing.mb1, class "card" ]
+            li [ Spacing.mb1, Spacing.ml1, style "min-width" "300px", class "card animate__animated animate__zoomIn" ]
                 [ div [ class "card-header" ]
                     [ Grid.row []
                         [ Grid.col []
@@ -696,9 +697,13 @@ renderKeyedMeeting model meeting =
 
 newMeetingForm : Model -> Grid.Column Msg
 newMeetingForm model =
-    Grid.col [ Col.md4 ]
+    Grid.col [ Col.xs12, Col.sm8, Col.lg4 ]
         (if List.length model.meetingParticipants == 0 then
-            [ h1 [ class "text-danger" ] [ text "A participant is required to schedule a meeting" ] ]
+            [ Alert.simpleWarning [ class "text-dark" ]
+                [ Alert.h4 [] [ text "Warning" ]
+                , text "A participant is required to schedule a meeting"
+                ]
+            ]
 
          else
             [ Form.group []
@@ -729,7 +734,7 @@ newMeetingForm model =
                 ]
             , h6 [] [ text "Preview:" ]
             , if String.isEmpty (String.trim model.meetingTitle) then
-                h3 [] [ text "Please name this meeting" ]
+                Alert.simpleWarning [ class "text-dark" ] [ text "Please name this meeting" ]
 
               else
                 div [ class "card" ]
@@ -881,7 +886,7 @@ meetingView model =
                         ]
                     ]
                 , Grid.row [ Row.attrs [ Spacing.p2 ] ]
-                    [ Grid.col [ Col.md3, Col.attrs [ Spacing.mb2, Spacing.mb0Md, Spacing.p0, Spacing.pr2Md ] ]
+                    [ Grid.col [ Col.xs12, Col.sm4, Col.lg3, Col.attrs [ Spacing.mb2, Spacing.mb0Md, Spacing.p0, Spacing.pr2Md ] ]
                         [ h3 [ class "text-truncate" ] [ text "Participants*" ]
                         , Html.Keyed.ul
                             [ class "list-group"
@@ -894,11 +899,13 @@ meetingView model =
                             )
                         ]
                     , newMeetingForm model
-                    , Grid.col [ Col.md5, Col.attrs [ Spacing.p0 ] ]
+                    , Grid.col [ Col.xs12, Col.lg5, Col.attrs [ Spacing.p0 ] ]
                         [ h3 [] [ text "Meetings:" ]
                         , Html.Keyed.ul
                             [ style "max-height" "50vh"
                             , style "overflow-y" "auto"
+                            , style "overflow-x" "auto"
+                            , class "d-lg-inline d-flex"
                             , Spacing.p0
                             ]
                             (List.map
@@ -1021,6 +1028,7 @@ renderKeyedResultMeeting model meeting =
                 Just result ->
                     li
                         [ class "card"
+                        , class "animate__animated animate__zoomIn"
                         , Border.all
                         , cardStyle
                         , Spacing.mb1

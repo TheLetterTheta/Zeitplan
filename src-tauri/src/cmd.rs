@@ -1,7 +1,6 @@
-#[allow(non_snake_case)]
-
-use rayon::prelude::*;
 use itertools::Itertools;
+#[allow(non_snake_case)]
+use rayon::prelude::*;
 use serde::Deserialize;
 use serde::Serialize;
 use std::collections::{BinaryHeap, HashMap, HashSet};
@@ -61,6 +60,13 @@ pub struct ComputeMeetingSpacePayload {
   pub available_time_range: Vec<u16>,
 }
 
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct KeyValue {
+  pub key: String,
+  pub value: String,
+}
+
 #[derive(Deserialize)]
 #[serde(tag = "cmd", rename_all = "camelCase")]
 pub enum Cmd {
@@ -78,10 +84,25 @@ pub enum Cmd {
     error: String,
   },
   ComputeAllMeetingCombinations {
-      payload: ComputeMeetingSpacePayload,
-      callback: String,
-      error: String,
-  }
+    payload: ComputeMeetingSpacePayload,
+    callback: String,
+    error: String,
+  },
+  GetKey {
+    payload: String,
+    callback: String,
+    error: String,
+  },
+  SetKey {
+    payload: KeyValue,
+    callback: String,
+    error: String,
+  },
+  DeleteKey {
+    payload: String,
+    callback: String,
+    error: String,
+  },
 }
 
 impl ComputeMeetingSpacePayload {
@@ -189,12 +210,14 @@ impl ComputeMeetingSpacePayload {
           remaining_timespans.par_sort_unstable();
 
           match remaining_timespans
-              .par_windows(not_scheduled.duration)
-              .find_any(|window| window.len() <= 1 || match (window.first(), window.last()) {
+            .par_windows(not_scheduled.duration)
+            .find_any(|window| {
+              window.len() <= 1
+                || match (window.first(), window.last()) {
                   (Some(first), Some(&last)) => last == first - 1 + window.len() as u16,
-                  _ => false
-              })
-          {
+                  _ => false,
+                }
+            }) {
             Some(available_timeslot) => {
               for time in available_timeslot {
                 scheduled_event_set.insert(*time);
@@ -238,83 +261,91 @@ impl ComputeMeetingSpacePayload {
       .collect::<Vec<_>>()
   }
 
-  pub fn compute_all_possible_timespans(self) -> Option<Vec<(String, (u16, u16))>>{
-        let mut meeting_available_times: Vec<MeetingProcessing> = self.get_meeting_availability();
+  pub fn compute_all_possible_timespans(self) -> Option<Vec<(String, (u16, u16))>> {
+    let mut meeting_available_times: Vec<MeetingProcessing> = self.get_meeting_availability();
 
-        // Order the meetings by the least available first. This should be processed
-        // first, as it is the most likely to cause conflicts if scheduled later
-        meeting_available_times.par_sort_unstable_by(|a, b| {
-          a.available_times
-            .as_ref()
-            .map(|l| l.len())
-            .unwrap_or(0)
-            .cmp(&b.available_times.as_ref().map(|l| l.len()).unwrap_or(0))
-        });
+    // Order the meetings by the least available first. This should be processed
+    // first, as it is the most likely to cause conflicts if scheduled later
+    meeting_available_times.par_sort_unstable_by(|a, b| {
+      a.available_times
+        .as_ref()
+        .map(|l| l.len())
+        .unwrap_or(0)
+        .cmp(&b.available_times.as_ref().map(|l| l.len()).unwrap_or(0))
+    });
 
-        meeting_available_times
-            // Split into parallel chunks
-            .into_par_iter()
-            // For each meeting, generate a Vec<(Start: u16, End: u16)> of times that *can* be
-            // scheduled. This is not very memory efficient.
-            .filter_map(|meeting: MeetingProcessing| {
-                match meeting.available_times {
-                    // There were no available times to begin with. Skip this meeting automatically
-                    None => None,
-                    Some(ref available_times) => {
-                        
-                        // Sort the times and generate the (Start, End) tuple.
-                        let times = as_timechunks(available_times.into_par_iter().cloned().collect(), meeting.duration);
-                        
-                        // Though some times existed, there were not enough *consecutive* times to
-                        // meet the duration criteria. Skip this meeting in all future processing.
-                        if times.is_empty() {
-                            None
-                        } else {
-                            Some(times
-                                .into_par_iter()
-                                .map(|t| (meeting.id.clone(), t))
-                                .collect::<Vec<_>>())
-                        }
-                    }
-                }
-            })
-            // Use `collect::<>()` to `fuse` the parallel iterator so that we can use the
-            // `itertools::multi_cartesian_product()` method for producing our comparison set.
-            .collect::<Vec<_>>()
-            .into_iter()
-            .multi_cartesian_product()
-            // Then re-parallelize it to speed up this process
-            .par_bridge()
-            // Return any valid criteria. In parallel, this makes no assertion to the nth
-            // configuration that is returned here.
-            .find_any(|t| is_valid_configuration(t))
-    }
+    meeting_available_times
+      // Split into parallel chunks
+      .into_par_iter()
+      // For each meeting, generate a Vec<(Start: u16, End: u16)> of times that *can* be
+      // scheduled. This is not very memory efficient.
+      .filter_map(|meeting: MeetingProcessing| {
+        match meeting.available_times {
+          // There were no available times to begin with. Skip this meeting automatically
+          None => None,
+          Some(ref available_times) => {
+            // Sort the times and generate the (Start, End) tuple.
+            let times = as_timechunks(
+              available_times.into_par_iter().cloned().collect(),
+              meeting.duration,
+            );
 
+            // Though some times existed, there were not enough *consecutive* times to
+            // meet the duration criteria. Skip this meeting in all future processing.
+            if times.is_empty() {
+              None
+            } else {
+              Some(
+                times
+                  .into_par_iter()
+                  .map(|t| (meeting.id.clone(), t))
+                  .collect::<Vec<_>>(),
+              )
+            }
+          }
+        }
+      })
+      // Use `collect::<>()` to `fuse` the parallel iterator so that we can use the
+      // `itertools::multi_cartesian_product()` method for producing our comparison set.
+      .collect::<Vec<_>>()
+      .into_iter()
+      .multi_cartesian_product()
+      // Then re-parallelize it to speed up this process
+      .par_bridge()
+      // Return any valid criteria. In parallel, this makes no assertion to the nth
+      // configuration that is returned here.
+      .find_any(|t| is_valid_configuration(t))
+  }
 }
 
 fn as_timechunks(mut input: Vec<u16>, duration: usize) -> Vec<(u16, u16)> {
-    // We need to ensure consecutive times. This is being collected from a HashSet, which means we
-    // can't make any gurantees about the order at this point.
-    input.par_sort_unstable();
-    input
-        .par_windows(duration)
-        .filter_map(|w| match (w.first(), w.last()) {
-            (Some(first), Some(last)) if last == &(first + duration as u16 - 1) => Some((first.clone(), last.clone())),
-            _ => None
-        })
-        .collect()
+  // We need to ensure consecutive times. This is being collected from a HashSet, which means we
+  // can't make any gurantees about the order at this point.
+  input.par_sort_unstable();
+  input
+    .par_windows(duration)
+    .filter_map(|w| match (w.first(), w.last()) {
+      (Some(first), Some(last)) if last == &(first + duration as u16 - 1) => {
+        Some((first.clone(), last.clone()))
+      }
+      _ => None,
+    })
+    .collect()
 }
 
 fn is_valid_configuration(times: &Vec<(String, (u16, u16))>) -> bool {
-    let mut timespans = times.iter().map(|t| t.1).collect::<Vec<_>>();
+  let mut timespans = times.iter().map(|t| t.1).collect::<Vec<_>>();
 
-    // Sorting the list gives a O(n+log(n)), which isn't great, but is much better than checking
-    // every time against every other time O(n^2).
-    timespans.par_sort_unstable_by(|a, b| a.0.cmp(&b.0));
-    
-    // Because they are consecutive at this point, we can assert that if a.1 (end) >= b.1
-    // (beginning), the times overlap.
-    ! timespans.iter().tuple_windows().any(|(a, b)| a.0 == b.0 || a.1 >= b.0 )
+  // Sorting the list gives a O(n+log(n)), which isn't great, but is much better than checking
+  // every time against every other time O(n^2).
+  timespans.par_sort_unstable_by(|a, b| a.0.cmp(&b.0));
+
+  // Because they are consecutive at this point, we can assert that if a.1 (end) >= b.1
+  // (beginning), the times overlap.
+  !timespans
+    .iter()
+    .tuple_windows()
+    .any(|(a, b)| a.0 == b.0 || a.1 >= b.0)
 }
 
 pub fn check_timespan_duration(times: Vec<u16>, duration: usize) -> Vec<MeetingTimeslot> {
