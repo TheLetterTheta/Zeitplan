@@ -47,6 +47,14 @@ function getKey(key) {
 			payload: key
 		})
 		.then(d => {
+<<<<<<< HEAD
+			try {
+				return JSON.parse(d);
+			} catch (e) {
+				return null;
+			}
+		});
+=======
 			if (!d || d === "") {
 				return "null";
 			} else {
@@ -54,6 +62,7 @@ function getKey(key) {
 			}
 		})
 		.then(JSON.parse);
+>>>>>>> c9143e7568a30320468cbb468a85508a68b445bd
 	} else {
 		return localforage.get(key);
 	}
