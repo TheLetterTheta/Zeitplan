@@ -47,13 +47,12 @@ function getKey(key) {
 			payload: key
 		})
 		.then(d => {
-			if (!d || d === "") {
-				return "null";
-			} else {
-				return d;
+			try {
+				return JSON.parse(d);
+			} catch (e) {
+				return null;
 			}
-		})
-		.then(JSON.parse);
+		});
 	} else {
 		return localforage.get(key);
 	}

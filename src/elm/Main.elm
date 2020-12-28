@@ -905,7 +905,7 @@ meetingView model =
                             [ style "max-height" "50vh"
                             , style "overflow-y" "auto"
                             , style "overflow-x" "auto"
-                            , class "d-lg-inline d-flex"
+                            , class "d-lg-block d-flex"
                             , Spacing.p0
                             ]
                             (List.map
