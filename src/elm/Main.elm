@@ -16,6 +16,7 @@ import Bootstrap.Navbar as Navbar
 import Bootstrap.Utilities.Border as Border
 import Bootstrap.Utilities.Display as Display
 import Bootstrap.Utilities.Flex as Flex
+import Bootstrap.Utilities.Size as Size
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser exposing (Document)
 import Browser.Dom as Dom
@@ -24,7 +25,7 @@ import Dict
 import FontAwesome.Icon as Icon exposing (Icon)
 import FontAwesome.Solid as Icon
 import FontAwesome.Styles as Icon
-import Html exposing (Html, blockquote, button, div, footer, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
+import Html exposing (Html, blockquote, button, div, footer, form, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
 import Html.Attributes as Attributes exposing (attribute, class, for, id, max, min, name, required, src, step, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed
@@ -95,9 +96,9 @@ rotateStart =
 
 
 type alias ResultStatus =
-    { status : String
-    , time : String
+    { time : String
     , ord : Int
+    , status : String
     }
 
 
@@ -117,7 +118,7 @@ type alias Model =
     , newUserAnimationStyle : Animation.State
     , newUserName : String
     , participantsChevronAnimationStyle : Animation.State
-    , results : Dict.Dict String ResultStatus
+    , results : Result String (Dict.Dict String ResultStatus)
     , selectedUser : Maybe User
     , useComplexComputation : Bool
     , userDropdownStyle : Animation.State
@@ -145,7 +146,7 @@ init =
       , newUserName = ""
       , participants = []
       , participantsChevronAnimationStyle = initialChevronStyle
-      , results = Dict.empty
+      , results = Ok Dict.empty
       , selectedUser = Nothing
       , useComplexComputation = False
       , userDropdownStyle = initialDropdownStyle
@@ -257,7 +258,7 @@ update msg model =
                     ( { model | results = data }, Cmd.none )
 
                 Err _ ->
-                    ( { model | results = Dict.empty }, Cmd.none )
+                    ( { model | results = Ok Dict.empty }, Cmd.none )
 
         RefreshMeetingsWithUserId jsValue ->
             case decodeValue Decode.string jsValue of
@@ -905,7 +906,7 @@ meetingView model =
                             [ style "max-height" "50vh"
                             , style "overflow-y" "auto"
                             , style "overflow-x" "auto"
-                            , class "d-lg-inline d-flex"
+                            , class "d-lg-block d-flex"
                             , Spacing.p0
                             ]
                             (List.map
@@ -942,15 +943,23 @@ finalStep model =
                 , Grid.row []
                     [ Grid.col []
                         [ Button.button [ Button.block, Button.large, Button.secondary, Button.attrs [ onClick RunScheduler, Spacing.m1 ] ] [ text "Recompute Schedule" ]
-                        , div [ Spacing.m1 ]
-                            [ Checkbox.checkbox
-                                [ Checkbox.attrs [ Spacing.ml1 ]
+                        , form [ Spacing.m1 ]
+                            [ Checkbox.advancedCheckbox
+                                [ Checkbox.attrs
+                                    [ style "width" "40px"
+                                    , style "height" "40px"
+                                    , Spacing.ml1
+                                    , id "all-combinations-danger"
+                                    ]
                                 , Checkbox.danger
                                 , Checkbox.onCheck ToggleUseComplexComputation
                                 , Checkbox.inline
                                 , Checkbox.checked model.useComplexComputation
                                 ]
-                                "Try all combinations. DANGER: This has the potential to run for a VERY long time"
+                                (Checkbox.label [ for "all-combinations-danger" ]
+                                    [ text "Try all combinations. DANGER: This has the potential to run for a VERY long time. This has the potential to fail if there are no valid configurations for the input, or if any meeting has no available time to meet (check in the Participants tab above)"
+                                    ]
+                                )
                             ]
                         ]
                     ]
@@ -987,24 +996,34 @@ renderResults model =
                     , class "result-container"
                     , Spacing.p0
                     ]
-                    (model.meetings
-                        |> List.filter (\m -> Dict.member m.id model.results)
-                        |> List.map
-                            (renderKeyedResultMeeting model)
+                    (case model.results of
+                        Ok results ->
+                            model.meetings
+                                |> List.filter (\m -> Dict.member m.id results)
+                                |> List.map
+                                    (renderKeyedResultMeeting model results)
+
+                        Err t ->
+                            [ ( "Error"
+                              , Alert.simpleDanger []
+                                    [ text t
+                                    ]
+                              )
+                            ]
                     )
                 ]
             ]
         ]
 
 
-renderKeyedResultMeeting : Model -> Meeting -> ( String, Html Msg )
-renderKeyedResultMeeting model meeting =
+renderKeyedResultMeeting : Model -> Dict.Dict String ResultStatus -> Meeting -> ( String, Html Msg )
+renderKeyedResultMeeting model results meeting =
     ( meeting.id
     , lazy
         (\m ->
             let
                 meetingResult =
-                    Dict.get meeting.id model.results
+                    Dict.get meeting.id results
 
                 ( cardStyle, textStyle, timeText ) =
                     case meetingResult of
@@ -1018,7 +1037,8 @@ renderKeyedResultMeeting model meeting =
                             else
                                 ( Border.danger
                                 , " text-danger"
-                                , Just "Sorry, unable to schedule this meeting"
+                                , Just <|
+                                    "This meeting could not be scheduled."
                                 )
 
                         Nothing ->
@@ -1142,14 +1162,40 @@ decodeTimeslots =
     Decode.dict (list decodeMeetingTimeslot)
 
 
-decodeResults : Decoder (Dict.Dict String ResultStatus)
+decodeResults : Decoder (Result String (Dict.Dict String ResultStatus))
 decodeResults =
-    Decode.dict
-        (Decode.succeed ResultStatus
-            |> Pipeline.required "status" string
-            |> Pipeline.required "time" string
-            |> Pipeline.optional "ord" int -1
+    Decode.field "status" string
+        |> Decode.andThen
+            (\status ->
+                case status of
+                    "Success" ->
+                        successResults
+
+                    "Fail" ->
+                        failResults
+
+                    _ ->
+                        Decode.fail "Invalid JSON object"
+            )
+
+
+successResults : Decoder (Result String (Dict.Dict String ResultStatus))
+successResults =
+    Decode.map Ok
+        (Decode.field "data"
+            (Decode.dict
+                (Decode.succeed ResultStatus
+                    |> Pipeline.required "time" string
+                    |> Pipeline.optional "ord" int -1
+                    |> Pipeline.optional "status" string "scheduled"
+                )
+            )
         )
+
+
+failResults : Decoder (Result String (Dict.Dict String ResultStatus))
+failResults =
+    Decode.succeed (Err "Unfortunately, it is impossible to schedule all users with the given configuration.")
 
 
 port loadUsers : (Decode.Value -> msg) -> Sub msg
