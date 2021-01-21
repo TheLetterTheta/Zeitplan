@@ -20,6 +20,7 @@
     "elm-analyse": "elm-analyse -s -o",
     "test": "elm-test 'src/elm/*Tests.elm'",
     "text": "elm test",
+    "build": "npm run tauri build",
     "preprod": "rimraf dist",
     "lint": "stylelint src/assets/styles",
     "tauri": "tauri"
