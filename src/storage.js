@@ -53,6 +53,13 @@ function getKey(key) {
 				return null;
 			}
 		});
+			if (!d || d === "") {
+				return "null";
+			} else {
+				return d;
+			}
+		})
+		.then(JSON.parse);
 	} else {
 		return localforage.get(key);
 	}
