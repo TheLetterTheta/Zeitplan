@@ -82,12 +82,12 @@ app.ports.getMeetingTimes.subscribe(async function(meetings) {
 });
 
 
-app.ports.processWithTauri.subscribe(async function(meetings) {
+app.ports.processWithTauri.subscribe(async function([meetings, lockedEvents]) {
   if (meetings.length == 0) {
     return;
   }
 
-  const payload = await processMeetingUsers(meetings)
+  const payload = await processMeetingUsers(meetings, lockedEvents);
 
   let start = new Date();
   promisified({
@@ -99,7 +99,8 @@ app.ports.processWithTauri.subscribe(async function(meetings) {
         status: "Success",
         data: r
           .map(v => {
-            v.ord = v.times[0] || 0;
+            v.slots = [...v.times];
+            v.ord = v.times[0] || -1;
             const len = 1 + v.times.pop() - v.ord;
             v.time = timeToReadableTime({
               start: v.ord,
@@ -111,11 +112,14 @@ app.ports.processWithTauri.subscribe(async function(meetings) {
             map[obj.id] = {
               ord: obj.ord,
               status: obj.status,
-              time: obj.time
+              time: obj.time,
+              slots: obj.slots
             };
             return map;
           }, {})
       };
+
+      lockedEvents.forEach(e => r.data[e[0]] = e[1]);
 
       setKey('computedSchedule', r);
       app.ports.renderComputedSchedule.send(r);
@@ -124,12 +128,12 @@ app.ports.processWithTauri.subscribe(async function(meetings) {
 
 });
 
-app.ports.processAllWithTauri.subscribe(async function(meetings) {
+app.ports.processAllWithTauri.subscribe(async function([meetings, lockedEvents]) {
   if (meetings.length == 0) {
     return;
   }
 
-  const payload = await processMeetingUsers(meetings)
+  const payload = await processMeetingUsers(meetings, lockedEvents);
 
   let start = new Date();
   promisified({
@@ -150,6 +154,7 @@ app.ports.processAllWithTauri.subscribe(async function(meetings) {
               const r = {};
               r.id = v[0];
               r.ord = v[1][0];
+              r.slots = range(len, v[1][0]);
               r.time = timeToReadableTime({
                 start: v[1][0],
                 length: len
@@ -161,13 +166,16 @@ app.ports.processAllWithTauri.subscribe(async function(meetings) {
               map[obj.id] = {
                 ord: obj.ord,
                 status: "Scheduled",
-                time: obj.time
+                time: obj.time,
+                slots: obj.slots
               };
               return map;
             }, {})
         };
-
       }
+
+      lockedEvents.forEach(e => r.data[e[0]] = e[1]);
+
       setKey('computedSchedule', r);
       app.ports.renderComputedSchedule.send(r);
     })
@@ -206,7 +214,7 @@ async function getMeetingAvailability(meetings) {
     return await promisified({
       cmd: 'computeMeetingSpace',
       payload: payload
-    })
+    });
   } catch (e) {
     console.error(e);
     return [];
@@ -221,10 +229,16 @@ function toMap(data) {
   return ret;
 }
 
-async function processMeetingUsers(meetings) {
+function numerically(a, b) {
+  return a - b;
+}
 
+async function processMeetingUsers(meetings, lockedSchedule = []) {
   let userSet = new Set(meetings.flatMap(m => m.participantIds));
+
+  meetings = meetings.filter(meeting => !lockedSchedule.some(l => l[0] == meeting.id));
   meetings.forEach((m) => m.duration = m.duration / 30);
+
   let userMap = [];
   for (let id of userSet) {
     const userEvents = await getKey(`${id}-events`)
@@ -235,7 +249,7 @@ async function processMeetingUsers(meetings) {
           }
           return mapEventsToSlotIndexArray(d);
         } else {
-          return []
+          return [];
         }
       });
     userMap.push({
@@ -243,6 +257,9 @@ async function processMeetingUsers(meetings) {
       events: userEvents
     });
   }
+
+  let lockedTimes = lockedSchedule.flatMap(s => s[1].slots);
+  lockedTimes.sort(numerically);
 
   let availableTimeRange = await getKey('final-calendar')
     .then((d) => {
@@ -255,6 +272,21 @@ async function processMeetingUsers(meetings) {
         return []
       }
     });
+
+  availableTimeRange.sort(numerically);
+
+  let i = 0,
+    j = 0;
+  while (i < availableTimeRange.length && j < lockedTimes.length) {
+    if (availableTimeRange[i] < lockedTimes[j]) {
+      ++i;
+    } else if (availableTimeRange[i] === lockedTimes[j]) {
+      availableTimeRange.splice(i, 1);
+      ++j;
+    } else if (availableTimeRange[i] > lockedTimes[j]) {
+      ++j;
+    }
+  }
 
   return {
     users: userMap,
@@ -305,7 +337,6 @@ getKey('computedSchedule')
 
 app.ports.loadUserWithEvents.subscribe(function(newUser) {
   participantCalendarEl.classList.add('blur');
-
 
   selectedUserID = newUser.id;
   selectedUserEventSource.refetch();

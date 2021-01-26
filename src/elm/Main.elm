@@ -25,12 +25,12 @@ import Dict
 import FontAwesome.Icon as Icon exposing (Icon)
 import FontAwesome.Solid as Icon
 import FontAwesome.Styles as Icon
-import Html exposing (Html, blockquote, button, div, footer, form, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
-import Html.Attributes as Attributes exposing (attribute, class, for, id, max, min, name, required, src, step, style, type_, value)
+import Html exposing (Html, a, blockquote, button, div, footer, form, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
+import Html.Attributes as Attributes exposing (attribute, class, for, href, id, max, min, name, required, src, step, style, target, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed
 import Html.Lazy exposing (lazy)
-import Json.Decode as Decode exposing (Decoder, Value, decodeValue, int, list, string)
+import Json.Decode as Decode exposing (Decoder, Value, bool, decodeValue, int, list, string)
 import Json.Decode.Pipeline as Pipeline exposing (required)
 import Task as Task exposing (perform)
 import Time as Time exposing (Posix)
@@ -99,6 +99,8 @@ type alias ResultStatus =
     { time : String
     , ord : Int
     , status : String
+    , locked : Bool
+    , slots : List Int
     }
 
 
@@ -184,6 +186,7 @@ type Msg
     | ToggleNewUserForm
     | ToggleUseComplexComputation Bool
     | ToggleUserMeeting User
+    | ToggleLockMeetingResult String Bool
     | UpdateUserName String
     | NoOp
 
@@ -202,10 +205,32 @@ update msg model =
 
         RunScheduler ->
             if model.useComplexComputation then
-                ( model, processAllWithTauri model.meetings )
+                ( model
+                , processAllWithTauri
+                    ( model.meetings
+                    , case model.results of
+                        Ok results ->
+                            Dict.toList results
+                                |> List.filter (\( f, s ) -> s.locked)
+
+                        Err e ->
+                            []
+                    )
+                )
 
             else
-                ( model, processWithTauri model.meetings )
+                ( model
+                , processWithTauri
+                    ( model.meetings
+                    , case model.results of
+                        Ok results ->
+                            Dict.toList results
+                                |> List.filter (\( f, s ) -> s.locked)
+
+                        Err e ->
+                            []
+                    )
+                )
 
         LoadMeetings jsValue ->
             case decodeValue decodeMeetings jsValue of
@@ -275,6 +300,20 @@ update msg model =
 
         RefreshAllMeetings _ ->
             ( model, getMeetingTimes model.meetings )
+
+        ToggleLockMeetingResult id locked ->
+            ( { model
+                | results =
+                    model.results
+                        |> Result.map
+                            (\oldResults ->
+                                Dict.update id
+                                    (\m -> Maybe.map (\u -> { u | locked = locked }) m)
+                                    oldResults
+                            )
+              }
+            , Cmd.none
+            )
 
         DeleteMeeting meeting ->
             let
@@ -974,7 +1013,11 @@ renderFooter model =
         [ Grid.containerFluid [ class "text-center text-white" ]
             [ blockquote [ Spacing.mb0, class "blockquote" ]
                 [ p [] [ text "This project was made possible thanks to Professor Victor Drescher at Southeastern Louisiana University." ]
-                , footer [ class "text-white text-muted blockquote-footer" ] [ text "UI thanks to Elm + Bootstrap + Bootswatch + Fullcalendar. Any complicated logic is handled in Rust thanks to the wonderful work being done on the Tauri Project." ]
+                , footer [ class "text-white text-muted blockquote-footer" ]
+                    [ text "For questions or concerns, please submit issues "
+                    , a [ target "_blank", href "https://github.com/TheLetterTheta/Zeitplan/" ] [ text "on the official repository." ]
+                    , text " Contributions are welcome!"
+                    ]
                 ]
             ]
         ]
@@ -999,9 +1042,10 @@ renderResults model =
                     (case model.results of
                         Ok results ->
                             model.meetings
-                                |> List.filter (\m -> Dict.member m.id results)
+                                |> List.filterMap (\m -> Dict.get m.id results |> Maybe.map (\i -> ( m, i )))
+                                |> List.sortBy (\( f, s ) -> s.ord)
                                 |> List.map
-                                    (renderKeyedResultMeeting model results)
+                                    (renderKeyedResultMeeting model)
 
                         Err t ->
                             [ ( "Error"
@@ -1013,76 +1057,103 @@ renderResults model =
                     )
                 ]
             ]
+        , Grid.col [ Col.xs12 ]
+            [ Grid.container []
+                [ p [ class "text-info" ] [ text "Click the Lock icon next to each scheduled meeting time to prevent it from being rescheduled" ]
+                ]
+            ]
         ]
 
 
-renderKeyedResultMeeting : Model -> Dict.Dict String ResultStatus -> Meeting -> ( String, Html Msg )
-renderKeyedResultMeeting model results meeting =
+renderKeyedResultMeeting : Model -> ( Meeting, ResultStatus ) -> ( String, Html Msg )
+renderKeyedResultMeeting model ( meeting, meetingResult ) =
     ( meeting.id
     , lazy
         (\m ->
             let
-                meetingResult =
-                    Dict.get meeting.id results
-
                 ( cardStyle, textStyle, timeText ) =
-                    case meetingResult of
-                        Just result ->
-                            if result.status == "Scheduled" then
-                                ( Border.success
-                                , " text-success"
-                                , Nothing
-                                )
+                    if meetingResult.status == "Scheduled" then
+                        if meetingResult.locked then
+                            ( Border.info
+                            , " text-info"
+                            , Nothing
+                            )
 
-                            else
-                                ( Border.danger
-                                , " text-danger"
-                                , Just <|
-                                    "This meeting could not be scheduled."
-                                )
+                        else
+                            ( Border.success
+                            , " text-success"
+                            , Nothing
+                            )
 
-                        Nothing ->
-                            ( Display.none, " d-none", Nothing )
+                    else
+                        ( Border.danger
+                        , " text-danger"
+                        , Just <|
+                            "This meeting could not be scheduled."
+                        )
             in
-            case meetingResult of
-                Just result ->
-                    li
-                        [ class "card"
-                        , class "animate__animated animate__zoomIn"
-                        , Border.all
-                        , cardStyle
-                        , Spacing.mb1
-                        , Spacing.p0
+            li
+                [ class "card"
+                , class "animate__animated animate__zoomIn"
+                , Border.all
+                , cardStyle
+                , Spacing.mb1
+                , Spacing.p0
+                ]
+                [ div [ class "card-header" ]
+                    [ Grid.row []
+                        [ Grid.col [] [ h3 [ class textStyle ] [ text m.title ] ]
                         ]
-                        [ div [ class "card-header" ]
-                            [ Grid.row []
-                                [ Grid.col [] [ h3 [ class textStyle ] [ text m.title ] ]
-                                ]
+                    ]
+                , div [ class "card-body" ]
+                    [ span [ class <| "card-text" ++ textStyle ]
+                        [ text <| String.fromInt m.duration ++ " minutes with "
+                        , Html.Keyed.ul
+                            [ Display.inline
+                            , Spacing.p0
                             ]
-                        , div [ class "card-body" ]
-                            [ span [ class <| "card-text" ++ textStyle ]
-                                [ text <| String.fromInt m.duration ++ " minutes with "
-                                , Html.Keyed.ul
-                                    [ Display.inline
-                                    , Spacing.p0
-                                    ]
-                                    (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
-                                ]
-                            ]
-                        , div [ class "card-footer" ]
+                            (List.map (renderKeyedMeetingParticipant model.participants) m.participantIds)
+                        ]
+                    ]
+                , div [ class "card-footer" ]
+                    [ Grid.row []
+                        [ Grid.col [ Col.attrs [ Spacing.mrAuto ] ]
                             [ h6 [ class textStyle ]
                                 (case timeText of
                                     Nothing ->
-                                        [ text result.time ]
+                                        [ text meetingResult.time ]
 
                                     Just t ->
                                         [ text t ]
                                 )
                             ]
-                        ]
+                        , Grid.col [ Col.xsAuto ]
+                            [ if meetingResult.status == "Scheduled" then
+                                let
+                                    icon =
+                                        if meetingResult.locked then
+                                            Icon.lock
 
-                Nothing ->
-                    div [] []
+                                        else
+                                            Icon.unlock
+                                in
+                                Button.button
+                                    [ Button.onClick (ToggleLockMeetingResult m.id (not meetingResult.locked))
+                                    , Button.attrs
+                                        [ id <| "lock-meeting-" ++ m.id
+                                        , class textStyle
+                                        , Spacing.p0
+                                        , Spacing.m0
+                                        ]
+                                    ]
+                                    [ Icon.viewIcon icon ]
+
+                              else
+                                div [] []
+                            ]
+                        ]
+                    ]
+                ]
         )
         meeting
     )
@@ -1188,6 +1259,8 @@ successResults =
                     |> Pipeline.required "time" string
                     |> Pipeline.optional "ord" int -1
                     |> Pipeline.optional "status" string "scheduled"
+                    |> Pipeline.optional "locked" bool False
+                    |> Pipeline.optional "slots" (list int) []
                 )
             )
         )
@@ -1213,7 +1286,7 @@ port renderComputedSchedule : (Decode.Value -> msg) -> Sub msg
 port saveUsers : List User -> Cmd msg
 
 
-port processWithTauri : List Meeting -> Cmd msg
+port processWithTauri : ( List Meeting, List ( String, ResultStatus ) ) -> Cmd msg
 
 
 port saveMeetings : List Meeting -> Cmd msg
@@ -1237,7 +1310,7 @@ port updateUser : (Decode.Value -> msg) -> Sub msg
 port updateMainCalendar : (() -> msg) -> Sub msg
 
 
-port processAllWithTauri : List Meeting -> Cmd msg
+port processAllWithTauri : ( List Meeting, List ( String, ResultStatus ) ) -> Cmd msg
 
 
 
