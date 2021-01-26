@@ -1,6 +1,6 @@
 [package]
 name = "zeitplan"
-version = "1.0.2"
+version = "1.1.0"
 description = "A scheduling app built around a private instructor's specifications. Searches for availability across multiple users and multiple required meetings simultaneously, to allow for a better fit."
 authors = [ "Nicholas Dolan <nicholas.dolan1@gmail.com>" ]
 license = "GPL-3.0-or-later"
@@ -13,7 +13,7 @@ build = "src/build.rs"
 serde_json = "1.0"
 serde = { version = "1.0", features = [ "derive" ] }
 sled = "0.34"
-tauri = { version = "0.9", features = [ "event", "notification" ] }
+tauri = { version = "0.9", features = [ "event", "notification", "open" ] }
 tauri-api = "0.7"
 itertools = "0.9"
 rayon = "1.4"
