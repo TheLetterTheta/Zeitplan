@@ -10,7 +10,6 @@
     },
     "allowlist": {
       "event": true,
-      "notification": true,
       "open": true
     },
     "bundle": {
