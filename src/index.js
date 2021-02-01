@@ -1,50 +1,50 @@
 // Styles
-require('./assets/styles/main.scss');
+require("./assets/styles/main.scss");
 
 // Polyfills
-import 'array-flat-polyfill';
+import "array-flat-polyfill";
 
 // Fullcalendar
 import {
   Calendar,
   EventSource
-} from '@fullcalendar/core';
+} from "@fullcalendar/core";
 // import bootstrapPlugin from '@fullcalendar/bootstrap';
-import interactionPlugin from '@fullcalendar/interaction';
-import timeGridPlugin from '@fullcalendar/timegrid';
+import interactionPlugin from "@fullcalendar/interaction";
+import timeGridPlugin from "@fullcalendar/timegrid";
 
 import {
   setKey,
   getKey,
   deleteKey
-} from './storage';
+} from "./storage";
 
 // Dayjs
-import dayjs from 'dayjs'
+import dayjs from "dayjs";
 
 // Tauri
 import {
   promisified
-} from 'tauri/api/tauri';
-var weekOfYear = require('dayjs/plugin/weekOfYear');
+} from "tauri/api/tauri";
+var weekOfYear = require("dayjs/plugin/weekOfYear");
 dayjs.extend(weekOfYear);
 
 // Vendor JS is imported as an entry in webpack.config.js
 
 // Elm
-var Elm = require('./elm/Main.elm').Elm;
+var Elm = require("./elm/Main.elm").Elm;
 const app = Elm.Main.init({});
-const SELECTED_USER_CALENDAR_ID = 'SELECTED_USER_CALENDAR_ID';
+const SELECTED_USER_CALENDAR_ID = "SELECTED_USER_CALENDAR_ID";
 
 let selectedUserID;
 let selectedUserEventSource;
 let selectedUserEvents;
-const participantCalendarEl = document.getElementById('participant-calendar');
+const participantCalendarEl = document.getElementById("participant-calendar");
 let participantCalendar;
 
-const FINAL_CALENDAR_ID = 'FINAL_CALENDAR_ID';
+const FINAL_CALENDAR_ID = "FINAL_CALENDAR_ID";
 let finalCalendarEvents;
-const finalCalendarEl = document.getElementById('final-calendar');
+const finalCalendarEl = document.getElementById("final-calendar");
 let finalCalendar;
 
 app.ports.destroyCalendar.subscribe(function() {
@@ -52,15 +52,15 @@ app.ports.destroyCalendar.subscribe(function() {
 });
 
 app.ports.deleteUser.subscribe(function(u) {
-  deleteKey(`${u.id}-events`)
+  deleteKey(`${u.id}-events`);
 });
 
 app.ports.saveMeetings.subscribe(function(m) {
-  setKey('meetings', m);
+  setKey("meetings", m);
 });
 
 app.ports.saveUsers.subscribe(function(users) {
-  setKey('users', users);
+  setKey("users", users);
 });
 
 app.ports.getMeetingTimes.subscribe(async function(meetings) {
@@ -69,18 +69,15 @@ app.ports.getMeetingTimes.subscribe(async function(meetings) {
   }
   let newTimes = await getMeetingAvailability(meetings);
 
-  newTimes = newTimes
-    .reduce(function(map, obj) {
-      map[obj.id] = obj.timeslots
-        .map(t => ({
-          ord: t.start,
-          time: timeToReadableTime(t)
-        }));
-      return map;
-    }, {});
+  newTimes = newTimes.reduce(function(map, obj) {
+    map[obj.id] = obj.timeslots.map((t) => ({
+      ord: t.start,
+      time: timeToReadableTime(t),
+    }));
+    return map;
+  }, {});
   app.ports.saveMeetingTimeslots.send(newTimes);
 });
-
 
 app.ports.processWithTauri.subscribe(async function([meetings, lockedEvents]) {
   if (meetings.length == 0) {
@@ -90,21 +87,30 @@ app.ports.processWithTauri.subscribe(async function([meetings, lockedEvents]) {
   const payload = await processMeetingUsers(meetings, lockedEvents);
 
   let start = new Date();
-  promisified({
-      cmd: 'computeScheduleFromMeetings',
-      payload: payload
-    })
-    .then(r => {
+  let event;
+
+  if (window.__TAURI__) {
+    event = promisified({
+      cmd: "computeScheduleFromMeetings",
+      payload: payload,
+    });
+  } else {
+    // TODO: Call the API!!!
+    event = Promise.resolve();
+  }
+
+  event
+    .then((r) => {
       r = {
         status: "Success",
         data: r
-          .map(v => {
+          .map((v) => {
             v.slots = [...v.times];
             v.ord = v.times[0] || -1;
             const len = 1 + v.times.pop() - v.ord;
             v.time = timeToReadableTime({
               start: v.ord,
-              length: len
+              length: len,
             });
             return v;
           })
@@ -113,22 +119,24 @@ app.ports.processWithTauri.subscribe(async function([meetings, lockedEvents]) {
               ord: obj.ord,
               status: obj.status,
               time: obj.time,
-              slots: obj.slots
+              slots: obj.slots,
             };
             return map;
-          }, {})
+          }, {}),
       };
 
-      lockedEvents.forEach(e => r.data[e[0]] = e[1]);
+      lockedEvents.forEach((e) => (r.data[e[0]] = e[1]));
 
-      setKey('computedSchedule', r);
+      setKey("computedSchedule", r);
       app.ports.renderComputedSchedule.send(r);
     })
-    .catch(e => console.error(e));
-
+    .catch((e) => console.error(e));
 });
 
-app.ports.processAllWithTauri.subscribe(async function([meetings, lockedEvents]) {
+app.ports.processAllWithTauri.subscribe(async function([
+  meetings,
+  lockedEvents,
+]) {
   if (meetings.length == 0) {
     return;
   }
@@ -136,20 +144,28 @@ app.ports.processAllWithTauri.subscribe(async function([meetings, lockedEvents])
   const payload = await processMeetingUsers(meetings, lockedEvents);
 
   let start = new Date();
-  promisified({
-      cmd: 'computeAllMeetingCombinations',
-      payload: payload
-    })
-    .then(r => {
+  let event;
+  if (window.__TAURI__) {
+    event = promisified({
+      cmd: "computeAllMeetingCombinations",
+      payload: payload,
+    });
+  } else {
+    // TODO: Call the API!!!
+    event = Promise.resolve();
+  }
+
+  event
+    .then((r) => {
       if (!r) {
         r = {
           status: "Fail",
-        }
+        };
       } else {
         r = {
           status: "Success",
           data: r
-            .map(v => {
+            .map((v) => {
               const len = v[1][1] - v[1][0] + 1;
               const r = {};
               r.id = v[0];
@@ -157,7 +173,7 @@ app.ports.processAllWithTauri.subscribe(async function([meetings, lockedEvents])
               r.slots = range(len, v[1][0]);
               r.time = timeToReadableTime({
                 start: v[1][0],
-                length: len
+                length: len,
               });
 
               return r;
@@ -167,43 +183,42 @@ app.ports.processAllWithTauri.subscribe(async function([meetings, lockedEvents])
                 ord: obj.ord,
                 status: "Scheduled",
                 time: obj.time,
-                slots: obj.slots
+                slots: obj.slots,
               };
               return map;
-            }, {})
+            }, {}),
         };
       }
 
-      lockedEvents.forEach(e => r.data[e[0]] = e[1]);
+      lockedEvents.forEach((e) => (r.data[e[0]] = e[1]));
 
-      setKey('computedSchedule', r);
+      setKey("computedSchedule", r);
       app.ports.renderComputedSchedule.send(r);
     })
-    .catch(e => console.error(e));
-
+    .catch((e) => console.error(e));
 });
 
 function timeToReadableTime(t) {
-  const start = dayjs('2020-03-01').add(t.start * 30, 'minute');
-  const end = start.add(t.length * 30, 'minute');
+  const start = dayjs("2020-03-01").add(t.start * 30, "minute");
+  const end = start.add(t.length * 30, "minute");
 
-  if (start.isSame(end, 'day')) {
+  if (start.isSame(end, "day")) {
     let format;
     if (isSameMeridian(start, end)) {
-      format = 'dddd [from] h:mm';
+      format = "dddd [from] h:mm";
     } else {
-      format = 'dddd [from] h:mm A';
+      format = "dddd [from] h:mm A";
     }
-    const formatTimeOnly = 'h:mm A';
+    const formatTimeOnly = "h:mm A";
     return `${start.format(format)} – ${end.format(formatTimeOnly)}`;
   }
 
-  const format = 'dddd [at] h:mm A';
+  const format = "dddd [at] h:mm A";
   return `${start.format(format)}-${end.format(format)}`;
 }
 
 function isSameMeridian(start, end) {
-  return (start.get('hour') - 11.5) * (end.get('hour') - 11.5) > 0;
+  return (start.get("hour") - 11.5) * (end.get("hour") - 11.5) > 0;
 }
 
 async function getMeetingAvailability(meetings) {
@@ -211,10 +226,15 @@ async function getMeetingAvailability(meetings) {
 
   let start = new Date();
   try {
-    return await promisified({
-      cmd: 'computeMeetingSpace',
-      payload: payload
-    });
+    let event;
+    if (window.__TAURI__) {
+      return await promisified({
+        cmd: "computeMeetingSpace",
+        payload: payload,
+      });
+    } else {
+      // TODO: Call the api!!!
+    }
   } catch (e) {
     console.error(e);
     return [];
@@ -234,44 +254,44 @@ function numerically(a, b) {
 }
 
 async function processMeetingUsers(meetings, lockedSchedule = []) {
-  let userSet = new Set(meetings.flatMap(m => m.participantIds));
+  let userSet = new Set(meetings.flatMap((m) => m.participantIds));
 
-  meetings = meetings.filter(meeting => !lockedSchedule.some(l => l[0] == meeting.id));
-  meetings.forEach((m) => m.duration = m.duration / 30);
+  meetings = meetings.filter(
+    (meeting) => !lockedSchedule.some((l) => l[0] == meeting.id)
+  );
+  meetings.forEach((m) => (m.duration = m.duration / 30));
 
   let userMap = [];
   for (let id of userSet) {
-    const userEvents = await getKey(`${id}-events`)
-      .then(d => {
-        if (d) {
-          if (!(d instanceof Map)) {
-            d = toMap(d);
-          }
-          return mapEventsToSlotIndexArray(d);
-        } else {
-          return [];
-        }
-      });
-    userMap.push({
-      id,
-      events: userEvents
-    });
-  }
-
-  let lockedTimes = lockedSchedule.flatMap(s => s[1].slots);
-  lockedTimes.sort(numerically);
-
-  let availableTimeRange = await getKey('final-calendar')
-    .then((d) => {
+    const userEvents = await getKey(`${id}-events`).then((d) => {
       if (d) {
         if (!(d instanceof Map)) {
           d = toMap(d);
         }
         return mapEventsToSlotIndexArray(d);
       } else {
-        return []
+        return [];
       }
     });
+    userMap.push({
+      id,
+      events: userEvents,
+    });
+  }
+
+  let lockedTimes = lockedSchedule.flatMap((s) => s[1].slots);
+  lockedTimes.sort(numerically);
+
+  let availableTimeRange = await getKey("final-calendar").then((d) => {
+    if (d) {
+      if (!(d instanceof Map)) {
+        d = toMap(d);
+      }
+      return mapEventsToSlotIndexArray(d);
+    } else {
+      return [];
+    }
+  });
 
   availableTimeRange.sort(numerically);
 
@@ -291,8 +311,8 @@ async function processMeetingUsers(meetings, lockedSchedule = []) {
   return {
     users: userMap,
     meetings: meetings,
-    availableTimeRange: availableTimeRange
-  }
+    availableTimeRange: availableTimeRange,
+  };
 }
 
 function mapEventsToSlotIndexArray(events) {
@@ -309,40 +329,38 @@ function eventToThirtyMinuteSlotIndexArray(event) {
   let end = dayjs(event.end);
 
   return range(
-    end.diff(start, 'm') / 30,
-    (start.day() * 48) + (start.hour() * 2) + start.minute() / 30
+    end.diff(start, "m") / 30,
+    start.day() * 48 + start.hour() * 2 + start.minute() / 30
   );
 }
 
 function range(size, startAt = 0) {
-  return [...Array(size).keys()].map(i => i + startAt);
+  return [...Array(size).keys()].map((i) => i + startAt);
 }
 
-getKey('meetings')
-  .then(meetings => {
-    if (meetings && Array.isArray(meetings)) {
-      app.ports.loadMeetings.send(meetings);
-    }
-  });
+getKey("meetings").then((meetings) => {
+  if (meetings && Array.isArray(meetings)) {
+    app.ports.loadMeetings.send(meetings);
+  }
+});
 
-getKey('users')
-  .then(users => {
-    if (users && Array.isArray(users)) {
-      app.ports.loadUsers.send(users);
-    }
-  });
+getKey("users").then((users) => {
+  if (users && Array.isArray(users)) {
+    app.ports.loadUsers.send(users);
+  }
+});
 
-getKey('computedSchedule')
-  .then(schedule => app.ports.renderComputedSchedule.send(schedule));
+getKey("computedSchedule").then((schedule) =>
+  app.ports.renderComputedSchedule.send(schedule)
+);
 
 app.ports.loadUserWithEvents.subscribe(function(newUser) {
-  participantCalendarEl.classList.add('blur');
+  participantCalendarEl.classList.add("blur");
 
   selectedUserID = newUser.id;
   selectedUserEventSource.refetch();
-  participantCalendarEl.classList.remove('blur');
+  participantCalendarEl.classList.remove("blur");
   participantCalendar.render();
-
 });
 
 function saveDate(d) {
@@ -350,7 +368,7 @@ function saveDate(d) {
     id: d.id,
     start: d.start,
     end: d.end,
-    allDay: d.allDay
+    allDay: d.allDay,
   };
 }
 
@@ -374,7 +392,7 @@ function loadUserEvents() {
         selectedUserEvents = new Map();
         reject(e);
       });
-  })
+  });
 }
 
 function loadFinalCalendarEvents() {
@@ -389,9 +407,13 @@ function loadFinalCalendarEvents() {
           finalCalendarEvents = results;
           app.ports.updateMainCalendar.send(null);
           resolve(Array.from(results.values()));
+        } else if (results === null) {
+          finalCalendarEvents = new Map();
+          app.ports.updateMainCalendar.send(null);
+          resolve([]);
         } else {
           finalCalendarEvents = new Map();
-          reject(new Error("Invalid Database State"))
+          reject(new Error("Invalid Database State"));
         }
       })
       .catch(function(e) {
@@ -401,81 +423,85 @@ function loadFinalCalendarEvents() {
   });
 }
 
-
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener("DOMContentLoaded", function() {
   participantCalendar = new Calendar(participantCalendarEl, {
     plugins: [
       timeGridPlugin,
       // bootstrapPlugin,
-      interactionPlugin
+      interactionPlugin,
     ],
-    initialDate: '2020-03-01',
+    initialDate: "2020-03-01",
     editable: true,
     unselectAuto: false,
     eventContent: function(e) {
-      return eventInnerHtml(e, 'text-dark', function() {
+      return eventInnerHtml(e, "text-dark", function() {
         selectedUserEvents.delete(e.event.id);
-        setKey(`${selectedUserID}-events`, selectedUserEvents)
-          .then(_ => app.ports.updateUser.send(selectedUserID));
-        e.event.remove()
-      })
+        setKey(`${selectedUserID}-events`, selectedUserEvents).then((_) =>
+          app.ports.updateUser.send(selectedUserID)
+        );
+        e.event.remove();
+      });
     },
     selectable: true,
     selectMirror: true,
     navLinks: false,
     eventChange: function(d) {
       selectedUserEvents.set(d.event.id, saveDate(d.event));
-      setKey(`${selectedUserID}-events`, selectedUserEvents)
-        .then(_ => app.ports.updateUser.send(selectedUserID));
+      setKey(`${selectedUserID}-events`, selectedUserEvents).then((_) =>
+        app.ports.updateUser.send(selectedUserID)
+      );
     },
     select: function(d) {
       d.id = dayjs().unix().toString();
 
       participantCalendar.addEvent(d, selectedUserEventSource);
       selectedUserEvents.set(d.id, saveDate(d));
-      setKey(`${selectedUserID}-events`, selectedUserEvents)
-        .then(_ => app.ports.updateUser.send(selectedUserID));
+      setKey(`${selectedUserID}-events`, selectedUserEvents).then((_) =>
+        app.ports.updateUser.send(selectedUserID)
+      );
     },
     selectOverlap: false,
     eventOverlap: false,
     // themeSystem: 'bootstrap',
-    eventBackgroundColor: 'var(--info-less-opaque)',
-    eventBorderColor: 'white',
+    eventBackgroundColor: "var(--info-less-opaque)",
+    eventBorderColor: "white",
     selectMirror: false,
     headerToolbar: false,
     eventSources: [{
       events: function(fetchInfo, successCallback, failureCallback) {
         loadUserEvents()
-          .then(d =>
-            successCallback(d))
-          .catch(_ => successCallback([]));
+          .then((d) => successCallback(d))
+          .catch((_) => successCallback([]));
       },
-      id: SELECTED_USER_CALENDAR_ID
-    }],
+      id: SELECTED_USER_CALENDAR_ID,
+    }, ],
     dayHeaderFormat: {
-      'weekday': 'short'
+      weekday: "short",
     },
-    initialView: 'timeGridWeek',
-    allDaySlot: true
+    initialView: "timeGridWeek",
+    allDaySlot: true,
   });
 
-  selectedUserEventSource = participantCalendar.getEventSourceById(SELECTED_USER_CALENDAR_ID);
+  selectedUserEventSource = participantCalendar.getEventSourceById(
+    SELECTED_USER_CALENDAR_ID
+  );
 
   finalCalendar = new Calendar(finalCalendarEl, {
     plugins: [
       timeGridPlugin,
       // bootstrapPlugin,
-      interactionPlugin
+      interactionPlugin,
     ],
-    initialDate: '2020-03-01',
+    initialDate: "2020-03-01",
     editable: true,
     unselectAuto: false,
     eventContent: function(e) {
-      return eventInnerHtml(e, 'text-white', function() {
+      return eventInnerHtml(e, "text-white", function() {
         finalCalendarEvents.delete(e.event.id);
-        setKey("final-calendar", finalCalendarEvents)
-          .then(_ => app.ports.updateMainCalendar.send(null));
-        e.event.remove()
+        setKey("final-calendar", finalCalendarEvents).then((_) =>
+          app.ports.updateMainCalendar.send(null)
+        );
+        e.event.remove();
       });
     },
     selectable: true,
@@ -483,16 +509,18 @@ document.addEventListener('DOMContentLoaded', function() {
     navLinks: false,
     eventChange: function(d) {
       finalCalendarEvents.set(d.event.id, saveDate(d.event));
-      setKey("final-calendar", finalCalendarEvents)
-        .then(_ => app.ports.updateMainCalendar.send(null));
+      setKey("final-calendar", finalCalendarEvents).then((_) =>
+        app.ports.updateMainCalendar.send(null)
+      );
     },
     select: function(d) {
       d.id = dayjs().unix().toString();
 
       finalCalendar.addEvent(d, selectedUserEventSource);
       finalCalendarEvents.set(d.id, saveDate(d));
-      setKey("final-calendar", finalCalendarEvents)
-        .then(_ => app.ports.updateMainCalendar.send(null));
+      setKey("final-calendar", finalCalendarEvents).then((_) =>
+        app.ports.updateMainCalendar.send(null)
+      );
     },
     selectOverlap: false,
     eventOverlap: false,
@@ -504,60 +532,67 @@ document.addEventListener('DOMContentLoaded', function() {
     eventSources: [{
       events: function(fetchInfo, successCallback, failureCallback) {
         loadFinalCalendarEvents()
-          .then(d =>
-            successCallback(d))
-          .catch(_ => successCallback([]));
+          .then((d) => successCallback(d))
+          .catch((_) => successCallback([]));
       },
-      id: SELECTED_USER_CALENDAR_ID
-    }],
+      id: SELECTED_USER_CALENDAR_ID,
+    }, ],
     dayHeaderFormat: {
-      'weekday': 'short'
+      weekday: "short",
     },
-    initialView: 'timeGridWeek',
-    allDaySlot: true
+    initialView: "timeGridWeek",
+    allDaySlot: true,
   });
   finalCalendar.render();
 });
 
 function eventInnerHtml(e, textClass, deleteCallback) {
-  let container = document.createElement('div');
-  container.classList.add('d-flex', 'align-items-center', 'flex-wrap', 'justify-content-between', 'p-0', 'flex-fill', textClass);
+  let container = document.createElement("div");
+  container.classList.add(
+    "d-flex",
+    "align-items-center",
+    "flex-wrap",
+    "justify-content-between",
+    "p-0",
+    "flex-fill",
+    textClass
+  );
 
-  let deleteButton = document.createElement('button');
+  let deleteButton = document.createElement("button");
   deleteButton.type = "button";
   deleteButton.ariaLabel = "Close";
-  deleteButton.classList.add('close');
+  deleteButton.classList.add("close");
 
-  let deleteText = document.createElement('span');
-  deleteText.innerHTML = '&times;';
+  let deleteText = document.createElement("span");
+  deleteText.innerHTML = "&times;";
   deleteText.ariaHidden = true;
   deleteButton.appendChild(deleteText);
 
   deleteButton.onclick = deleteCallback;
-  let timeText = document.createElement('p');
-  timeText.classList.add('m-0');
+  let timeText = document.createElement("p");
+  timeText.classList.add("m-0");
 
   if (e.event.allDay) {
     const start = dayjs(e.event.start);
     const end = dayjs(e.event.end);
 
-    timeText.classList.add('fc-event-title');
-    let innerText = start.format('ddd');
+    timeText.classList.add("fc-event-title");
+    let innerText = start.format("ddd");
 
-    if (!start.add(1, 'day').isSame(end, 'day')) {
-      innerText += '-' + end.subtract(1, 'day').format('ddd')
+    if (!start.add(1, "day").isSame(end, "day")) {
+      innerText += "-" + end.subtract(1, "day").format("ddd");
     }
 
     timeText.appendChild(document.createTextNode(innerText));
   } else {
-    timeText.classList.add('fc-event-time');
+    timeText.classList.add("fc-event-time");
     timeText.appendChild(document.createTextNode(e.timeText));
   }
 
   container.appendChild(timeText);
-  container.appendChild(deleteButton)
+  container.appendChild(deleteButton);
 
   return {
-    domNodes: [container]
+    domNodes: [container],
   };
 }

@@ -1,18 +1,18 @@
-const localforage = require('localforage');
+const localforage = require("localforage");
 
 import {
   promisified
-} from 'tauri/api/tauri';
+} from "tauri/api/tauri";
 
 if (!window.__TAURI__) {
   localforage.config({
     driver: localforage.INDEXEDDB, // Force WebSQL; same as using setDriver()
-    name: 'zeitplan',
+    name: "zeitplan",
     version: 1.0,
     size: 4980736, // Size of database, in bytes. WebSQL-only for now.
-    storeName: 'zeitplan_key_value_pairs', // Should be alphanumeric, with underscores.
-    description: 'storage used for users, meetings, and events'
-  });
+    storeName: "zeitplan_key_value_pairs", // Should be alphanumeric, with underscores.
+    description: "storage used for users, meetings, and events",
+  })
 }
 
 function serializeTauri(data) {
@@ -32,40 +32,40 @@ function setKey(key, value) {
     value = serializeTauri(value);
     // we need to transform Map objects to objects.
     return promisified({
-      cmd: 'setKey',
+      cmd: "setKey",
       payload: {
         key,
-        value: JSON.stringify(value)
-      }
+        value: JSON.stringify(value),
+      },
     });
   } else {
-    return localforage.set(key, value);
+    return localforage.setItem(key, value);
   }
 }
 
 function getKey(key) {
   if (window.__TAURI__) {
     return promisified({
-        cmd: 'getKey',
-        payload: key
-      })
-      .then(d => {
-        try {
-          return JSON.parse(d);
-        } catch (e) {
-          return null;
-        }
-      });
+      cmd: "getKey",
+      payload: key,
+    }).then((d) => {
+      try {
+        return JSON.parse(d);
+      } catch (e) {
+        return null;
+      }
+    });
   } else {
-    return localforage.get(key);
+    console.log(key);
+    return localforage.getItem(key);
   }
 }
 
 function deleteKey(key) {
   if (window.__TAURI__) {
     return promisified({
-      cmd: 'deleteKey',
-      payload: key
+      cmd: "deleteKey",
+      payload: key,
     });
   } else {
     return localforage.removeItem(key);

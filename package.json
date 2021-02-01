@@ -5,6 +5,10 @@
   "contributors": [
     "Nicholas Dolan <nicholas.dolan1@gmail.com>"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheLetterTheta/Zeitplan.git"
+  },
   "license": "GPL-3.0-or-later",
   "engines": {
     "node": ">=10.19.0"
