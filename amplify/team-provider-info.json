@@ -1,0 +1,23 @@
+{
+    "dev": {
+        "awscloudformation": {
+            "AuthRoleName": "amplify-zeitplan-dev-154736-authRole",
+            "UnauthRoleArn": "arn:aws:iam::501298509138:role/amplify-zeitplan-dev-154736-unauthRole",
+            "AuthRoleArn": "arn:aws:iam::501298509138:role/amplify-zeitplan-dev-154736-authRole",
+            "Region": "us-east-2",
+            "DeploymentBucketName": "amplify-zeitplan-dev-154736-deployment",
+            "UnauthRoleName": "amplify-zeitplan-dev-154736-unauthRole",
+            "StackName": "amplify-zeitplan-dev-154736",
+            "StackId": "arn:aws:cloudformation:us-east-2:501298509138:stack/amplify-zeitplan-dev-154736/c8efd960-6344-11eb-974e-0644f4e66f50",
+            "AmplifyAppId": "d1s9cy3bimzd0d"
+        },
+        "categories": {
+            "hosting": {
+                "amplifyhosting": {
+                    "appId": "d1s9cy3bimzd0d",
+                    "type": "cicd"
+                }
+            }
+        }
+    }
+}
