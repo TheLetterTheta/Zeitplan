@@ -1,0 +1,12 @@
+[package]
+name = "aws-get-user-availability"
+version = "0.1.0"
+authors = ["Nick Dolan <nicholas.dolan1@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+lambda_runtime = "0.2"
+
+zeitplan_libs = { path = "../zeitplan-libs"}
