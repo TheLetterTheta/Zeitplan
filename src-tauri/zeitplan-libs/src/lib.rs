@@ -1,9 +1,10 @@
 use itertools::Itertools;
 use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
+use std::collections::HashMap;
+use thiserror::Error;
 
-#[derive(Eq, Deserialize, Serialize, Debug, Copy, Clone)]
+#[derive(Eq, Debug, Copy, Clone)]
 pub struct TimeRange(pub u16, pub u16);
 
 impl PartialOrd for TimeRange {
@@ -24,27 +25,77 @@ impl Ord for TimeRange {
     }
 }
 
-#[derive(Deserialize, Clone, Serialize)]
+#[derive(Clone)]
 pub struct Participant {
-    pub id: String,
     pub blocked_times: Vec<TimeRange>,
-    pub available_times: Vec<TimeRange>,
+    available_times: Vec<TimeRange>,
 }
 
-#[derive(Deserialize, Clone, Serialize)]
+impl Default for Participant {
+    fn default() -> Participant {
+        Participant {
+            blocked_times: vec![],
+            available_times: vec![],
+        }
+    }
+}
+
+impl Participant {
+    pub fn new(blocked_times: Vec<TimeRange>) -> Self {
+        Participant {
+            blocked_times,
+            available_times: vec![],
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Meeting {
-    pub id: String,
     pub duration: u16,
     pub participant_ids: Vec<String>,
-    pub available_times: Vec<TimeRange>,
+    available_times: Vec<TimeRange>,
 }
 
-#[derive(Deserialize, Clone, Serialize)]
+impl Default for Meeting {
+    fn default() -> Meeting {
+        Meeting {
+            duration: 1,
+            participant_ids: vec![],
+            available_times: vec![],
+        }
+    }
+}
+impl Meeting {
+    pub fn new(duration: u16, participant_ids: Vec<String>) -> Self {
+        Meeting {
+            duration,
+            participant_ids,
+            available_times: vec![],
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct Input {
-    pub participants: Vec<Participant>,
-    pub meetings: Vec<Meeting>,
+    pub participants: HashMap<String, Participant>,
+    pub meetings: HashMap<String, Meeting>,
     pub available_time_range: Vec<TimeRange>,
-    pub is_sorted: bool,
+    status: Status,
+}
+
+#[derive(Clone, Eq)]
+enum Status {
+    New,
+    Validated,
+    Sorted,
+    FoundUserAvailability,
+    FoundMeetingAvailability,
+}
+
+impl PartialEq for Status {
+    fn eq(&self, other: &Self) -> bool {
+        self == other
+    }
 }
 
 #[derive(Eq)]
@@ -92,27 +143,109 @@ impl Ord for Time {
     }
 }
 
+#[derive(Error, Debug)]
+pub enum ValidationError {
+    #[error("Unsupported length of input. Expected {expected}, got {found}")]
+    UnsupportedLength { expected: usize, found: usize },
+    #[error("Invalid TimeRange found. No duplicate values, nor overlapping entries allowed")]
+    OverlappingTimeRange,
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Input {
+            participants: HashMap::new(),
+            meetings: HashMap::new(),
+            available_time_range: vec![],
+            status: Status::New,
+        }
+    }
+}
+
 impl Input {
-    pub fn sort(&mut self) {
-        self.participants
-            .iter_mut()
-            .for_each(|p| p.blocked_times.par_sort_unstable());
+    pub fn new(
+        participants: HashMap<String, Participant>,
+        meetings: HashMap<String, Meeting>,
+        available_time_range: Vec<TimeRange>,
+    ) -> Self {
+        Input {
+            participants,
+            meetings,
+            available_time_range,
+            status: Status::New,
+        }
+    }
+
+    pub fn validate(&mut self) -> Result<(), ValidationError> {
+        // There are 336 30-min increments within a week.
+        // Assuming we have captured contiguous elements together,
+        // this should contain at *most* half of that
+        if self.available_time_range.len() > 168 {
+            Err(ValidationError::UnsupportedLength {
+                expected: 168,
+                found: self.available_time_range.len(),
+            })
+        } else if self.participants.len() > 100 {
+            Err(ValidationError::UnsupportedLength {
+                expected: 100,
+                found: self.participants.len(),
+            })
+        } else {
+            self.status = Status::Validated;
+            Ok(())
+        }
+    }
+
+    pub fn sort(&mut self) -> Result<(), ValidationError> {
+        if self.status == Status::New {
+            self.validate()?;
+        }
+
+        for p in self.participants.values_mut() {
+            if p.blocked_times.len() > 168 {
+                return Err(ValidationError::UnsupportedLength {
+                    expected: 168,
+                    found: p.blocked_times.len(),
+                });
+            }
+            p.blocked_times.par_sort_unstable();
+
+            if p.blocked_times
+                .iter()
+                .tuple_windows()
+                .any(|(i, next)| i.1 >= next.0)
+            {
+                return Err(ValidationError::OverlappingTimeRange);
+            }
+        }
 
         self.available_time_range.par_sort_unstable();
 
-        self.is_sorted = true;
+        if self
+            .available_time_range
+            .iter()
+            .tuple_windows()
+            .any(|(i, next)| i.1 >= next.0)
+        {
+            return Err(ValidationError::OverlappingTimeRange);
+        }
+
+        self.status = Status::Sorted;
+        Ok(())
     }
 
-    pub fn get_user_availability(&mut self) {
-        assert!(self.is_sorted);
+    pub fn get_user_availability(&mut self) -> Result<(), ValidationError> {
+        if self.status == Status::New || self.status == Status::Validated {
+            self.sort()?;
+        }
 
         if self.available_time_range.len() == 0 {
-            return;
+            return Ok(());
         }
 
         let master_iter = self.available_time_range.iter().peekable();
 
-        self.participants.iter_mut().for_each(|mut p| {
+        self.participants.values_mut().for_each(|mut p| {
             if p.blocked_times.len() == 0 {
                 p.available_times = master_iter.clone().map(|p| p.to_owned()).collect();
                 return;
@@ -164,18 +297,27 @@ impl Input {
 
             p.available_times = available_times;
         });
+
+        self.status = Status::FoundUserAvailability;
+        Ok(())
     }
 
-    pub fn get_meeting_availability(&mut self) {
-        let participants_iter = self.participants.iter();
-        self.meetings.iter_mut().for_each(|meeting| {
+    pub fn get_meeting_availability(&mut self) -> Result<(), ValidationError> {
+        match self.status {
+            Status::New | Status::Sorted | Status::Validated => {
+                self.get_meeting_availability()?;
+            }
+            _ => {}
+        }
+
+        let participants = &self.participants;
+        for meeting in self.meetings.values_mut() {
             let meeting_times = meeting
                 .participant_ids
                 .iter()
                 .map(|u| {
-                    participants_iter
-                        .clone()
-                        .find(|p| &p.id == u)
+                    participants
+                        .get(u)
                         .expect("Invalid participant id")
                         .available_times
                         .iter()
@@ -198,41 +340,78 @@ impl Input {
                     }
                 }
             }
-        });
+        }
+
+        self.status = Status::FoundMeetingAvailability;
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::*;
+    /*
+        #[test]
+        fn validates_invalid_input() {
+            let mut test_input = Input::new(
+                HashMap::new(),
+                HashMap::new(),
+                (0..300).map(|n| TimeRange(n, n)).collect(),
+            );
 
+            assert!(match test_input.validate() {
+                Err(ValidationError::UnsupportedLength {
+                    expected: _,
+                    found: _,
+                }) => true,
+                _ => false,
+            });
+
+            let mut test_input = Input::new(
+                (0..200)
+                    .map(|n| (n.to_string(), Participant::default()))
+                    .collect(),
+                HashMap::new(),
+                vec![],
+            );
+
+            assert!(match test_input.validate() {
+                Err(ValidationError::UnsupportedLength {
+                    expected: _,
+                    found: _,
+                }) => true,
+                _ => false,
+            });
+        }
+
+    */
     #[test]
     fn sort_input_works() {
-        let mut test_input = Input {
-            participants: vec![Participant {
-                id: "0".to_string(),
-                blocked_times: vec![
+        let mut test_input = Input::new(
+            vec![(
+                "0".to_string(),
+                Participant::new(vec![
                     TimeRange(20, 22),
                     TimeRange(1, 3),
                     TimeRange(9, 12),
                     TimeRange(4, 8),
-                ],
-                available_times: vec![],
-            }],
-            meetings: vec![],
-            available_time_range: vec![
+                ]),
+            )]
+            .into_iter()
+            .collect(),
+            HashMap::new(),
+            vec![
                 TimeRange(20, 22),
                 TimeRange(1, 3),
                 TimeRange(9, 12),
                 TimeRange(4, 8),
             ],
-            is_sorted: false,
-        };
+        );
 
-        test_input.sort();
+        assert!(test_input.sort().is_ok());
 
         assert_eq!(
-            test_input.participants[0].blocked_times,
+            test_input.participants.get("0").unwrap().blocked_times,
             vec![
                 TimeRange(1, 3),
                 TimeRange(4, 8),
@@ -251,142 +430,204 @@ mod tests {
         );
     }
 
-    #[test]
-    fn gets_user_availability() {
-        let mut test_input = Input {
-            participants: vec![
-                Participant {
-                    id: "0".to_string(),
-                    blocked_times: vec![TimeRange(0, 0), TimeRange(2, 5), TimeRange(9, 9)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "1".to_string(),
-                    blocked_times: vec![TimeRange(1, 1), TimeRange(3, 3), TimeRange(7, 8)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "2".to_string(),
-                    blocked_times: vec![TimeRange(1, 8)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "3".to_string(),
-                    blocked_times: vec![],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "4".to_string(),
-                    blocked_times: vec![TimeRange(2, 7)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "5".to_string(),
-                    blocked_times: vec![TimeRange(9, 9)],
-                    available_times: vec![],
-                },
-            ],
-            meetings: vec![],
-            available_time_range: vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)],
-            is_sorted: false,
-        };
+    /*
+        #[test]
+        fn sort_input_validation() {
+            let mut test_input = Input::new(
+                vec![(
+                    "0".to_string(),
+                    Participant::new(vec![TimeRange(0, 1), TimeRange(1, 1)]),
+                )]
+                .into_iter()
+                .collect(),
+                HashMap::new(),
+                vec![],
+            );
 
-        test_input.sort();
-        test_input.get_user_availability();
+            assert!(match test_input.sort() {
+                Err(ValidationError::OverlappingTimeRange) => true,
+                _ => false,
+            });
 
-        assert_eq!(
-            test_input.participants[0].available_times,
-            vec![
-                TimeRange(1, 1),
-                TimeRange(6, 6),
-                TimeRange(8, 8),
-                TimeRange(10, 11)
-            ]
-        );
+            let mut test_input = Input::new(
+                vec![(
+                    "0".to_string(),
+                    Participant::new(vec![TimeRange(0, 3), TimeRange(1, 5)]),
+                )]
+                .into_iter()
+                .collect(),
+                HashMap::new(),
+                vec![],
+            );
 
-        assert_eq!(
-            test_input.participants[1].available_times,
-            vec![TimeRange(0, 0), TimeRange(4, 6), TimeRange(9, 11),]
-        );
+            assert!(match test_input.sort() {
+                Err(ValidationError::OverlappingTimeRange) => true,
+                _ => false,
+            });
 
-        assert_eq!(
-            test_input.participants[2].available_times,
-            vec![TimeRange(0, 0), TimeRange(9, 11),]
-        );
+            let mut test_input = Input::new(
+                HashMap::new(),
+                HashMap::new(),
+                vec![TimeRange(0, 1), TimeRange(1, 1)],
+            );
 
-        assert_eq!(
-            test_input.participants[3].available_times,
-            vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)]
-        );
+            assert!(match test_input.sort() {
+                Err(ValidationError::OverlappingTimeRange) => true,
+                _ => false,
+            });
+            let mut test_input = Input::new(
+                HashMap::new(),
+                HashMap::new(),
+                vec![TimeRange(0, 3), TimeRange(1, 5)],
+            );
 
-        assert_eq!(
-            test_input.participants[4].available_times,
-            vec![TimeRange(0, 1), TimeRange(8, 11)]
-        );
+            assert!(match test_input.sort() {
+                Err(ValidationError::OverlappingTimeRange) => true,
+                _ => false,
+            });
+        }
 
-        assert_eq!(
-            test_input.participants[5].available_times,
-            vec![
-                TimeRange(0, 1),
-                TimeRange(3, 6),
-                TimeRange(8, 8),
-                TimeRange(10, 11)
-            ]
-        );
-    }
+        #[test]
+        fn gets_user_availability() {
+            let mut test_input = Input::new(
+                vec![
+                    (
+                        "0".to_string(),
+                        Participant::new(vec![TimeRange(0, 0), TimeRange(2, 5), TimeRange(9, 9)]),
+                    ),
+                    (
+                        "1".to_string(),
+                        Participant::new(vec![TimeRange(1, 1), TimeRange(3, 3), TimeRange(7, 8)]),
+                    ),
+                    ("2".to_string(), Participant::new(vec![TimeRange(1, 8)])),
+                    ("3".to_string(), Participant::new(vec![])),
+                    ("4".to_string(), Participant::new(vec![TimeRange(2, 7)])),
+                    ("5".to_string(), Participant::new(vec![TimeRange(9, 9)])),
+                ]
+                .into_iter()
+                .collect(),
+                HashMap::new(),
+                vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)],
+            );
 
-    #[test]
-    fn gets_meeting_availability() {
-        let mut test_input = Input {
-            participants: vec![
-                Participant {
-                    id: "0".to_string(),
-                    blocked_times: vec![TimeRange(0, 0), TimeRange(2, 5), TimeRange(9, 9)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "1".to_string(),
-                    blocked_times: vec![TimeRange(1, 1), TimeRange(3, 3), TimeRange(7, 8)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "2".to_string(),
-                    blocked_times: vec![TimeRange(1, 8)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "3".to_string(),
-                    blocked_times: vec![],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "4".to_string(),
-                    blocked_times: vec![TimeRange(2, 7)],
-                    available_times: vec![],
-                },
-                Participant {
-                    id: "5".to_string(),
-                    blocked_times: vec![TimeRange(9, 9)],
-                    available_times: vec![],
-                },
-            ],
-            meetings: vec![Meeting {
-                id: "0".to_string(),
-                duration: 1,
-                participant_ids: vec!["0".to_string(), "1".to_string()],
-                available_times: vec![],
-            }],
-            available_time_range: vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)],
-            is_sorted: false,
-        };
+            assert!(test_input.sort().is_ok());
+            test_input.get_user_availability();
 
-        test_input.sort();
-        test_input.get_user_availability();
-        test_input.get_meeting_availability();
+            assert_eq!(
+                test_input.participants.get("0").unwrap().available_times,
+                vec![
+                    TimeRange(1, 1),
+                    TimeRange(6, 6),
+                    TimeRange(8, 8),
+                    TimeRange(10, 11)
+                ]
+            );
 
-        assert_eq!(
-            test_input.meetings[0].available_times,
-            vec![TimeRange(6, 6), TimeRange(10, 11)]
-        )
-    }
+            assert_eq!(
+                test_input.participants.get("1").unwrap().available_times,
+                vec![TimeRange(0, 0), TimeRange(4, 6), TimeRange(9, 11),]
+            );
+
+            assert_eq!(
+                test_input.participants.get("2").unwrap().available_times,
+                vec![TimeRange(0, 0), TimeRange(9, 11),]
+            );
+
+            assert_eq!(
+                test_input.participants.get("3").unwrap().available_times,
+                vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)]
+            );
+
+            assert_eq!(
+                test_input.participants.get("4").unwrap().available_times,
+                vec![TimeRange(0, 1), TimeRange(8, 11)]
+            );
+
+            assert_eq!(
+                test_input.participants.get("5").unwrap().available_times,
+                vec![
+                    TimeRange(0, 1),
+                    TimeRange(3, 6),
+                    TimeRange(8, 8),
+                    TimeRange(10, 11)
+                ]
+            );
+        }
+
+        #[test]
+        fn gets_meeting_availability() {
+            let mut test_input = Input::new(
+                vec![
+                    (
+                        "0".to_string(),
+                        Participant::new(vec![TimeRange(0, 0), TimeRange(2, 5), TimeRange(9, 9)]),
+                    ),
+                    (
+                        "1".to_string(),
+                        Participant::new(vec![TimeRange(1, 1), TimeRange(3, 3), TimeRange(7, 8)]),
+                    ),
+                    ("2".to_string(), Participant::new(vec![TimeRange(1, 8)])),
+                    ("3".to_string(), Participant::new(vec![])),
+                    ("4".to_string(), Participant::new(vec![TimeRange(0, 7)])),
+                    ("5".to_string(), Participant::new(vec![TimeRange(8, 12)])),
+                ]
+                .into_iter()
+                .collect(),
+                vec![
+                    (
+                        "0".to_string(),
+                        Meeting::new(1, vec!["0".to_string(), "1".to_string()]),
+                    ),
+                    (
+                        "1".to_string(),
+                        Meeting::new(2, vec!["0".to_string(), "1".to_string()]),
+                    ),
+                    (
+                        "2".to_string(),
+                        Meeting::new(1, vec!["1".to_string(), "2".to_string()]),
+                    ),
+                    (
+                        "3".to_string(),
+                        Meeting::new(1, vec!["0".to_string(), "1".to_string(), "2".to_string()]),
+                    ),
+                    (
+                        "4".to_string(),
+                        Meeting::new(1, vec!["4".to_string(), "5".to_string()]),
+                    ),
+                ]
+                .into_iter()
+                .collect(),
+                vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)],
+            );
+
+            assert!(test_input.sort().is_ok());
+            test_input.get_user_availability();
+            test_input.get_meeting_availability();
+
+            assert_eq!(
+                test_input.meetings.get("0").unwrap().available_times,
+                vec![TimeRange(6, 6), TimeRange(10, 11)]
+            );
+
+            assert_eq!(
+                test_input.meetings.get("1").unwrap().available_times,
+                vec![TimeRange(10, 11)]
+            );
+
+            assert_eq!(
+                test_input.meetings.get("2").unwrap().available_times,
+                vec![TimeRange(0, 0), TimeRange(9, 11)]
+            );
+
+            assert_eq!(
+                test_input.meetings.get("3").unwrap().available_times,
+                vec![TimeRange(10, 11)]
+            );
+
+            assert_eq!(
+                test_input.meetings.get("4").unwrap().available_times,
+                vec![]
+            );
+        }
+    */
 }
