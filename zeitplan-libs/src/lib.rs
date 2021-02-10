@@ -1,10 +1,11 @@
 use itertools::Itertools;
 use rayon::prelude::*;
+use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use thiserror::Error;
 
-#[derive(Eq, Debug, Copy, Clone)]
+#[derive(Eq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TimeRange(pub u16, pub u16);
 
 impl PartialOrd for TimeRange {
@@ -25,9 +26,11 @@ impl Ord for TimeRange {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Participant {
+    #[serde(rename = "blockedTimes")]
     pub blocked_times: Vec<TimeRange>,
+    #[serde(skip)]
     available_times: Vec<TimeRange>,
 }
 
@@ -49,10 +52,12 @@ impl Participant {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Meeting {
     pub duration: u16,
+    #[serde(rename = "participantIds")]
     pub participant_ids: Vec<String>,
+    #[serde(skip_deserializing, rename = "availableTimes")]
     available_times: Vec<TimeRange>,
 }
 
@@ -73,14 +78,6 @@ impl Meeting {
             available_times: vec![],
         }
     }
-}
-
-#[derive(Clone)]
-pub struct Input {
-    pub participants: HashMap<String, Participant>,
-    pub meetings: HashMap<String, Meeting>,
-    pub available_time_range: Vec<TimeRange>,
-    status: Status,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -141,8 +138,19 @@ impl Ord for Time {
 pub enum ValidationError {
     #[error("Unsupported length of input. Expected {expected}, got {found}")]
     UnsupportedLength { expected: usize, found: usize },
-    #[error("Invalid TimeRange found. No duplicate values, nor overlapping entries allowed")]
-    OverlappingTimeRange,
+    #[error("Invalid TimeRange found. No duplicate values, nor overlapping entries allowed\n{location} received {value}")]
+    OverlappingTimeRange { location: String, value: u16 },
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Input {
+    pub participants: HashMap<String, Participant>,
+    pub meetings: HashMap<String, Meeting>,
+    #[serde(rename = "availableTimes")]
+    pub available_times: Vec<TimeRange>,
+    #[serde(skip)]
+    status: Status,
 }
 
 impl Default for Input {
@@ -150,7 +158,7 @@ impl Default for Input {
         Input {
             participants: HashMap::new(),
             meetings: HashMap::new(),
-            available_time_range: vec![],
+            available_times: vec![],
             status: Status::New,
         }
     }
@@ -160,12 +168,12 @@ impl Input {
     pub fn new(
         participants: HashMap<String, Participant>,
         meetings: HashMap<String, Meeting>,
-        available_time_range: Vec<TimeRange>,
+        available_times: Vec<TimeRange>,
     ) -> Self {
         Input {
             participants,
             meetings,
-            available_time_range,
+            available_times,
             status: Status::New,
         }
     }
@@ -174,10 +182,10 @@ impl Input {
         // There are 336 30-min increments within a week.
         // Assuming we have captured contiguous elements together,
         // this should contain at *most* half of that
-        if self.available_time_range.len() > 168 {
+        if self.available_times.len() > 168 {
             Err(ValidationError::UnsupportedLength {
                 expected: 168,
-                found: self.available_time_range.len(),
+                found: self.available_times.len(),
             })
         } else if self.participants.len() > 100 {
             Err(ValidationError::UnsupportedLength {
@@ -196,7 +204,7 @@ impl Input {
             self.validate()?;
         }
 
-        for p in self.participants.values_mut() {
+        for (k, p) in self.participants.iter_mut() {
             if p.blocked_times.len() > 168 {
                 return Err(ValidationError::UnsupportedLength {
                     expected: 168,
@@ -205,24 +213,31 @@ impl Input {
             }
             p.blocked_times.par_sort_unstable();
 
-            if p.blocked_times
+            if let Some((_, next)) = p
+                .blocked_times
                 .iter()
                 .tuple_windows()
-                .any(|(i, next)| i.1 >= next.0)
+                .find(|(i, next)| i.1 >= next.0)
             {
-                return Err(ValidationError::OverlappingTimeRange);
+                return Err(ValidationError::OverlappingTimeRange {
+                    location: format!("Participant ({})", k),
+                    value: next.0,
+                });
             }
         }
 
-        self.available_time_range.par_sort_unstable();
+        self.available_times.par_sort_unstable();
 
-        if self
-            .available_time_range
+        if let Some((_, next)) = self
+            .available_times
             .iter()
             .tuple_windows()
-            .any(|(i, next)| i.1 >= next.0)
+            .find(|(i, next)| i.1 >= next.0)
         {
-            return Err(ValidationError::OverlappingTimeRange);
+            return Err(ValidationError::OverlappingTimeRange {
+                location: "Available time range".to_string(),
+                value: next.0,
+            });
         }
 
         self.status = Status::Sorted;
@@ -235,11 +250,11 @@ impl Input {
             self.sort()?;
         }
 
-        if self.available_time_range.len() == 0 {
+        if self.available_times.len() == 0 {
             return Ok(());
         }
 
-        let master_iter = self.available_time_range.iter().peekable();
+        let master_iter = self.available_times.iter().peekable();
 
         self.participants.values_mut().for_each(|mut p| {
             if p.blocked_times.len() == 0 {
@@ -302,13 +317,13 @@ impl Input {
     pub fn get_meeting_availability(&mut self) -> Result<(), ValidationError> {
         match self.status {
             Status::New | Status::Sorted | Status::Validated => {
-                self.get_meeting_availability()?;
+                self.get_user_availability()?;
             }
             _ => {}
         }
 
         let participants = &self.participants;
-        for meeting in self.meetings.values_mut() {
+        self.meetings.values_mut().for_each(|meeting| {
             let meeting_times = meeting
                 .participant_ids
                 .iter()
@@ -337,7 +352,7 @@ impl Input {
                     }
                 }
             }
-        }
+        });
 
         self.status = Status::FoundMeetingAvailability;
 
@@ -416,7 +431,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            test_input.available_time_range,
+            test_input.available_times,
             vec![
                 TimeRange(1, 3),
                 TimeRange(4, 8),
@@ -440,7 +455,10 @@ mod tests {
         );
 
         assert!(match test_input.sort() {
-            Err(ValidationError::OverlappingTimeRange) => true,
+            Err(ValidationError::OverlappingTimeRange {
+                location: _,
+                value: _,
+            }) => true,
             _ => false,
         });
 
@@ -456,7 +474,10 @@ mod tests {
         );
 
         assert!(match test_input.sort() {
-            Err(ValidationError::OverlappingTimeRange) => true,
+            Err(ValidationError::OverlappingTimeRange {
+                location: _,
+                value: _,
+            }) => true,
             _ => false,
         });
 
@@ -467,7 +488,10 @@ mod tests {
         );
 
         assert!(match test_input.sort() {
-            Err(ValidationError::OverlappingTimeRange) => true,
+            Err(ValidationError::OverlappingTimeRange {
+                location: _,
+                value: _,
+            }) => true,
             _ => false,
         });
         let mut test_input = Input::new(
@@ -477,7 +501,10 @@ mod tests {
         );
 
         assert!(match test_input.sort() {
-            Err(ValidationError::OverlappingTimeRange) => true,
+            Err(ValidationError::OverlappingTimeRange {
+                location: _,
+                value: _,
+            }) => true,
             _ => false,
         });
     }
