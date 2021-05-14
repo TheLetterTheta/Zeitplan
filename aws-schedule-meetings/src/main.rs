@@ -1,20 +1,24 @@
 use lambda_runtime::{error::LambdaErrorExt, lambda, Context};
 use std::error::Error;
+use std::collections::HashMap;
 use std::fmt;
-use zeitplan_libs::{Input, ValidationError};
+use std::env;
+use zeitplan_libs::{ScheduleInput, schedule_meetings, TimeRange, ValidationError};
 
 fn main() -> Result<(), Box<dyn Error>> {
-    lambda!(get_meeting_availability);
+    lambda!(schedule_meetings_short);
 
     Ok(())
 }
 
-fn get_meeting_availability(mut input: Input, _: Context) -> Result<Input, AwsError> {
+fn schedule_meetings_short(input: ScheduleInput, _: Context) -> Result<HashMap<String, TimeRange>, AwsError> {
+    let execution_limit: Option<usize> = env::var("EXECUTION_LIMIT").map(|n| n.parse().unwrap_or(1)).ok();
     input.validate()?;
-    input.sort()?;
-    input.get_user_availability()?;
-    input.get_meeting_availability()?;
-    Ok(input)
+    let result = schedule_meetings(&input, execution_limit)?
+        .iter()
+        .map(|(k, v)| (k.to_string(), *v) )
+        .collect();
+    Ok(result)
 }
 
 #[derive(Debug)]

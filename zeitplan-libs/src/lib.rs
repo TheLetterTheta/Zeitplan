@@ -8,6 +8,12 @@ use thiserror::Error;
 #[derive(Eq, Debug, Copy, Clone, Serialize, Deserialize)]
 pub struct TimeRange(pub u16, pub u16);
 
+impl TimeRange {
+    pub fn collide(&self, other: &TimeRange) -> bool {
+        self.0.max(other.0) <= self.1.min(other.1)
+    }
+}
+
 impl PartialOrd for TimeRange {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         Some(self.cmp(other))
@@ -134,12 +140,14 @@ impl Ord for Time {
     }
 }
 
-#[derive(Error, Debug)]
+#[derive(Error, Debug, Eq, PartialEq)]
 pub enum ValidationError {
     #[error("Unsupported length of input. Expected {expected}, got {found}")]
     UnsupportedLength { expected: usize, found: usize },
     #[error("Invalid TimeRange found. No duplicate values, nor overlapping entries allowed\n{location} received {value}")]
     OverlappingTimeRange { location: String, value: u16 },
+    #[error("Could not find a solution")]
+    NoSolution,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -360,6 +368,160 @@ impl Input {
     }
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScheduleInput {
+    meetings: HashMap<String, ScheduleMeeting>,
+}
+
+impl Default for ScheduleInput {
+    fn default() -> Self {
+        ScheduleInput {
+            meetings: HashMap::new(),
+        }
+    }
+}
+
+impl From<Input> for ScheduleInput {
+    fn from(input: Input) -> Self {
+        ScheduleInput {
+            meetings: input
+                .meetings
+                .into_iter()
+                .map(|(k, v)| (k, v.into()))
+                .collect(),
+        }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ScheduleMeeting {
+    pub duration: u16,
+    #[serde(rename = "availableTimes")]
+    available_times: Vec<TimeRange>,
+}
+
+impl ScheduleInput {
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        if self.meetings.len() > 336 {
+            Err(ValidationError::UnsupportedLength {
+                expected: 336,
+                found: self.meetings.len(),
+            })
+        } else if let Some(m) = self
+            .meetings
+            .values()
+            .find(|m| m.available_times.len() > 336)
+        {
+            Err(ValidationError::UnsupportedLength {
+                expected: 336,
+                found: m.available_times.len(),
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl From<Meeting> for ScheduleMeeting {
+    fn from(input: Meeting) -> Self {
+        ScheduleMeeting {
+            duration: input.duration,
+            available_times: input.available_times,
+        }
+    }
+}
+
+impl Default for ScheduleMeeting {
+    fn default() -> Self {
+        ScheduleMeeting {
+            duration: 0,
+            available_times: Vec::new(),
+        }
+    }
+}
+
+pub fn schedule_meetings(
+    input: &ScheduleInput,
+    count: Option<usize>,
+) -> Result<HashMap<&str, TimeRange>, ValidationError> {
+    let meetings = input
+        .meetings
+        .iter()
+        .filter(|(_, meeting)| meeting.available_times.len() > 0)
+        .map(|(k, m)| {
+            (
+                k,
+                m.available_times
+                    .iter()
+                    .flat_map(move |t| {
+                        let duration = m.duration - 1;
+                        (t.0..=(t.1 - duration)).map(move |s| TimeRange(s, s + duration))
+                    })
+                    .collect::<Vec<_>>(),
+            )
+        })
+        .sorted_unstable_by_key(|(_, a)| a.len())
+        .collect::<Vec<_>>();
+
+    let mut x: usize = 1;
+    let mut iter: usize = 0;
+    let mut state: Vec<usize> = vec![0; meetings.len()];
+    let mut solution: Vec<(&str, TimeRange)> = Vec::with_capacity(meetings.len());
+
+    loop {
+        if let Some(limit) = count {
+            if limit > iter {
+                return Err(ValidationError::NoSolution);
+            }
+            iter += 1;
+        }
+
+        if meetings
+            .iter()
+            .enumerate()
+            .skip(x - 1)
+            .all(|(index, (meeting_id, meeting_times))| {
+                match meeting_times
+                    .iter()
+                    .enumerate()
+                    .skip(state[index])
+                    .skip_while(|(_time_index, time)| {
+                        solution
+                            .iter()
+                            .any(|(_, picked_time)| picked_time.collide(time))
+                    })
+                    .next()
+                {
+                    Some((i, time)) => {
+                        state[index] = i;
+                        solution.push((meeting_id, *time));
+                        x += 1;
+                        true
+                    }
+                    None => {
+                        state[index] = 0;
+                        if index > 0 {
+                            state[index - 1] += 1;
+                        }
+                        solution.pop();
+                        x -= 1;
+
+                        false
+                    }
+                }
+            })
+        {
+            return Ok(solution.into_iter().collect());
+        }
+
+        if x == 0 {
+            return Err(ValidationError::NoSolution);
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::*;
@@ -533,7 +695,7 @@ mod tests {
         );
 
         assert!(test_input.sort().is_ok());
-        test_input.get_user_availability();
+        let _ = test_input.get_user_availability();
 
         assert_eq!(
             test_input.participants.get("0").unwrap().available_times,
@@ -623,8 +785,8 @@ mod tests {
         );
 
         assert!(test_input.sort().is_ok());
-        test_input.get_user_availability();
-        test_input.get_meeting_availability();
+        let _ = test_input.get_user_availability();
+        let _ = test_input.get_meeting_availability();
 
         assert_eq!(
             test_input.meetings.get("0").unwrap().available_times,
@@ -650,5 +812,100 @@ mod tests {
             test_input.meetings.get("4").unwrap().available_times,
             vec![]
         );
+    }
+
+    #[test]
+    fn find_availability() {
+        let mut test_input = Input::new(
+            vec![
+                (
+                    "0".to_string(),
+                    Participant::new(vec![TimeRange(0, 0), TimeRange(2, 5), TimeRange(9, 9)]),
+                ),
+                (
+                    "1".to_string(),
+                    Participant::new(vec![TimeRange(1, 1), TimeRange(3, 3), TimeRange(7, 8)]),
+                ),
+                ("2".to_string(), Participant::new(vec![TimeRange(1, 8)])),
+                ("3".to_string(), Participant::new(vec![])),
+                ("4".to_string(), Participant::new(vec![TimeRange(0, 7)])),
+                ("5".to_string(), Participant::new(vec![TimeRange(8, 12)])),
+            ]
+            .into_iter()
+            .collect(),
+            vec![
+                (
+                    "0".to_string(),
+                    Meeting::new(1, vec!["0".to_string(), "1".to_string()]),
+                ),
+                (
+                    "1".to_string(),
+                    Meeting::new(2, vec!["0".to_string(), "1".to_string()]),
+                ),
+                (
+                    "2".to_string(),
+                    Meeting::new(1, vec!["1".to_string(), "2".to_string()]),
+                ),
+                (
+                    "3".to_string(),
+                    Meeting::new(1, vec!["0".to_string(), "1".to_string(), "2".to_string()]),
+                ),
+                (
+                    "4".to_string(),
+                    Meeting::new(1, vec!["4".to_string(), "5".to_string()]),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            vec![TimeRange(0, 1), TimeRange(3, 6), TimeRange(8, 11)],
+        );
+
+        assert!(test_input.sort().is_ok());
+        let _ = test_input.get_user_availability();
+        let _ = test_input.get_meeting_availability();
+
+        let test_input: ScheduleInput = test_input.into();
+
+        assert_eq!(
+            schedule_meetings(&test_input, Some(100)),
+            Err(ValidationError::NoSolution)
+        );
+        assert_eq!(
+            schedule_meetings(&test_input, None),
+            Err(ValidationError::NoSolution)
+        );
+
+        let mut test_input = Input::new(
+            vec![
+                ("a".to_string(), Participant::new(vec![TimeRange(3, 4)])),
+                ("b".to_string(), Participant::new(vec![TimeRange(2, 4)])),
+                (
+                    "c".to_string(),
+                    Participant::new(vec![TimeRange(0, 0), TimeRange(3, 4)]),
+                ),
+                (
+                    "d".to_string(),
+                    Participant::new(vec![TimeRange(0, 1), TimeRange(4, 4)]),
+                ),
+            ]
+            .into_iter()
+            .collect(),
+            vec![
+                ("0".to_string(), Meeting::new(1, vec!["a".to_string()])),
+                ("1".to_string(), Meeting::new(1, vec!["b".to_string()])),
+                ("2".to_string(), Meeting::new(1, vec!["c".to_string()])),
+                ("3".to_string(), Meeting::new(1, vec!["d".to_string()])),
+            ]
+            .into_iter()
+            .collect(),
+            vec![TimeRange(0, 4)],
+        );
+
+        assert!(test_input.sort().is_ok());
+        let _ = test_input.get_user_availability();
+        let _ = test_input.get_meeting_availability();
+
+        let test_input: ScheduleInput = test_input.into();
+        assert!(schedule_meetings(&test_input, None).is_ok());
     }
 }
