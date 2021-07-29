@@ -1,451 +1,16 @@
 use itertools::Itertools;
-use rayon::prelude::*;
-use serde::{Deserialize, Serialize};
-use std::cmp::Ordering;
-use std::collections::HashMap;
-use thiserror::Error;
+use std::collections::BTreeMap;
 
-#[derive(Eq, Debug, Copy, Clone, Serialize, Deserialize)]
-pub struct TimeRange(pub u16, pub u16);
+mod data;
+mod input;
 
-impl TimeRange {
-    pub fn collide(&self, other: &TimeRange) -> bool {
-        self.0.max(other.0) <= self.1.min(other.1)
-    }
-}
-
-impl PartialOrd for TimeRange {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for TimeRange {
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0
-    }
-}
-
-impl Ord for TimeRange {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp(&other.0)
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Participant {
-    #[serde(rename = "blockedTimes")]
-    pub blocked_times: Vec<TimeRange>,
-    #[serde(skip)]
-    available_times: Vec<TimeRange>,
-}
-
-impl Default for Participant {
-    fn default() -> Participant {
-        Participant {
-            blocked_times: vec![],
-            available_times: vec![],
-        }
-    }
-}
-
-impl Participant {
-    pub fn new(blocked_times: Vec<TimeRange>) -> Self {
-        Participant {
-            blocked_times,
-            available_times: vec![],
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-pub struct Meeting {
-    pub duration: u16,
-    #[serde(rename = "participantIds")]
-    pub participant_ids: Vec<String>,
-    #[serde(skip_deserializing, rename = "availableTimes")]
-    available_times: Vec<TimeRange>,
-}
-
-impl Default for Meeting {
-    fn default() -> Meeting {
-        Meeting {
-            duration: 1,
-            participant_ids: vec![],
-            available_times: vec![],
-        }
-    }
-}
-impl Meeting {
-    pub fn new(duration: u16, participant_ids: Vec<String>) -> Self {
-        Meeting {
-            duration,
-            participant_ids,
-            available_times: vec![],
-        }
-    }
-}
-
-#[derive(Clone, PartialEq, Eq)]
-enum Status {
-    New,
-    Validated,
-    Sorted,
-    FoundUserAvailability,
-    FoundMeetingAvailability,
-}
-
-#[derive(Eq)]
-enum Time {
-    Start(u16),
-    End(u16),
-}
-
-impl PartialOrd for Time {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl PartialEq for Time {
-    fn eq(&self, other: &Self) -> bool {
-        self == other
-    }
-}
-
-impl Ord for Time {
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self {
-            Time::Start(s) => match other {
-                Time::Start(o) => s.cmp(o),
-                Time::End(e) => {
-                    if s <= e {
-                        Ordering::Less
-                    } else {
-                        Ordering::Greater
-                    }
-                }
-            },
-            Time::End(e) => match other {
-                Time::Start(s) => {
-                    if e >= s {
-                        Ordering::Greater
-                    } else {
-                        Ordering::Less
-                    }
-                }
-                Time::End(s) => e.cmp(s),
-            },
-        }
-    }
-}
-
-#[derive(Error, Debug, Eq, PartialEq)]
-pub enum ValidationError {
-    #[error("Unsupported length of input. Expected {expected}, got {found}")]
-    UnsupportedLength { expected: usize, found: usize },
-    #[error("Invalid TimeRange found. No duplicate values, nor overlapping entries allowed\n{location} received {value}")]
-    OverlappingTimeRange { location: String, value: u16 },
-    #[error("Could not find a solution")]
-    NoSolution,
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct Input {
-    pub participants: HashMap<String, Participant>,
-    pub meetings: HashMap<String, Meeting>,
-    #[serde(rename = "availableTimes")]
-    pub available_times: Vec<TimeRange>,
-    #[serde(skip)]
-    status: Status,
-}
-
-impl Default for Input {
-    fn default() -> Self {
-        Input {
-            participants: HashMap::new(),
-            meetings: HashMap::new(),
-            available_times: vec![],
-            status: Status::New,
-        }
-    }
-}
-
-impl Input {
-    pub fn new(
-        participants: HashMap<String, Participant>,
-        meetings: HashMap<String, Meeting>,
-        available_times: Vec<TimeRange>,
-    ) -> Self {
-        Input {
-            participants,
-            meetings,
-            available_times,
-            status: Status::New,
-        }
-    }
-
-    pub fn validate(&mut self) -> Result<(), ValidationError> {
-        // There are 336 30-min increments within a week.
-        // Assuming we have captured contiguous elements together,
-        // this should contain at *most* half of that
-        if self.available_times.len() > 168 {
-            Err(ValidationError::UnsupportedLength {
-                expected: 168,
-                found: self.available_times.len(),
-            })
-        } else if self.participants.len() > 100 {
-            Err(ValidationError::UnsupportedLength {
-                expected: 100,
-                found: self.participants.len(),
-            })
-        } else {
-            self.status = Status::Validated;
-
-            Ok(())
-        }
-    }
-
-    pub fn sort(&mut self) -> Result<(), ValidationError> {
-        if self.status == Status::New {
-            self.validate()?;
-        }
-
-        for (k, p) in self.participants.iter_mut() {
-            if p.blocked_times.len() > 168 {
-                return Err(ValidationError::UnsupportedLength {
-                    expected: 168,
-                    found: p.blocked_times.len(),
-                });
-            }
-            p.blocked_times.par_sort_unstable();
-
-            if let Some((_, next)) = p
-                .blocked_times
-                .iter()
-                .tuple_windows()
-                .find(|(i, next)| i.1 >= next.0)
-            {
-                return Err(ValidationError::OverlappingTimeRange {
-                    location: format!("Participant ({})", k),
-                    value: next.0,
-                });
-            }
-        }
-
-        self.available_times.par_sort_unstable();
-
-        if let Some((_, next)) = self
-            .available_times
-            .iter()
-            .tuple_windows()
-            .find(|(i, next)| i.1 >= next.0)
-        {
-            return Err(ValidationError::OverlappingTimeRange {
-                location: "Available time range".to_string(),
-                value: next.0,
-            });
-        }
-
-        self.status = Status::Sorted;
-
-        Ok(())
-    }
-
-    pub fn get_user_availability(&mut self) -> Result<(), ValidationError> {
-        if self.status == Status::New || self.status == Status::Validated {
-            self.sort()?;
-        }
-
-        if self.available_times.len() == 0 {
-            return Ok(());
-        }
-
-        let master_iter = self.available_times.iter().peekable();
-
-        self.participants.values_mut().for_each(|mut p| {
-            if p.blocked_times.len() == 0 {
-                p.available_times = master_iter.clone().map(|p| p.to_owned()).collect();
-                return;
-            }
-
-            let mut available_iter = { master_iter.clone() };
-            let mut blocked_iter = p.blocked_times.iter().peekable();
-
-            let mut available_times = Vec::new();
-
-            'outer: while let Some(available) = &available_iter.next() {
-                let mut start = available.0;
-                let end = available.1;
-
-                while let Some(&&TimeRange(block_start, block_end)) = blocked_iter.peek() {
-                    // The next block is already outside of the range we care about, nothing to
-                    // block here.
-                    if block_start > end {
-                        break;
-                    }
-
-                    if block_end >= start {
-                        // We need to close of the current block.
-                        if start < block_start {
-                            available_times.push(TimeRange(start, block_start - 1));
-                        }
-
-                        // Otherwise, we need to bump the start time
-                        start = block_end + 1;
-
-                        // And increment our iterator again
-                        if end < start {
-                            while let Some(&&TimeRange(_, consume_end)) = available_iter.peek() {
-                                if start > consume_end {
-                                    available_iter.next();
-                                } else {
-                                    break;
-                                }
-                            }
-                            continue 'outer;
-                        }
-                    }
-
-                    blocked_iter.next();
-                }
-
-                available_times.push(TimeRange(start, end));
-            }
-
-            p.available_times = available_times;
-        });
-
-        self.status = Status::FoundUserAvailability;
-
-        Ok(())
-    }
-
-    pub fn get_meeting_availability(&mut self) -> Result<(), ValidationError> {
-        match self.status {
-            Status::New | Status::Sorted | Status::Validated => {
-                self.get_user_availability()?;
-            }
-            _ => {}
-        }
-
-        let participants = &self.participants;
-        self.meetings.values_mut().for_each(|meeting| {
-            let meeting_times = meeting
-                .participant_ids
-                .iter()
-                .map(|u| {
-                    participants
-                        .get(u)
-                        .expect("Invalid participant id")
-                        .available_times
-                        .iter()
-                        .flat_map(|t| vec![Time::Start(t.0), Time::End(t.1)])
-                })
-                .kmerge();
-
-            let mut iter_stack = Vec::with_capacity(meeting.participant_ids.len());
-            for time in meeting_times.into_iter() {
-                match time {
-                    Time::Start(t) => iter_stack.push(t),
-                    Time::End(t) => {
-                        if let Some(last) = iter_stack.pop() {
-                            if iter_stack.len() == meeting.participant_ids.len() - 1
-                                && t - last >= (meeting.duration - 1)
-                            {
-                                meeting.available_times.push(TimeRange(last, t))
-                            }
-                        }
-                    }
-                }
-            }
-        });
-
-        self.status = Status::FoundMeetingAvailability;
-
-        Ok(())
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ScheduleInput {
-    meetings: HashMap<String, ScheduleMeeting>,
-}
-
-impl Default for ScheduleInput {
-    fn default() -> Self {
-        ScheduleInput {
-            meetings: HashMap::new(),
-        }
-    }
-}
-
-impl From<Input> for ScheduleInput {
-    fn from(input: Input) -> Self {
-        ScheduleInput {
-            meetings: input
-                .meetings
-                .into_iter()
-                .map(|(k, v)| (k, v.into()))
-                .collect(),
-        }
-    }
-}
-
-#[derive(Clone, Serialize, Deserialize)]
-#[serde(default)]
-pub struct ScheduleMeeting {
-    pub duration: u16,
-    #[serde(rename = "availableTimes")]
-    available_times: Vec<TimeRange>,
-}
-
-impl ScheduleInput {
-    pub fn validate(&self) -> Result<(), ValidationError> {
-        if self.meetings.len() > 336 {
-            Err(ValidationError::UnsupportedLength {
-                expected: 336,
-                found: self.meetings.len(),
-            })
-        } else if let Some(m) = self
-            .meetings
-            .values()
-            .find(|m| m.available_times.len() > 336)
-        {
-            Err(ValidationError::UnsupportedLength {
-                expected: 336,
-                found: m.available_times.len(),
-            })
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl From<Meeting> for ScheduleMeeting {
-    fn from(input: Meeting) -> Self {
-        ScheduleMeeting {
-            duration: input.duration,
-            available_times: input.available_times,
-        }
-    }
-}
-
-impl Default for ScheduleMeeting {
-    fn default() -> Self {
-        ScheduleMeeting {
-            duration: 0,
-            available_times: Vec::new(),
-        }
-    }
-}
+use crate::data::*;
+use crate::input::ScheduleInput;
 
 pub fn schedule_meetings(
     input: &ScheduleInput,
     count: Option<usize>,
-) -> Result<HashMap<&str, TimeRange>, ValidationError> {
+) -> Result<BTreeMap<TimeRange, &str>, ValidationError> {
     let meetings = input
         .meetings
         .iter()
@@ -468,7 +33,8 @@ pub fn schedule_meetings(
     let mut x: usize = 1;
     let mut iter: usize = 0;
     let mut state: Vec<usize> = vec![0; meetings.len()];
-    let mut solution: Vec<(&str, TimeRange)> = Vec::with_capacity(meetings.len());
+    let mut solution: BTreeMap<TimeRange, &str> = BTreeMap::new();
+    let mut last_key: Vec<TimeRange> = Vec::with_capacity(meetings.len());
 
     loop {
         if let Some(limit) = count {
@@ -487,16 +53,13 @@ pub fn schedule_meetings(
                     .iter()
                     .enumerate()
                     .skip(state[index])
-                    .skip_while(|(_time_index, time)| {
-                        solution
-                            .iter()
-                            .any(|(_, picked_time)| picked_time.collide(time))
-                    })
+                    .skip_while(|(_time_index, time)| solution.contains_key(*time))
                     .next()
                 {
                     Some((i, time)) => {
                         state[index] = i;
-                        solution.push((meeting_id, *time));
+                        solution.insert(*time, meeting_id);
+                        last_key.push(*time);
                         x += 1;
                         true
                     }
@@ -505,7 +68,7 @@ pub fn schedule_meetings(
                         if index > 0 {
                             state[index - 1] += 1;
                         }
-                        solution.pop();
+                        solution.remove(&last_key.pop().unwrap());
                         x -= 1;
 
                         false
@@ -513,7 +76,7 @@ pub fn schedule_meetings(
                 }
             })
         {
-            return Ok(solution.into_iter().collect());
+            return Ok(solution);
         }
 
         if x == 0 {
@@ -524,7 +87,10 @@ pub fn schedule_meetings(
 
 #[cfg(test)]
 mod tests {
+    use crate::input::*;
     use crate::*;
+    use std::collections::HashMap;
+
     #[test]
     fn validates_invalid_input() {
         let mut test_input = Input::new(
