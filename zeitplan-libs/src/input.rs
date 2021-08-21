@@ -125,7 +125,7 @@ impl Input {
                 return;
             }
 
-            let mut available_iter = { master_iter.clone() };
+            let mut available_iter = master_iter.clone();
             let mut blocked_iter = p.blocked_times.iter().peekable();
 
             let mut available_times = Vec::new();
