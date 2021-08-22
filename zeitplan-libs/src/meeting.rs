@@ -4,10 +4,10 @@ use itertools::Itertools;
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct Meeting<'a, N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Copy,
 {
     pub id: &'a str,
     pub participants: Vec<Participant<'a, N>>,
@@ -31,7 +31,7 @@ impl<N> Available<N> for Meeting<'_, N>
 where
     N: Integer + One + Clone + Copy,
 {
-    fn get_availability<'a, 'b>(self, available_times: &'b [TimeRange<N>]) -> Vec<TimeRange<N>> {
+    fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
         if available_times.is_empty() {
             return vec![];
         }

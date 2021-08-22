@@ -2,10 +2,10 @@ use crate::time::{Available, TimeRange};
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct Participant<'a, N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Copy,
 {
     pub id: &'a str,
     pub blocked_times: Vec<TimeRange<N>>,
@@ -24,7 +24,7 @@ impl<N> Available<N> for Participant<'_, N>
 where
     N: Integer + One + Clone + Copy,
 {
-    fn get_availability<'a, 'b>(self, available_times: &'b [TimeRange<N>]) -> Vec<TimeRange<N>> {
+    fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
         if available_times.is_empty() {
             vec![]
         } else if self.blocked_times.is_empty() {
