@@ -138,7 +138,10 @@ where
                 Some(time) => {
                     if TimeRange::new(time.start(), time.end() + <N>::one()) == curr {
                         (
-                            Some(TimeRange::new(time.start().min(curr.start()), time.end().max(curr.end()))),
+                            Some(TimeRange::new(
+                                time.start().min(curr.start()),
+                                time.end().max(curr.end()),
+                            )),
                             acc,
                         )
                     } else {
@@ -170,7 +173,8 @@ where
     N: 'a + Integer + One + Copy + std::iter::Sum,
 {
     fn count_pigeons(&mut self) -> N {
-        self.map(|time| <N>::one() + (time.end() - time.start())).sum()
+        self.map(|time| <N>::one() + (time.end() - time.start()))
+            .sum()
     }
 }
 

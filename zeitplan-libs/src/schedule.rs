@@ -1,5 +1,6 @@
 use crate::meeting::Meeting;
-use crate::time::{Available, Pigeons, TimeRange, Windowed};
+use itertools::Itertools;
+use crate::time::{Available, TimeMerge, Pigeons, TimeRange, Windowed};
 use core::fmt::{Debug, Display};
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
@@ -40,10 +41,7 @@ where
         }
     }
 
-    fn windowed(
-        &self,
-        meetings: HashMap<&'a str, Vec<TimeRange<N>>>,
-    ) -> MeetingSchedule<N> {
+    fn windowed(&self, meetings: HashMap<&'a str, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
         self.meetings
             .iter()
             .filter_map(|meeting| {
@@ -69,12 +67,15 @@ where
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
         let meeting_availability = self.meeting_availability();
 
-        let pigeons: N = meeting_availability
-            .values()
-            .map(|availability| availability.iter().count_pigeons())
-            .sum();
+        let pigeons : N = self.meetings.iter().map(|m| m.duration).sum();
 
-        let pigeon_holes = self.availability.iter().count_pigeons();
+        let pigeon_holes: N = meeting_availability
+            .values()
+            .flat_map(|availability| availability)
+            .sorted_unstable()
+            .time_merge()
+            .iter()
+            .count_pigeons();
 
         if pigeons > pigeon_holes {
             return Err(ValidationError::PigeonholeError {
@@ -87,7 +88,6 @@ where
         meetings.sort_unstable_by_key(|(_id, availability)| availability.len());
         Ok(meetings)
     }
-
 
     pub fn schedule_meetings(
         &self,
@@ -128,6 +128,8 @@ where
                         if index > 0 {
                             state[index - 1] += 1;
                         }
+                        // TODO: This throws an error...
+                        // Can't unwrap.. or something
                         solution.remove(&last_key.pop().unwrap());
                         nth -= 1;
 
