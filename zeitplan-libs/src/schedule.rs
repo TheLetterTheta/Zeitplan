@@ -19,44 +19,45 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Schedule<N>
+pub struct Schedule<'a, N>
 where
     N: Integer + One + Copy,
 {
-    pub meetings: Vec<Meeting<N>>,
+    #[serde(bound(deserialize = "Meeting<'a, N>: Deserialize<'de>"))]
+    pub meetings: Vec<Meeting<'a, N>>,
     pub availability: Vec<TimeRange<N>>,
 }
 
-type MeetingSchedule<N> = Vec<(String, Vec<TimeRange<N>>)>;
+type MeetingSchedule<'a, N> = Vec<(&'a str, Vec<TimeRange<N>>)>;
 
-impl<N> Schedule<N>
+impl<'a, N> Schedule<'a, N>
 where
     N: Display + Debug + Integer + One + Clone + Copy + std::iter::Sum,
 {
-    pub fn new(meetings: Vec<Meeting<N>>, availability: Vec<TimeRange<N>>) -> Schedule<N> {
+    pub fn new(meetings: Vec<Meeting<'a, N>>, availability: Vec<TimeRange<N>>) -> Schedule<'a, N> {
         Schedule {
             meetings,
             availability,
         }
     }
 
-    fn windowed(&self, meetings: HashMap<String, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
+    fn windowed(&self, meetings: HashMap<&str, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
         self.meetings
             .iter()
             .filter_map(|meeting| {
-                meetings.get(&meeting.id).map(|availability| {
-                    (meeting.id.clone(), availability.iter().windowed(meeting.duration))
+                meetings.get(meeting.id).map(|availability| {
+                    (meeting.id, availability.iter().windowed(meeting.duration))
                 })
             })
             .collect()
     }
 
-    fn meeting_availability(&self) -> HashMap<String, Vec<TimeRange<N>>> {
+    fn meeting_availability(&self) -> HashMap<&str, Vec<TimeRange<N>>> {
         self.meetings
             .iter()
             .map(|meeting| {
                 (
-                    meeting.id.clone(),
+                    meeting.id,
                     meeting.clone().get_availability(&self.availability),
                 )
             })
@@ -91,13 +92,13 @@ where
     pub fn schedule_meetings(
         &self,
         count: Option<usize>,
-    ) -> Result<BTreeMap<TimeRange<N>, String>, ValidationError<N>> {
+    ) -> Result<BTreeMap<TimeRange<N>, &str>, ValidationError<N>> {
         let meetings = self.setup()?;
 
         let mut nth: usize = 1;
         let mut count_iter: usize = 0;
         let mut state: Vec<usize> = vec![0; meetings.len()];
-        let mut solution: BTreeMap<TimeRange<N>, String> = BTreeMap::new();
+        let mut solution: BTreeMap<TimeRange<N>, &str> = BTreeMap::new();
         let mut last_key: Vec<TimeRange<N>> = Vec::with_capacity(meetings.len());
 
         loop {
@@ -117,7 +118,7 @@ where
                 {
                     Some((i, time)) => {
                         state[index] = i;
-                        solution.insert(*time, meeting_id.to_string());
+                        solution.insert(*time, meeting_id);
                         last_key.push(*time);
                         nth += 1;
                         true
@@ -127,7 +128,11 @@ where
                         if index > 0 {
                             state[index - 1] += 1;
                         }
-                        solution.remove(&last_key.pop().unwrap());
+
+                        if let Some(last) = last_key.pop() {
+                            solution.remove(&last);
+                        }
+
                         nth -= 1;
 
                         false
