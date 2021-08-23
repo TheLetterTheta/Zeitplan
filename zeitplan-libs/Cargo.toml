@@ -1,8 +1,11 @@
 [package]
 name = "zeitplan_libs"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Nick Dolan <nicholas.dolan1@gmail.com>"]
 edition = "2018"
+description = "A scheduling application for scheduling multiple meetings at the same time"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/TheLetterTheta/Zeitplan"
 
 [lib]
 crate-type = ["cdylib", "rlib"]

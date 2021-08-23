@@ -1,7 +1,7 @@
 use crate::meeting::Meeting;
-use itertools::Itertools;
-use crate::time::{Available, TimeMerge, Pigeons, TimeRange, Windowed};
+use crate::time::{Available, Pigeons, TimeMerge, TimeRange, Windowed};
 use core::fmt::{Debug, Display};
+use itertools::Itertools;
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -19,22 +19,21 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Schedule<'a, N>
+pub struct Schedule<N>
 where
     N: Integer + One + Copy,
 {
-    #[serde(bound(deserialize = "Meeting<'a, N>: Deserialize<'de>"))]
-    pub meetings: Vec<Meeting<'a, N>>,
+    pub meetings: Vec<Meeting<N>>,
     pub availability: Vec<TimeRange<N>>,
 }
 
 type MeetingSchedule<'a, N> = Vec<(&'a str, Vec<TimeRange<N>>)>;
 
-impl<'a, N> Schedule<'a, N>
+impl<N> Schedule<N>
 where
     N: Display + Debug + Integer + One + Clone + Copy + std::iter::Sum,
 {
-    pub fn new(meetings: Vec<Meeting<'a, N>>, availability: Vec<TimeRange<N>>) -> Schedule<'a, N> {
+    pub fn new(meetings: Vec<Meeting<N>>, availability: Vec<TimeRange<N>>) -> Schedule<N> {
         Schedule {
             meetings,
             availability,
@@ -45,8 +44,11 @@ where
         self.meetings
             .iter()
             .filter_map(|meeting| {
-                meetings.get(meeting.id).map(|availability| {
-                    (meeting.id, availability.iter().windowed(meeting.duration))
+                meetings.get(meeting.id.as_str()).map(|availability| {
+                    (
+                        meeting.id.as_ref(),
+                        availability.iter().windowed(meeting.duration),
+                    )
                 })
             })
             .collect()
@@ -57,7 +59,7 @@ where
             .iter()
             .map(|meeting| {
                 (
-                    meeting.id,
+                    meeting.id.as_str(),
                     meeting.clone().get_availability(&self.availability),
                 )
             })
@@ -67,7 +69,7 @@ where
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
         let meeting_availability = self.meeting_availability();
 
-        let pigeons : N = self.meetings.iter().map(|m| m.duration).sum();
+        let pigeons: N = self.meetings.iter().map(|m| m.duration).sum();
 
         let pigeon_holes: N = meeting_availability
             .values()

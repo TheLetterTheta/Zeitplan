@@ -3,24 +3,28 @@ use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Serialize, Deserialize)]
-pub struct Participant<'a, N>
+pub struct Participant<N>
 where
     N: Integer + One + Copy,
 {
-    pub id: &'a str,
+    pub id: String,
+    #[serde(rename = "blockedTimes")]
     pub blocked_times: Vec<TimeRange<N>>,
 }
 
-impl<'a, N> Participant<'a, N>
+impl<N> Participant<N>
 where
     N: Integer + One + Clone + Copy,
 {
     pub fn new(id: &str, blocked_times: Vec<TimeRange<N>>) -> Participant<N> {
-        Participant { id, blocked_times }
+        Participant {
+            id: id.to_string(),
+            blocked_times,
+        }
     }
 }
 
-impl<'a, N> Available<N> for Participant<'a, N>
+impl<N> Available<N> for Participant<N>
 where
     N: Integer + One + Clone + Copy,
 {

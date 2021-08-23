@@ -5,29 +5,29 @@ use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Meeting<'a, N>
+pub struct Meeting<N>
 where
     N: Integer + One + Copy,
 {
-    pub id: &'a str,
-    pub participants: Vec<Participant<'a, N>>,
+    pub id: String,
+    pub participants: Vec<Participant<N>>,
     pub duration: N,
 }
 
-impl<'a, N> Meeting<'a, N>
+impl<N> Meeting<N>
 where
     N: Integer + One + Clone + Copy,
 {
-    pub fn new(id: &'a str, participants: Vec<Participant<'a, N>>, duration: N) -> Meeting<'a, N> {
+    pub fn new<'a>(id: &'a str, participants: Vec<Participant<N>>, duration: N) -> Meeting<N> {
         Meeting {
-            id,
+            id: id.to_string(),
             participants,
             duration,
         }
     }
 }
 
-impl<'a, N> Available<N> for Meeting<'a, N>
+impl<N> Available<N> for Meeting<N>
 where
     N: Integer + One + Clone + Copy,
 {

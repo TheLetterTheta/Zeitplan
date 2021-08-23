@@ -1,20 +1,45 @@
 use wasm_bindgen::prelude::*;
 
-mod meeting;
-mod participant;
-mod schedule;
-mod time;
+pub mod meeting;
+pub mod participant;
+pub mod schedule;
+pub mod time;
 
-/*
-#[wasm_bindgen]                                                                                  ║
-pub fn schedule(value: JsValue) -> Result<JsValue, JsValue> {
+#[wasm_bindgen]
+pub fn schedule(schedule: JsValue) -> Result<JsValue, JsValue> {
     use crate::schedule::Schedule;
 
-    let value: Schedule<u16> = serde_wasm_bindgen::from_value(value)?;
-    Ok(serde_wasm_bindgen::to_value(&value.schedule_meetings(None)).unwrap())
+    let schedule: Schedule<u16> = serde_wasm_bindgen::from_value(schedule)?;
+    Ok(serde_wasm_bindgen::to_value(&schedule.schedule_meetings(None)).unwrap())
 }
-*/
 
+#[wasm_bindgen]
+pub fn get_meeting_availability(
+    meeting: JsValue,
+    available_times: JsValue,
+) -> Result<JsValue, JsValue> {
+    use crate::meeting::Meeting;
+    use crate::time::{Available, TimeRange};
+
+    let meeting: Meeting<u16> = serde_wasm_bindgen::from_value(meeting)?;
+    let available_times: Vec<TimeRange<u16>> = serde_wasm_bindgen::from_value(available_times)?;
+
+    Ok(serde_wasm_bindgen::to_value(&meeting.get_availability(&available_times)).unwrap())
+}
+
+#[wasm_bindgen]
+pub fn get_participant_availability(
+    participant: JsValue,
+    available_times: JsValue,
+) -> Result<JsValue, JsValue> {
+    use crate::participant::Participant;
+    use crate::time::{Available, TimeRange};
+
+    let participant: Participant<u16> = serde_wasm_bindgen::from_value(participant)?;
+    let available_times: Vec<TimeRange<u16>> = serde_wasm_bindgen::from_value(available_times)?;
+
+    Ok(serde_wasm_bindgen::to_value(&participant.get_availability(&available_times)).unwrap())
+}
 
 #[cfg(test)]
 mod tests {
@@ -199,12 +224,16 @@ mod tests {
         let meeting_4 = Meeting::new("4", vec![user_4], 1);
         let meeting_5 = Meeting::new("5", vec![user_5.clone()], 1);
 
-        let available_time = vec![
-            TimeRange::new(0, 5),
-        ];
+        let available_time = vec![TimeRange::new(0, 5)];
 
         let schedule = Schedule::new(
-            vec![meeting_1.clone(), meeting_2.clone(), meeting_3.clone(), meeting_4.clone(), meeting_5.clone()],
+            vec![
+                meeting_1.clone(),
+                meeting_2.clone(),
+                meeting_3.clone(),
+                meeting_4.clone(),
+                meeting_5.clone(),
+            ],
             available_time.clone(),
         );
 
@@ -213,11 +242,12 @@ mod tests {
         let meeting_6 = Meeting::new("6", vec![user_5.clone()], 1);
 
         let schedule = Schedule::new(
-            vec![meeting_1, meeting_2, meeting_3, meeting_4, meeting_5, meeting_6],
+            vec![
+                meeting_1, meeting_2, meeting_3, meeting_4, meeting_5, meeting_6,
+            ],
             available_time,
         );
         assert!(schedule.schedule_meetings(None).is_err());
-
 
         // this will run for a long time since it's impossible, but not detected
         let user_1 = Participant::new("1", vec![TimeRange::new(1, 1000)]);
@@ -238,8 +268,8 @@ mod tests {
                 Meeting::new("6", vec![user_6], 1),
                 Meeting::new("7", vec![user_7], 1),
             ],
-            vec![TimeRange::new(0, 1000)]
-            );
+            vec![TimeRange::new(0, 1000)],
+        );
 
         assert!(schedule.schedule_meetings(None).is_err());
     }
