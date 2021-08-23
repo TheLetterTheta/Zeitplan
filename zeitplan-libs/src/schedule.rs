@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
 use thiserror::Error;
 
-#[derive(Error, Debug, Eq, PartialEq)]
+#[derive(Serialize, Error, Debug, Eq, PartialEq)]
 pub enum ValidationError<N>
 where
     N: Integer + Debug + Display,
@@ -19,18 +19,17 @@ where
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Schedule<'a, N>
+pub struct Schedule<N>
 where
     N: Integer + One + Copy,
 {
-    #[serde(bound(deserialize = "Meeting<'a, N>: Deserialize<'de>"))]
-    pub meetings: Vec<Meeting<'a, N>>,
+    pub meetings: Vec<Meeting<N>>,
     pub availability: Vec<TimeRange<N>>,
 }
 
-type MeetingSchedule<'a, N> = Vec<(&'a str, Vec<TimeRange<N>>)>;
+type MeetingSchedule<N> = Vec<(String, Vec<TimeRange<N>>)>;
 
-impl<'a, N> Schedule<'a, N>
+impl<N> Schedule<N>
 where
     N: Display + Debug + Integer + One + Clone + Copy + std::iter::Sum,
 {
@@ -41,23 +40,23 @@ where
         }
     }
 
-    fn windowed(&self, meetings: HashMap<&'a str, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
+    fn windowed(&self, meetings: HashMap<String, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
         self.meetings
             .iter()
             .filter_map(|meeting| {
-                meetings.get(meeting.id).map(|availability| {
-                    (meeting.id, availability.iter().windowed(meeting.duration))
+                meetings.get(&meeting.id).map(|availability| {
+                    (meeting.id.clone(), availability.iter().windowed(meeting.duration))
                 })
             })
             .collect()
     }
 
-    fn meeting_availability(&self) -> HashMap<&str, Vec<TimeRange<N>>> {
+    fn meeting_availability(&self) -> HashMap<String, Vec<TimeRange<N>>> {
         self.meetings
             .iter()
             .map(|meeting| {
                 (
-                    meeting.id,
+                    meeting.id.clone(),
                     meeting.clone().get_availability(&self.availability),
                 )
             })
@@ -71,7 +70,7 @@ where
 
         let pigeon_holes: N = meeting_availability
             .values()
-            .flat_map(|availability| availability)
+            .flatten()
             .sorted_unstable()
             .time_merge()
             .iter()
@@ -92,18 +91,18 @@ where
     pub fn schedule_meetings(
         &self,
         count: Option<usize>,
-    ) -> Result<BTreeMap<TimeRange<N>, &str>, ValidationError<N>> {
+    ) -> Result<BTreeMap<TimeRange<N>, String>, ValidationError<N>> {
         let meetings = self.setup()?;
 
         let mut nth: usize = 1;
         let mut count_iter: usize = 0;
         let mut state: Vec<usize> = vec![0; meetings.len()];
-        let mut solution: BTreeMap<TimeRange<N>, &str> = BTreeMap::new();
+        let mut solution: BTreeMap<TimeRange<N>, String> = BTreeMap::new();
         let mut last_key: Vec<TimeRange<N>> = Vec::with_capacity(meetings.len());
 
         loop {
             if let Some(limit) = count {
-                if limit > count_iter {
+                if limit == count_iter {
                     return Err(ValidationError::NoSolution);
                 }
                 count_iter += 1;
@@ -114,11 +113,11 @@ where
                     .iter()
                     .enumerate()
                     .skip(state[index])
-                    .find(|(_time_index, time)| solution.contains_key(*time))
+                    .find(|(_time_index, time)| !solution.contains_key(*time))
                 {
                     Some((i, time)) => {
                         state[index] = i;
-                        solution.insert(*time, meeting_id);
+                        solution.insert(*time, meeting_id.to_string());
                         last_key.push(*time);
                         nth += 1;
                         true
@@ -128,8 +127,6 @@ where
                         if index > 0 {
                             state[index - 1] += 1;
                         }
-                        // TODO: This throws an error...
-                        // Can't unwrap.. or something
                         solution.remove(&last_key.pop().unwrap());
                         nth -= 1;
 

@@ -1,7 +1,16 @@
 mod meeting;
+use wasm_bindgen::prelude::*;
 mod participant;
 mod schedule;
 mod time;
+
+#[wasm_bindgen]
+pub fn schedule(value: JsValue) -> Result<JsValue, JsValue> {
+    use crate::schedule::Schedule;
+
+    let value: Schedule<u16> = serde_wasm_bindgen::from_value(value)?;
+    Ok(serde_wasm_bindgen::to_value(&value.schedule_meetings(None)).unwrap())
+}
 
 #[cfg(test)]
 mod tests {
@@ -173,29 +182,36 @@ mod tests {
         use crate::participant::Participant;
         use crate::schedule::Schedule;
         use crate::time::TimeRange;
-        use std::collections::BTreeMap;
 
-        let user_1 = Participant::new(&"1", vec![TimeRange::new(2, 5)]);
-        let user_2 = Participant::new(&"2", vec![TimeRange::new(0, 0), TimeRange::new(2, 5)]);
-        let user_3 = Participant::new(&"3", vec![TimeRange::new(0, 1), TimeRange::new(3, 5)]);
-        let user_4 = Participant::new(&"4", vec![TimeRange::new(0, 2), TimeRange::new(4, 5)]);
-        let user_5 = Participant::new(&"5", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)]);
+        let user_1 = Participant::new("1", vec![TimeRange::new(2, 5)]);
+        let user_2 = Participant::new("2", vec![TimeRange::new(0, 0), TimeRange::new(2, 5)]);
+        let user_3 = Participant::new("3", vec![TimeRange::new(0, 1), TimeRange::new(3, 5)]);
+        let user_4 = Participant::new("4", vec![TimeRange::new(0, 2), TimeRange::new(4, 5)]);
+        let user_5 = Participant::new("5", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)]);
 
-        let meeting_1 = Meeting::new(&"1", vec![user_1], 1);
-        let meeting_2 = Meeting::new(&"2", vec![user_2], 1);
-        let meeting_3 = Meeting::new(&"3", vec![user_3], 1);
-        let meeting_4 = Meeting::new(&"4", vec![user_4], 1);
-        let meeting_5 = Meeting::new(&"5", vec![user_5], 1);
+        let meeting_1 = Meeting::new("1", vec![user_1], 1);
+        let meeting_2 = Meeting::new("2", vec![user_2], 1);
+        let meeting_3 = Meeting::new("3", vec![user_3], 1);
+        let meeting_4 = Meeting::new("4", vec![user_4], 1);
+        let meeting_5 = Meeting::new("5", vec![user_5.clone()], 1);
 
         let available_time = vec![
             TimeRange::new(0, 5),
         ];
 
         let schedule = Schedule::new(
-            vec![meeting_1, meeting_2, meeting_3, meeting_4, meeting_5],
-            available_time,
+            vec![meeting_1.clone(), meeting_2.clone(), meeting_3.clone(), meeting_4.clone(), meeting_5.clone()],
+            available_time.clone(),
         );
 
-        assert_eq!(schedule.schedule_meetings(None), Ok(BTreeMap::new()));
+        assert!(schedule.schedule_meetings(None).is_ok());
+
+        let meeting_6 = Meeting::new("6", vec![user_5], 1);
+
+        let schedule = Schedule::new(
+            vec![meeting_1, meeting_2, meeting_3, meeting_4, meeting_5, meeting_6],
+            available_time,
+        );
+        assert!(schedule.schedule_meetings(None).is_err());
     }
 }
