@@ -1,4 +1,4 @@
-use lambda_runtime::{Error, handler_fn, Context};
+use lambda_runtime::{handler_fn, Context, Error};
 use serde::Deserialize;
 use zeitplan_libs::meeting::Meeting;
 use zeitplan_libs::time::{Available, TimeRange};

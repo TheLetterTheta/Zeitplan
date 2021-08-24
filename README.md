@@ -18,7 +18,7 @@ It comprises of 3 individual steps:
 
 3. Final Calendar
 
-- Denote the times which you would like to schedule the meetings.
+- Indicate the times which you would like to schedule the meetings.
 - Move times around, and see the updates to the meetings in the area above
 - SCHEDULE
 

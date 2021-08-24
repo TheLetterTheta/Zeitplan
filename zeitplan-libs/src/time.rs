@@ -3,6 +3,8 @@ use itertools::Itertools;
 use num::{Integer, One};
 use serde::{Deserialize, Serialize};
 
+/// Inclusive [start, end] time range
+/// <N>: Any integer type
 #[derive(Deserialize, Serialize, Debug, Copy, Clone, Eq)]
 pub struct TimeRange<N>(pub N, pub N)
 where
@@ -12,14 +14,45 @@ impl<N> TimeRange<N>
 where
     N: Integer + One + Copy,
 {
+    /// Construct a new Time Range
+    /// Range is inclusive on [start, end]
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::TimeRange;
+    ///
+    /// let test = TimeRange::new(0, 100);
+    ///
+    /// assert_eq!(test.0, 0);
+    /// assert_eq!(test.1, 100);
+    /// ```
     pub fn new(start: N, end: N) -> TimeRange<N> {
         TimeRange(start, end)
     }
 
+    /// Convenience function for readability
+    /// Returns the start of the TimeRange
+    ///
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::TimeRange;
+    ///
+    /// let test = TimeRange::new(0, 100);
+    /// assert_eq!(test.0, test.start());
+    /// ```
     pub fn start(self) -> N {
         self.0
     }
 
+    /// Convenience function for readability
+    /// Returns the start of the TimeRange
+    ///
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::TimeRange;
+    ///
+    /// let test = TimeRange::new(0, 100);
+    /// assert_eq!(test.1, test.end());
+    /// ```
     pub fn end(self) -> N {
         self.1
     }
@@ -29,6 +62,33 @@ impl<N> Ord for TimeRange<N>
 where
     N: Integer + Copy,
 {
+    /// Custom comparison of TimeRange
+    /// TimeRanges are equivalent if the times overlap
+    /// TimeRanges are less IIF start and end are less
+    /// TimeRanges are greater IIF start and end are greater
+    ///
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::TimeRange;
+    ///
+    /// let a = TimeRange::new(0, 0);
+    /// let b = TimeRange::new(1, 1);
+    ///
+    /// assert!(a < b);
+    ///
+    /// let a = TimeRange::new(0, 1);
+    /// assert_eq!(a, b);
+    ///
+    /// let a = TimeRange::new(0, 2);
+    /// assert_eq!(a, b);
+    ///
+    /// let b = TimeRange::new(2, 2);
+    /// assert_eq!(a, b);
+    ///
+    /// let a = TimeRange::new(2, 2);
+    /// let b = TimeRange::new(1, 1);
+    /// assert!(a > b);
+    /// ```
     fn cmp(&self, other: &Self) -> Ordering {
         match self.start().cmp(&other.start()) {
             Ordering::Less if self.end() < other.start() => Ordering::Less,
@@ -68,6 +128,27 @@ where
     T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy,
 {
+    /// Self is blocked times that cannot be scheduled
+    /// This performs a type of Set Exclusion of available times
+    /// and self. `available_times - self`
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use zeitplan_libs::time::{Available, TimeRange};
+    /// use zeitplan_libs::test_utils::{iter_test, TimeRangeTest};
+    ///
+    /// let blocked_times = vec![ TimeRange::new(1, 1) ];
+    /// let available_times = vec![ TimeRange::new(0, 2) ];
+    ///
+    /// assert_eq!(
+    ///     iter_test(&
+    ///         blocked_times
+    ///             .iter()
+    ///             .get_availability(&available_times)),
+    ///     vec![TimeRangeTest::new(0,0), TimeRangeTest::new(2, 2)]
+    /// );
+    /// ```
     fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
         let blocked_iter = &mut self.sorted_unstable();
 
@@ -129,6 +210,27 @@ where
     T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy,
 {
+    /// Combines overlapping TimeRanges together
+    ///
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::{TimeMerge, TimeRange};
+    /// use zeitplan_libs::test_utils::{iter_test, TimeRangeTest};
+    ///
+    /// let time_merge = vec![
+    ///     TimeRange::new(0,0),
+    ///     TimeRange::new(1,1),
+    ///     TimeRange::new(0,1),
+    ///     TimeRange::new(1, 3),
+    ///     TimeRange::new(2, 4),
+    ///     TimeRange::new(6,6)
+    /// ];
+    ///
+    /// assert_eq!(
+    ///     iter_test(&time_merge.iter().time_merge()),
+    ///     vec![ TimeRangeTest::new(0, 4), TimeRangeTest::new(6,6) ]
+    /// );
+    /// ```
     fn time_merge(self) -> Vec<TimeRange<N>> {
         let size_hint = self.size_hint().1.unwrap_or(0);
         let (last, mut acc) = self.fold(
@@ -172,6 +274,21 @@ where
     T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy + std::iter::Sum,
 {
+    /// You cannot squeeze > N pigeons in <= N holes!
+    /// We can "count" the pigeons of these `TimeRanges`
+    ///
+    /// # Examples
+    /// ```
+    /// use zeitplan_libs::time::{Pigeons, TimeRange};
+    ///
+    /// let times = vec![
+    ///     TimeRange::new(0,9),
+    ///     TimeRange::new(11, 11)
+    /// ];
+    ///
+    /// assert_eq!(times.iter().count_pigeons(), 11);
+    ///
+    /// ```
     fn count_pigeons(&mut self) -> N {
         self.map(|time| <N>::one() + (time.end() - time.start()))
             .sum()
@@ -190,6 +307,33 @@ where
     T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy,
 {
+    /// Splits a `TimeRange` into sections of windowed `TimeRange`s
+    ///
+    /// # Example
+    /// ```
+    /// use zeitplan_libs::time::{Windowed, TimeRange};
+    /// use zeitplan_libs::test_utils::{iter_test, TimeRangeTest};
+    ///
+    /// let times = vec![ TimeRange::new(0, 4) ];
+    ///
+    /// assert_eq!(iter_test(&times.iter().windowed(1)),
+    ///     vec![
+    ///         TimeRangeTest::new(0,0),
+    ///         TimeRangeTest::new(1,1),
+    ///         TimeRangeTest::new(2,2),
+    ///         TimeRangeTest::new(3,3),
+    ///         TimeRangeTest::new(4,4),
+    ///     ]
+    /// );
+    ///
+    /// assert_eq!(iter_test(&times.iter().windowed(3)),
+    ///     vec![
+    ///         TimeRangeTest::new(0,2),
+    ///         TimeRangeTest::new(1,3),
+    ///         TimeRangeTest::new(2,4),
+    ///     ]
+    /// );
+    /// ```
     fn windowed(self, duration: N) -> Vec<TimeRange<N>> {
         let mut windows: Vec<TimeRange<N>> = Vec::with_capacity(self.size_hint().1.unwrap_or(0));
 

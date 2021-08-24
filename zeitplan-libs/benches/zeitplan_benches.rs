@@ -144,6 +144,36 @@ fn schedules(c: &mut Criterion) {
 
     let schedule = Schedule::new(
         vec![
+            Meeting::new("1", vec![user_1.clone()], 1),
+            Meeting::new("2", vec![user_2.clone()], 1),
+            Meeting::new("3", vec![difficult_user.clone()], 1),
+            Meeting::new("4", vec![difficult_user.clone()], 1),
+            Meeting::new("5", vec![difficult_user.clone()], 1),
+            Meeting::new("6", vec![difficult_user.clone()], 1),
+            Meeting::new("7", vec![difficult_user.clone()], 1),
+            Meeting::new("8", vec![difficult_user.clone()], 1),
+            Meeting::new("9", vec![difficult_user.clone()], 1),
+            Meeting::new("10", vec![difficult_user.clone()], 1),
+            Meeting::new("11", vec![difficult_user.clone()], 1),
+            Meeting::new("12", vec![difficult_user.clone()], 1),
+            Meeting::new("13", vec![difficult_user.clone()], 1),
+            Meeting::new("14", vec![difficult_user.clone()], 1),
+            Meeting::new("15", vec![difficult_user.clone()], 1),
+            Meeting::new("16", vec![difficult_user.clone()], 1),
+            Meeting::new("17", vec![difficult_user.clone()], 1),
+            Meeting::new("18", vec![difficult_user.clone()], 1),
+            Meeting::new("19", vec![difficult_user.clone()], 1),
+            Meeting::new("20", vec![difficult_user.clone()], 1),
+        ],
+        vec![TimeRange::new(0, 1000)],
+    );
+
+    c.bench_function("schedules_impossible_hard", |b| {
+        b.iter(|| black_box(schedule.schedule_meetings(None)));
+    });
+
+    let schedule = Schedule::new(
+        vec![
             Meeting::new("1", vec![user_1], 1),
             Meeting::new("2", vec![user_2], 1),
             Meeting::new("3", vec![difficult_user.clone()], 1),
@@ -155,11 +185,20 @@ fn schedules(c: &mut Criterion) {
             Meeting::new("9", vec![difficult_user.clone()], 1),
             Meeting::new("10", vec![difficult_user.clone()], 1),
             Meeting::new("11", vec![difficult_user.clone()], 1),
+            Meeting::new("12", vec![difficult_user.clone()], 1),
+            Meeting::new("13", vec![difficult_user.clone()], 1),
+            Meeting::new("14", vec![difficult_user.clone()], 1),
+            Meeting::new("15", vec![difficult_user.clone()], 1),
+            Meeting::new("16", vec![difficult_user.clone()], 1),
+            Meeting::new("17", vec![difficult_user.clone()], 1),
+            Meeting::new("18", vec![difficult_user.clone()], 1),
+            Meeting::new("19", vec![difficult_user.clone()], 1),
+            Meeting::new("20", vec![difficult_user.clone()], 1),
         ],
-        vec![TimeRange::new(0, 1000)],
+        vec![TimeRange::new(0, 1001)],
     );
 
-    c.bench_function("schedules_impossible_hard", |b| {
+    c.bench_function("schedules_possible_hard", |b| {
         b.iter(|| black_box(schedule.schedule_meetings(None)));
     });
 }
@@ -172,5 +211,6 @@ criterion_group!(
     get_participant_avaiability,
     merge_times,
     pigeon_count,
+    windows,
     get_meeting_availability
 );

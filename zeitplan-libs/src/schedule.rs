@@ -27,31 +27,18 @@ where
     pub availability: Vec<TimeRange<N>>,
 }
 
-type MeetingSchedule<'a, N> = Vec<(&'a str, Vec<TimeRange<N>>)>;
+type MeetingSchedule<'a, N> = Vec<(String, N, Vec<TimeRange<N>>)>;
 
 impl<N> Schedule<N>
 where
-    N: Display + Debug + Integer + One + Clone + Copy + std::iter::Sum,
+    N: Display + Debug + Integer + One + Clone + Copy + std::iter::Sum + std::ops::AddAssign,
 {
+    /// Constucts a new Schedule to be scheduled
     pub fn new(meetings: Vec<Meeting<N>>, availability: Vec<TimeRange<N>>) -> Schedule<N> {
         Schedule {
             meetings,
             availability,
         }
-    }
-
-    fn windowed(&self, meetings: HashMap<&str, Vec<TimeRange<N>>>) -> MeetingSchedule<N> {
-        self.meetings
-            .iter()
-            .filter_map(|meeting| {
-                meetings.get(meeting.id.as_str()).map(|availability| {
-                    (
-                        meeting.id.as_ref(),
-                        availability.iter().windowed(meeting.duration),
-                    )
-                })
-            })
-            .collect()
     }
 
     fn meeting_availability(&self) -> HashMap<&str, Vec<TimeRange<N>>> {
@@ -86,22 +73,48 @@ where
             });
         }
 
-        let mut meetings = self.windowed(meeting_availability);
-        meetings.sort_unstable_by_key(|(_id, availability)| availability.len());
-        Ok(meetings)
+        let result = self
+            .meetings
+            .iter()
+            .filter_map(move |meeting| {
+                meeting_availability
+                    .get(meeting.id.as_str())
+                    .map(|availability| {
+                        (meeting.id.clone(), meeting.duration, availability.clone())
+                    })
+            })
+            .collect();
+        Ok(result)
     }
 
+    /// Schedules the meetings within self.
+    /// The `count` parameter indicates how many solutions to check before giving up.
+    /// A `None` value will search all of the possible configurations for a solution.
+    ///
+    /// # Errors
+    /// It is possible to check *some* impossible configurations beforehand. In this
+    /// case, a `ValidationError::PigeonholeError { pigeons, pigeon_holes }` will be
+    /// returned. This means that we are trying to schedule meetings with less available
+    /// times than meetings to be scheduled.
+    ///
+    /// Otherwise, we iterate for the duration of `count` (or limitless if `None`). If
+    /// no solution is found, we return a `ValidationError::NoSolution` error. We currently
+    /// make no distinction if `count` was reached, or if all solutions were checked before
+    /// the solution was not reached.
     pub fn schedule_meetings(
         &self,
         count: Option<usize>,
-    ) -> Result<BTreeMap<TimeRange<N>, &str>, ValidationError<N>> {
+    ) -> Result<BTreeMap<TimeRange<N>, String>, ValidationError<N>> {
         let meetings = self.setup()?;
+        let meetings = meetings.into_iter().map(|(id, duration, availability)| {
+            (id, duration, availability.iter().windowed(duration))
+        });
 
         let mut nth: usize = 1;
         let mut count_iter: usize = 0;
-        let mut state: Vec<usize> = vec![0; meetings.len()];
-        let mut solution: BTreeMap<TimeRange<N>, &str> = BTreeMap::new();
-        let mut last_key: Vec<TimeRange<N>> = Vec::with_capacity(meetings.len());
+        let mut state: Vec<usize> = vec![0; self.meetings.len()];
+        let mut solution: BTreeMap<TimeRange<N>, String> = BTreeMap::new();
+        let mut last_key: Vec<TimeRange<N>> = Vec::with_capacity(self.meetings.len());
 
         loop {
             if let Some(limit) = count {
@@ -111,8 +124,8 @@ where
                 count_iter += 1;
             }
 
-            if meetings.iter().enumerate().skip(nth - 1).all(
-                |(index, (meeting_id, meeting_times))| match meeting_times
+            if meetings.clone().enumerate().skip(nth - 1).all(
+                |(index, (meeting_id, _, meeting_times))| match meeting_times
                     .iter()
                     .enumerate()
                     .skip(state[index])
