@@ -18,7 +18,7 @@ where
     NoSolution,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct Schedule<N>
 where
     N: Integer + One + Copy,

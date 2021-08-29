@@ -1,8 +1,8 @@
 use crate::time::{Available, TimeRange};
 use num::{Integer, One};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Deserialize)]
 pub struct Participant<N>
 where
     N: Integer + One + Copy,

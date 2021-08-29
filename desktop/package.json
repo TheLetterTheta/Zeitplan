@@ -1,0 +1,39 @@
+{
+  "name": "zeitplan",
+  "version": "1.1.0",
+  "description": "Zeitplan student lesson scheduler",
+  "contributors": [
+    "Nicholas Dolan <nicholas.dolan1@gmail.com>"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheLetterTheta/Zeitplan.git"
+  },
+  "alias": {
+    "@": "node_modules/"
+  },
+  "license": "GPL-3.0-or-later",
+  "scripts": {
+    "dev": "elm-spa watch & parcel public/index.html",
+    "build": "elm-spa gen && parcel build public/index.html",
+    "tauri": "tauri"
+  },
+  "devDependencies": {
+    "@parcel/transformer-elm": "2.0.0-rc.0",
+    "@parcel/transformer-image": "2.0.0-rc.0",
+    "@parcel/transformer-sass": "2.0.0-rc.0",
+    "@tauri-apps/cli": "^1.0.0-beta.10",
+    "cssnano": "^5.0.8",
+    "elm": "^0.19.1-5",
+    "elm-hot": "^1.1.6",
+    "node-elm-compiler": "^5.0.6",
+    "postcss": "^8.2.15",
+    "sass": "^1.38.1"
+  },
+  "dependencies": {
+    "@fortawesome/fontawesome-free": "^5.15.4",
+    "@tauri-apps/api": "^1.0.0-beta.8",
+    "bulma": "^0.9.3",
+    "parcel": "^2.0.0-rc.0"
+  }
+}

@@ -2,9 +2,9 @@ use crate::participant::Participant;
 use crate::time::{Available, TimeMerge, TimeRange};
 use itertools::Itertools;
 use num::{Integer, One};
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Deserialize, Clone)]
 pub struct Meeting<N>
 where
     N: Integer + One + Copy,
