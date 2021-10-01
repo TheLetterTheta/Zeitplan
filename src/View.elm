@@ -1,4 +1,4 @@
-module View exposing (View, button, container, content, footer, linkToElement, map, none, placeholder, toBrowserDocument, zeitplanNav)
+module View exposing (NavMsg(..), View, button, container, content, footer, linkToElement, map, none, placeholder, toBrowserDocument, zeitplanNav)
 
 import Browser
 import FontAwesome.Brands exposing (facebook, github)
@@ -104,13 +104,16 @@ footer =
         ]
 
 
+type NavMsg
+    = ToggleHamburger
+    | Logout
+
+
 zeitplanNav :
     { logo : String
     , shared : Shared.Model
-    , toggleHamburger : msg
-    , logout : msg
     }
-    -> Html msg
+    -> Html NavMsg
 zeitplanNav settings =
     nav
         [ class "navbar is-primary"
@@ -126,7 +129,7 @@ zeitplanNav settings =
                 , classList <|
                     [ ( "is-active", settings.shared.expandHamburger ) ]
                 , ariaLabel "menu"
-                , onClick settings.toggleHamburger
+                , onClick ToggleHamburger
                 ]
                 [ span [ ariaHidden True ] []
                 , span [ ariaHidden True ] []
@@ -150,7 +153,7 @@ zeitplanNav settings =
                 [ div [ class "navbar-item" ]
                     [ button
                         [ class "is-primary"
-                        , onClick settings.logout
+                        , onClick Logout
                         ]
                         [ text "Logout"
                         ]
