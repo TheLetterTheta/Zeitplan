@@ -7,9 +7,11 @@ module Shared exposing
     , update
     )
 
+import Browser.Dom exposing (getElement, setViewport)
 import Json.Decode as Json
 import Json.Decode.Pipeline exposing (required)
 import Request exposing (Request)
+import Task
 
 
 type alias DecodedFlags =
@@ -35,7 +37,16 @@ type alias Model =
 
 type Msg
     = ToggleNavbarHamburger
+    | ScrollToElement String
+    | NoOp
     | Logout
+
+
+scrollToElement : msg -> String -> Cmd msg
+scrollToElement msg id =
+    getElement id
+        |> Task.andThen (\element -> setViewport element.element.x element.element.y)
+        |> Task.attempt (\_ -> msg)
 
 
 init : Request -> Flags -> ( Model, Cmd Msg )
@@ -57,6 +68,12 @@ update _ msg model =
     case msg of
         ToggleNavbarHamburger ->
             ( { model | expandHamburger = not model.expandHamburger }, Cmd.none )
+
+        ScrollToElement scroll ->
+            ( model, scrollToElement NoOp scroll )
+
+        NoOp ->
+            ( model, Cmd.none )
 
         Logout ->
             ( { model | user = Nothing }, Cmd.none )

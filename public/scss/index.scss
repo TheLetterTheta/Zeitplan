@@ -1,5 +1,7 @@
 @import "node_modules/bulma/sass/base/_all.sass";
+@import "node_modules/bulma/sass/components/level";
 @import "node_modules/bulma/sass/components/navbar";
+@import "node_modules/bulma/sass/components/tabs";
 @import "node_modules/bulma/sass/elements/box";
 @import "node_modules/bulma/sass/elements/button";
 @import "node_modules/bulma/sass/elements/container";
@@ -15,11 +17,10 @@
 @import "node_modules/bulma/sass/helpers/typography";
 @import "node_modules/bulma/sass/helpers/visibility";
 @import "node_modules/bulma/sass/layout/footer";
+@import "node_modules/bulma/sass/layout/hero";
 @import "node_modules/bulma/sass/layout/section";
 @import "node_modules/bulma/sass/utilities/_all";
 @import "node_modules/bulma/sass/utilities/initial-variables";
-@import "node_modules/bulma/sass/layout/hero";
-@import "node_modules/bulma/sass/components/level";
 
 @import "../../node_modules/@fortawesome/fontawesome-free/css/svg-with-js.min.css";
 
@@ -32,4 +33,8 @@ body, html {
     width: 100%;
     padding: 0;
     margin: 0;
+}
+
+* {
+    scroll-behavior: smooth;
 }

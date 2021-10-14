@@ -5,10 +5,12 @@ import Gen.Params.Home_ exposing (Params)
 import Gen.Route as Route
 import Html exposing (a, blockquote, code, div, h1, h2, h5, i, p, strong, text)
 import Html.Attributes exposing (class, href, id, style)
+import Html.Events exposing (onClick)
 import Page
 import Request
 import Shared
-import View exposing (View, container, content, footer, linkToElement, zeitplanNav)
+import Url.Builder exposing (Root(..), custom, string)
+import View exposing (View, container, content, footer, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
@@ -40,6 +42,7 @@ init =
 
 type Msg
     = SharedMsg Shared.Msg
+    | NoOp
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -48,13 +51,16 @@ update msg model =
         SharedMsg sharedMsg ->
             ( model, Effect.fromShared sharedMsg )
 
+        NoOp ->
+            ( model, Effect.none )
+
 
 
 -- SUBSCRIPTIONS
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.none
 
 
@@ -63,7 +69,7 @@ subscriptions model =
 
 
 view : Shared.Model -> Model -> View Msg
-view shared model =
+view shared _ =
     { title = "Zeitplan - About"
     , body =
         [ zeitplanNav
@@ -90,7 +96,10 @@ view shared model =
         , div [ class "section" ]
             [ container []
                 [ content []
-                    [ linkToElement "whats-a-zeitplan"
+                    [ a
+                        [ onClick (SharedMsg <| Shared.ScrollToElement "whats-a-zeitplan")
+                        , href <| custom Relative [] [] (Just "whats-a-zeitplan")
+                        ]
                         [ h5 [ id "whats-a-zeitplan", class "is-size-5" ] [ text "What's a \"Zeitplan\"? " ]
                         ]
                     , p []
@@ -109,7 +118,10 @@ view shared model =
                         for a more permanent name, but it eventually stuck. And so, the project is named Zeitplan to this day!
                         """
                         ]
-                    , linkToElement "what-does-it-do"
+                    , a
+                        [ onClick (SharedMsg <| Shared.ScrollToElement "what-does-it-do")
+                        , href <| custom Relative [] [] (Just "what-does-it-do")
+                        ]
                         [ h5 [ id "what-does-it-do", class "is-size-5" ] [ text "What does it do?" ] ]
                     , p []
                         [ text "Mr. Drescher's original dilema was this:"
@@ -161,7 +173,10 @@ view shared model =
                         """ ]
                         , p [] [ text "- Victor Drescher" ]
                         ]
-                    , linkToElement "faq"
+                    , a
+                        [ onClick (SharedMsg <| Shared.ScrollToElement "faq")
+                        , href <| custom Relative [] [] (Just "faq")
+                        ]
                         [ h5 [ id "faq", class "is-size-5" ] [ text "Frequently Asked Questions" ] ]
                     , p []
                         [ strong [] [ text "How many meetings can I schedule?" ] ]

@@ -1,4 +1,4 @@
-module View exposing (NavMsg(..), View, button, container, content, footer, linkToElement, map, none, placeholder, toBrowserDocument, zeitplanNav)
+module View exposing (NavMsg(..), View, button, container, content, footer, map, none, placeholder, role, toBrowserDocument, zeitplanNav)
 
 import Browser
 import FontAwesome.Brands exposing (facebook, github)
@@ -9,6 +9,8 @@ import Html exposing (Attribute, Html, a, div, i, img, nav, p, span, strong, tex
 import Html.Attributes exposing (attribute, class, classList, height, href, src, target, width)
 import Html.Events exposing (onClick)
 import Shared
+import Task exposing (Task)
+import Url.Builder as Url
 
 
 role : String -> Attribute msg
@@ -64,20 +66,27 @@ footer =
             , div [ class "columns" ]
                 [ div [ class "column" ]
                     [ p [ class "subtitle" ]
-                        [ text "If you found Zeitplan useful"
-                        , div [ class "mt-3 is-flex is-justify-content-space-around" ]
-                            [ a [ class "button", target "_blank", href "https://github.com/sponsors/TheLetterTheta" ]
-                                [ span [ class "icon" ]
-                                    [ Icon.viewIcon heart
-                                    ]
-                                , span [] [ text "Sponsoring the project" ]
+                        [ text "If you found Zeitplan useful" ]
+                    , div [ class "mt-3 is-flex is-justify-content-space-around" ]
+                        [ a
+                            [ class "button"
+                            , href <| Url.crossOrigin "https://github.com" [ "sponsors", "TheLetterTheta" ] []
+                            , target "_blank"
+                            ]
+                            [ span [ class "icon" ]
+                                [ Icon.viewIcon heart
                                 ]
-                            , a [ class "button", href "https://github.com/TheLetterTheta/Zeitplan", target "_blank" ]
-                                [ span [ class "icon" ]
-                                    [ Icon.viewIcon github
-                                    ]
-                                , span [] [ text "Suggest an edit" ]
+                            , span [] [ text "Sponsor the project" ]
+                            ]
+                        , a
+                            [ class "button"
+                            , href <| Url.crossOrigin "https://github.com" [ "TheLetterTheta", "Zeitplan" ] []
+                            , target "_blank"
+                            ]
+                            [ span [ class "icon" ]
+                                [ Icon.viewIcon github
                                 ]
+                            , span [] [ text "Suggest an edit" ]
                             ]
                         ]
                     ]
@@ -85,13 +94,21 @@ footer =
                     [ p [ class "subtitle" ]
                         [ text "You can also support Drescher Music by visiting" ]
                     , div [ class "mt-3 is-flex is-justify-content-space-around" ]
-                        [ a [ class "button", target "_blank", href "https://www.facebook.com/DrescherMusic" ]
+                        [ a
+                            [ class "button"
+                            , href <| Url.crossOrigin "https://www.facebook.com" [ "DrescherMusic" ] []
+                            , target "_blank"
+                            ]
                             [ span [ class "icon" ]
                                 [ Icon.viewIcon facebook
                                 ]
                             , span [] [ text "Facebook" ]
                             ]
-                        , a [ class "button", href "https://dreschermusic.com", target "_blank" ]
+                        , a
+                            [ class "button"
+                            , href <| Url.crossOrigin "https://dreschermusic.com" [] []
+                            , target "_blank"
+                            ]
                             [ span [ class "icon" ]
                                 [ Icon.viewIcon music
                                 ]
@@ -161,12 +178,6 @@ zeitplanNav settings =
                 ]
             ]
         ]
-
-
-linkToElement : String -> List (Html msg) -> Html msg
-linkToElement linkId children =
-    a [ href <| "#" ++ linkId ]
-        children
 
 
 type alias View msg =
