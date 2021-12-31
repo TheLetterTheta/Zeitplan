@@ -1,16 +1,20 @@
-use lambda_runtime::{handler_fn, Context, Error};
+use lambda_runtime::{handler_fn, Context};
 use std::collections::BTreeMap;
 use std::env;
 use zeitplan_libs::schedule::Schedule;
 use zeitplan_libs::time::TimeRange;
 
-fn main() -> Result<(), Error> {
-    handler_fn(schedule_meetings);
+type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
+#[tokio::main]
+async fn main() -> Result<(), Error> {
+    let func = handler_fn(schedule_meetings);
+
+    lambda_runtime::run(func).await?;
     Ok(())
 }
 
-fn schedule_meetings(
+async fn schedule_meetings(
     input: Schedule<u16>,
     _: Context,
 ) -> Result<BTreeMap<TimeRange<u16>, String>, Error> {

@@ -1,4 +1,6 @@
 @import "node_modules/bulma/sass/base/_all.sass";
+@import "node_modules/bulma/sass/utilities/_all";
+@import "node_modules/bulma/sass/utilities/initial-variables";
 @import "node_modules/bulma/sass/components/level";
 @import "node_modules/bulma/sass/components/navbar";
 @import "node_modules/bulma/sass/components/tabs";
@@ -19,8 +21,7 @@
 @import "node_modules/bulma/sass/layout/footer";
 @import "node_modules/bulma/sass/layout/hero";
 @import "node_modules/bulma/sass/layout/section";
-@import "node_modules/bulma/sass/utilities/_all";
-@import "node_modules/bulma/sass/utilities/initial-variables";
+@import "node_modules/bulma-pricingtable/src/sass";
 
 @import "../../node_modules/@fortawesome/fontawesome-free/css/svg-with-js.min.css";
 
@@ -37,4 +38,11 @@ body, html {
 
 * {
     scroll-behavior: smooth;
+}
+
+.wrap-text {
+    max-width: 200px;
+    margin-left: auto;
+    margin-right: auto;
+    word-wrap: break-word;
 }

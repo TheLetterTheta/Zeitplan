@@ -6,6 +6,7 @@ import ElmSpa.Page
 import Gen.Params.About
 import Gen.Params.Home_
 import Gen.Params.Login
+import Gen.Params.Pricing
 import Gen.Params.NotFound
 import Gen.Model as Model
 import Gen.Msg as Msg
@@ -14,6 +15,7 @@ import Page exposing (Page)
 import Pages.About
 import Pages.Home_
 import Pages.Login
+import Pages.Pricing
 import Pages.NotFound
 import Request exposing (Request)
 import Shared
@@ -42,6 +44,9 @@ init route =
         Route.Login ->
             pages.login.init ()
     
+        Route.Pricing ->
+            pages.pricing.init ()
+    
         Route.NotFound ->
             pages.notFound.init ()
 
@@ -54,6 +59,9 @@ update msg_ model_ =
     
         ( Msg.Home_ msg, Model.Home_ params model ) ->
             pages.home_.update params msg model
+    
+        ( Msg.Pricing msg, Model.Pricing params model ) ->
+            pages.pricing.update params msg model
 
         _ ->
             \_ _ _ -> ( model_, Effect.none )
@@ -74,6 +82,9 @@ view model_ =
         Model.Login params ->
             pages.login.view params ()
     
+        Model.Pricing params model ->
+            pages.pricing.view params model
+    
         Model.NotFound params ->
             pages.notFound.view params ()
 
@@ -93,6 +104,9 @@ subscriptions model_ =
         Model.Login params ->
             pages.login.subscriptions params ()
     
+        Model.Pricing params model ->
+            pages.pricing.subscriptions params model
+    
         Model.NotFound params ->
             pages.notFound.subscriptions params ()
 
@@ -105,12 +119,14 @@ pages :
     { about : Bundle Gen.Params.About.Params Pages.About.Model Pages.About.Msg
     , home_ : Bundle Gen.Params.Home_.Params Pages.Home_.Model Pages.Home_.Msg
     , login : Static Gen.Params.Login.Params
+    , pricing : Bundle Gen.Params.Pricing.Params Pages.Pricing.Model Pages.Pricing.Msg
     , notFound : Static Gen.Params.NotFound.Params
     }
 pages =
     { about = bundle Pages.About.page Model.About Msg.About
     , home_ = bundle Pages.Home_.page Model.Home_ Msg.Home_
     , login = static Pages.Login.view Model.Login
+    , pricing = bundle Pages.Pricing.page Model.Pricing Msg.Pricing
     , notFound = static Pages.NotFound.view Model.NotFound
     }
 

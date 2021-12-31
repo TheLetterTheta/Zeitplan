@@ -1,17 +1,17 @@
 {
-  "projectName": "zeitplan",
-  "version": "3.0",
+  "providers": [
+    "awscloudformation"
+  ],
+  "projectName": "Zeitplan",
+  "version": "3.1",
   "frontend": "javascript",
   "javascript": {
     "framework": "none",
     "config": {
       "SourceDir": "src",
       "DistributionDir": "dist",
-      "BuildCommand": "yarn prod",
-      "StartCommand": "yarn dev"
+      "BuildCommand": "yarn run build",
+      "StartCommand": "yarn run dev"
     }
-  },
-  "providers": [
-    "awscloudformation"
-  ]
+  }
 }

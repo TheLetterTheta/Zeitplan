@@ -28,12 +28,14 @@
     "elm-hot": "^1.1.6",
     "node-elm-compiler": "^5.0.6",
     "postcss": "^8.2.15",
-    "sass": "^1.38.1"
+    "sass": "^1.38.1",
+    "sharp": "^0.29.1"
   },
   "dependencies": {
     "@fortawesome/fontawesome-free": "^5.15.4",
     "@tauri-apps/api": "^1.0.0-beta.8",
     "bulma": "^0.9.3",
+    "bulma-pricingtable": "^0.2.0",
     "parcel": "^2.0.0-rc.0"
   }
 }

@@ -7,6 +7,7 @@ module Gen.Route exposing
 import Gen.Params.About
 import Gen.Params.Home_
 import Gen.Params.Login
+import Gen.Params.Pricing
 import Gen.Params.NotFound
 import Url exposing (Url)
 import Url.Parser as Parser exposing ((</>), Parser)
@@ -16,6 +17,7 @@ type Route
     = About
     | Home_
     | Login
+    | Pricing
     | NotFound
 
 
@@ -29,6 +31,7 @@ routes =
     [ Parser.map Home_ Gen.Params.Home_.parser
     , Parser.map About Gen.Params.About.parser
     , Parser.map Login Gen.Params.Login.parser
+    , Parser.map Pricing Gen.Params.Pricing.parser
     , Parser.map NotFound Gen.Params.NotFound.parser
     ]
 
@@ -49,6 +52,9 @@ toHref route =
     
         Login ->
             joinAsHref [ "login" ]
+    
+        Pricing ->
+            joinAsHref [ "pricing" ]
     
         NotFound ->
             joinAsHref [ "not-found" ]

@@ -165,15 +165,26 @@ zeitplanNav settings =
                 , a
                     [ class "navbar-item is-size-4", href (Route.toHref Route.About) ]
                     [ text "About" ]
+                , a
+                    [ class "navbar-item is-size-4", href (Route.toHref Route.Pricing) ]
+                    [ text "Pricing" ]
                 ]
             , div [ class "navbar-end" ]
                 [ div [ class "navbar-item" ]
-                    [ button
-                        [ class "is-primary"
-                        , onClick Logout
-                        ]
-                        [ text "Logout"
-                        ]
+                    [ case settings.shared.user of
+                        Just _ -> 
+                            button
+                            [ class "is-primary"
+                            , onClick Logout
+                            ]
+                            [ text "Logout"
+                            ]
+                        Nothing ->
+                            button
+                            [ class "is-primary"
+                            ]
+                            [ text "Log In"
+                            ]
                     ]
                 ]
             ]

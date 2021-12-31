@@ -9,5 +9,7 @@ edition = "2018"
 [dependencies]
 lambda_runtime = "0.4"
 serde = { version = "1.0", features = ["derive"]}
+tokio = {version = "1.15" , features = ["full"]}
+log = "0.4"
 
 zeitplan_libs = { path = "../zeitplan-libs"}
