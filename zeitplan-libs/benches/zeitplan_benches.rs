@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, BenchmarkId};
 use zeitplan_libs::meeting::Meeting;
 use zeitplan_libs::participant::Participant;
 use zeitplan_libs::schedule::Schedule;
@@ -44,10 +44,13 @@ fn merge_times(c: &mut Criterion) {
 }
 
 fn pigeon_count(c: &mut Criterion) {
-    let pigeon_set = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
+    let pigeon_set: Vec<TimeRange<u8>> = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
 
-    c.bench_function("pigeon_count", |b| {
-        b.iter(|| black_box(pigeon_set.iter().count_pigeons()));
+    c.bench_with_input(
+        BenchmarkId::new("pigeon_count", "vec![TimeRange]"),
+        &pigeon_set,
+        |b, pigeons| {
+        b.iter(|| black_box(pigeons.iter().count_pigeons()));
     });
 }
 

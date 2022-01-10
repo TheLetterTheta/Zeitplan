@@ -1,11 +1,13 @@
 use crate::time::{Available, TimeRange};
-use num::{Integer, One};
+use log::{debug, info, trace};
+use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::Deserialize;
+use std::fmt::{Debug, Display};
 
-#[derive(Clone, Deserialize)]
+#[derive(Clone, Deserialize, Debug)]
 pub struct Participant<N>
 where
-    N: Integer + One + Copy,
+    N: Integer + One + Copy + Display + Debug,
 {
     pub id: String,
     #[serde(rename = "blockedTimes")]
@@ -14,7 +16,7 @@ where
 
 impl<N> Participant<N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Clone + Copy + Display + Debug,
 {
     /// Constructs a new Participant with the specified block_times.
     /// This indicates times when this participant *cannot* meet.
@@ -28,7 +30,7 @@ where
 
 impl<N> Available<N> for Participant<N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Clone + Copy + CheckedAdd + CheckedSub + Display + Debug,
 {
     /// Gets the availability for this participant within the provided
     /// `available_times`.

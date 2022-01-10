@@ -52,46 +52,8 @@ pub fn get_participant_availability(
     Ok(serde_wasm_bindgen::to_value(&participant.get_availability(&available_times)).unwrap())
 }
 
-/// Test utilities since TimeRange equality is pretty fuzzy
-pub mod test_utils {
-    use crate::time::TimeRange;
-    use num::{Integer, One};
-
-    #[derive(Eq, PartialEq, Debug)]
-    pub struct TimeRangeTest<N>(N, N)
-    where
-        N: Integer + One + Copy;
-
-    impl<N> TimeRangeTest<N>
-    where
-        N: Integer + One + Copy,
-    {
-        pub fn new(start: N, end: N) -> TimeRangeTest<N> {
-            TimeRangeTest(start, end)
-        }
-    }
-
-    impl<N> From<&TimeRange<N>> for TimeRangeTest<N>
-    where
-        N: Integer + One + Copy,
-    {
-        fn from(time_range: &TimeRange<N>) -> TimeRangeTest<N> {
-            TimeRangeTest(time_range.0, time_range.1)
-        }
-    }
-
-    pub fn iter_test<N>(times: &[TimeRange<N>]) -> Vec<TimeRangeTest<N>>
-    where
-        N: Integer + One + Copy,
-    {
-        times.iter().map(TimeRangeTest::from).collect()
-    }
-}
-
 #[cfg(test)]
 mod tests {
-
-    use crate::test_utils::{iter_test, TimeRangeTest};
 
     #[test]
     fn gets_participant_availability() {
@@ -113,13 +75,13 @@ mod tests {
         ];
 
         assert_eq!(
-            iter_test(&participant.get_availability(&available_time)),
+            participant.get_availability(&available_time),
             vec![
-                TimeRangeTest::new(0, 0),
-                TimeRangeTest::new(3, 3),
-                TimeRangeTest::new(5, 9),
-                TimeRangeTest::new(23, 23),
-                TimeRangeTest::new(32, 35),
+                TimeRange::new(0, 0),
+                TimeRange::new(3, 3),
+                TimeRange::new(5, 9),
+                TimeRange::new(23, 23),
+                TimeRange::new(32, 35),
             ]
         );
     }
@@ -128,7 +90,7 @@ mod tests {
     fn merge_times() {
         use crate::time::{TimeMerge, TimeRange};
 
-        let unmerged_times = vec![
+        let unmerged_times: Vec<TimeRange<u8>> = vec![
             TimeRange::new(1, 1),
             TimeRange::new(2, 2),
             TimeRange::new(2, 9),
@@ -137,8 +99,12 @@ mod tests {
         ];
 
         assert_eq!(
-            iter_test(&unmerged_times.iter().time_merge()),
-            vec![TimeRangeTest::new(1, 9), TimeRangeTest::new(11, 11)]
+            unmerged_times
+                .iter()
+                .time_merge()
+                .into_iter()
+                .collect::<Vec<_>>(),
+            vec![TimeRange::new(1, 9), TimeRange::new(11, 11)]
         );
     }
 
@@ -146,7 +112,7 @@ mod tests {
     fn pigeon_count() {
         use crate::time::{Pigeons, TimeRange};
 
-        let pigeon_set = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
+        let pigeon_set: Vec<TimeRange<u8>> = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
 
         assert_eq!(pigeon_set.iter().count_pigeons(), 10);
     }
@@ -157,7 +123,7 @@ mod tests {
         use crate::participant::Participant;
         use crate::time::{Available, TimeRange};
 
-        let blocked_times_1 = vec![
+        let blocked_times_1: Vec<TimeRange<u8>> = vec![
             TimeRange::new(1, 2),
             TimeRange::new(22, 22),
             TimeRange::new(4, 4),
@@ -179,8 +145,8 @@ mod tests {
         ];
 
         assert_eq!(
-            iter_test(&meeting.get_availability(&available_time)),
-            vec![TimeRangeTest::new(5, 9), TimeRangeTest::new(32, 35)]
+            meeting.get_availability(&available_time),
+            vec![TimeRange::new(5, 9), TimeRange::new(32, 35)]
         );
     }
 
@@ -188,68 +154,68 @@ mod tests {
     fn windows() {
         use crate::time::{TimeRange, Windowed};
 
-        let available_time = vec![
+        let available_time: Vec<TimeRange<u8>> = vec![
             TimeRange::new(0, 6),
             TimeRange::new(22, 24),
             TimeRange::new(30, 33),
         ];
 
         assert_eq!(
-            iter_test(&available_time.iter().windowed(1)),
+            available_time.iter().windowed(1),
             vec![
-                TimeRangeTest::new(0, 0),
-                TimeRangeTest::new(1, 1),
-                TimeRangeTest::new(2, 2),
-                TimeRangeTest::new(3, 3),
-                TimeRangeTest::new(4, 4),
-                TimeRangeTest::new(5, 5),
-                TimeRangeTest::new(6, 6),
-                TimeRangeTest::new(22, 22),
-                TimeRangeTest::new(23, 23),
-                TimeRangeTest::new(24, 24),
-                TimeRangeTest::new(30, 30),
-                TimeRangeTest::new(31, 31),
-                TimeRangeTest::new(32, 32),
-                TimeRangeTest::new(33, 33),
+                TimeRange::new(0, 0),
+                TimeRange::new(1, 1),
+                TimeRange::new(2, 2),
+                TimeRange::new(3, 3),
+                TimeRange::new(4, 4),
+                TimeRange::new(5, 5),
+                TimeRange::new(6, 6),
+                TimeRange::new(22, 22),
+                TimeRange::new(23, 23),
+                TimeRange::new(24, 24),
+                TimeRange::new(30, 30),
+                TimeRange::new(31, 31),
+                TimeRange::new(32, 32),
+                TimeRange::new(33, 33),
             ]
         );
         assert_eq!(
-            iter_test(&available_time.iter().windowed(2)),
+            available_time.iter().windowed(2),
             vec![
-                TimeRangeTest::new(0, 1),
-                TimeRangeTest::new(1, 2),
-                TimeRangeTest::new(2, 3),
-                TimeRangeTest::new(3, 4),
-                TimeRangeTest::new(4, 5),
-                TimeRangeTest::new(5, 6),
-                TimeRangeTest::new(22, 23),
-                TimeRangeTest::new(23, 24),
-                TimeRangeTest::new(30, 31),
-                TimeRangeTest::new(31, 32),
-                TimeRangeTest::new(32, 33)
+                TimeRange::new(0, 1),
+                TimeRange::new(1, 2),
+                TimeRange::new(2, 3),
+                TimeRange::new(3, 4),
+                TimeRange::new(4, 5),
+                TimeRange::new(5, 6),
+                TimeRange::new(22, 23),
+                TimeRange::new(23, 24),
+                TimeRange::new(30, 31),
+                TimeRange::new(31, 32),
+                TimeRange::new(32, 33)
             ]
         );
         assert_eq!(
-            iter_test(&available_time.iter().windowed(3)),
+            available_time.iter().windowed(3),
             vec![
-                TimeRangeTest::new(0, 2),
-                TimeRangeTest::new(1, 3),
-                TimeRangeTest::new(2, 4),
-                TimeRangeTest::new(3, 5),
-                TimeRangeTest::new(4, 6),
-                TimeRangeTest::new(22, 24),
-                TimeRangeTest::new(30, 32),
-                TimeRangeTest::new(31, 33)
+                TimeRange::new(0, 2),
+                TimeRange::new(1, 3),
+                TimeRange::new(2, 4),
+                TimeRange::new(3, 5),
+                TimeRange::new(4, 6),
+                TimeRange::new(22, 24),
+                TimeRange::new(30, 32),
+                TimeRange::new(31, 33)
             ]
         );
         assert_eq!(
-            iter_test(&available_time.iter().windowed(4)),
+            available_time.iter().windowed(4),
             vec![
-                TimeRangeTest::new(0, 3),
-                TimeRangeTest::new(1, 4),
-                TimeRangeTest::new(2, 5),
-                TimeRangeTest::new(3, 6),
-                TimeRangeTest::new(30, 33)
+                TimeRange::new(0, 3),
+                TimeRange::new(1, 4),
+                TimeRange::new(2, 5),
+                TimeRange::new(3, 6),
+                TimeRange::new(30, 33)
             ]
         );
     }

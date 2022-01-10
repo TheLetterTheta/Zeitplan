@@ -1,13 +1,15 @@
 use crate::participant::Participant;
 use crate::time::{Available, TimeMerge, TimeRange};
 use itertools::Itertools;
-use num::{Integer, One};
+use log::{debug, info, trace};
+use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::Deserialize;
+use std::fmt::{Debug, Display};
 
-#[derive(Deserialize, Clone)]
+#[derive(Deserialize, Clone, Debug)]
 pub struct Meeting<N>
 where
-    N: Integer + One + Copy,
+    N: Integer + One + Copy + Display + Debug,
 {
     pub id: String,
     pub participants: Vec<Participant<N>>,
@@ -16,7 +18,7 @@ where
 
 impl<N> Meeting<N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Clone + Copy + Display + Debug,
 {
     pub fn new(id: &str, participants: Vec<Participant<N>>, duration: N) -> Meeting<N> {
         Meeting {
@@ -41,7 +43,7 @@ where
 
 impl<N> Available<N> for Meeting<N>
 where
-    N: Integer + One + Clone + Copy,
+    N: Integer + One + Clone + Copy + CheckedAdd + CheckedSub + Display + Debug,
 {
     /// Iterates each participant's `block_times`, sorts them,
     /// then performs a `TimeMerge` to consolodate the combined block_times.
@@ -53,9 +55,8 @@ where
     /// use zeitplan_libs::meeting::Meeting;
     /// use zeitplan_libs::participant::Participant;
     /// use zeitplan_libs::time::{Available, TimeRange};
-    /// use zeitplan_libs::test_utils::{iter_test, TimeRangeTest};
     ///
-    /// let blocked_times_1 = vec![
+    /// let blocked_times_1 : Vec<TimeRange<u8>> = vec![
     ///     TimeRange::new(1, 1),
     /// ];
     ///
@@ -76,8 +77,8 @@ where
     /// ];
     ///
     /// assert_eq!(
-    ///     iter_test(&meeting.get_availability(&available_time)),
-    ///     vec![TimeRangeTest::new(2, 2)]
+    ///     meeting.get_availability(&available_time),
+    ///     vec![TimeRange::new(2, 2)]
     /// );
     /// ```
     fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
@@ -89,14 +90,14 @@ where
             .participants
             .iter()
             .flat_map(|p| p.blocked_times.iter())
-            .sorted_unstable()
-            .time_merge();
+            .time_merge()
+            .into_iter()
+            .collect_vec();
 
         if block_times.is_empty() {
             available_times.to_vec()
         } else {
             block_times
-                .iter()
                 .get_availability(available_times)
                 .into_iter()
                 .filter(|&time| <N>::one() + (time.1 - time.0) >= self.duration)
