@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, BenchmarkId};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
 use zeitplan_libs::meeting::Meeting;
 use zeitplan_libs::participant::Participant;
 use zeitplan_libs::schedule::Schedule;
@@ -50,8 +50,9 @@ fn pigeon_count(c: &mut Criterion) {
         BenchmarkId::new("pigeon_count", "vec![TimeRange]"),
         &pigeon_set,
         |b, pigeons| {
-        b.iter(|| black_box(pigeons.iter().count_pigeons()));
-    });
+            b.iter(|| black_box(pigeons.iter().count_pigeons()));
+        },
+    );
 }
 
 fn get_meeting_availability(c: &mut Criterion) {

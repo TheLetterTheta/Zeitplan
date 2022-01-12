@@ -30,6 +30,7 @@ where
     /// ```
     pub fn new(start: N, end: N) -> TimeRange<N> {
         if end < start {
+            debug!("TimeRange::new called with end before start");
             TimeRange(end, start)
         } else {
             TimeRange(start, end)
@@ -65,6 +66,15 @@ where
     }
 }
 
+impl<N> Display for TimeRange<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
+        write!(f, "TimeRange({}, {})", self.0, self.1)
+    }
+}
+
 #[cfg(feature = "arbitrary")]
 impl<'a, N> arbitrary::Arbitrary<'a> for TimeRange<N>
 where
@@ -81,11 +91,15 @@ where
     N: Integer + Copy + Display + Debug,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        trace!(target: "TimeRange", "partial_cmp {} and {}", self, other);
         match self.start().cmp(&other.start()) {
             Ordering::Less if self.end() < other.start() => Some(Ordering::Less),
             Ordering::Greater if self.start() > other.end() => Some(Ordering::Greater),
             Ordering::Equal if self.end().eq(&other.end()) => Some(Ordering::Equal),
-            _ => None,
+            _ => {
+                debug!(target: "TimeRange", "Time Ranges must overlap, and are not able to be \"compared\"");
+                None
+            }
         }
     }
 }
@@ -139,11 +153,10 @@ where
             .time_merge()
             .into_iter()
             .flat_map(move |available_time| {
-                let mut start: N;
                 let end = available_time.1;
                 let mut sub_times = vec![];
 
-                start = match last_block {
+                let mut start: N = match last_block {
                     Some(block) => available_time.start().max(block.end() + <N>::one()),
                     None => available_time.start(),
                 };
@@ -153,10 +166,10 @@ where
                     .peekable();
 
                 for block_time in blocking_times.peeking_take_while(|block| {
-                    match block.partial_cmp(&available_time) {
-                        None | Some(Ordering::Equal) => true,
-                        _ => false,
-                    }
+                    matches!(
+                        block.partial_cmp(&available_time),
+                        None | Some(Ordering::Equal)
+                    )
                 }) {
                     if block_time.start() > start {
                         sub_times.push(TimeRange(start, block_time.start() - <N>::one()));
@@ -241,7 +254,7 @@ where
         let mut set: BTreeSet<InternalTimeRange<N>> = BTreeSet::new();
         self.collection
             .into_iter()
-            .map(|time| InternalTimeRange::from(time))
+            .map(InternalTimeRange::from)
             .for_each(|mut time| {
                 while let Some(found) = set.take(&time.around()) {
                     let new_time = InternalTimeRange::new(
@@ -411,7 +424,7 @@ where
     N: Integer + Copy + CheckedAdd + CheckedSub,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
