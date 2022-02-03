@@ -3,7 +3,6 @@ use itertools::Itertools;
 use log::{debug, info, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeSet;
 use std::fmt::{Debug, Display};
 
 /// Inclusive [start, end] time range
@@ -145,11 +144,12 @@ where
     /// );
     /// ```
     fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
-        let blocked_iter = &mut self.time_merge().into_iter();
+        let blocked_iter = &mut self.into_iter().time_merge();
 
         let mut last_block: Option<TimeRange<N>> = None;
 
         available_times
+            .iter()
             .time_merge()
             .into_iter()
             .flat_map(move |available_time| {
@@ -196,25 +196,114 @@ where
 }
 
 #[derive(Debug)]
-pub struct TimeMergeIterator<'a, T, N>
+pub struct TimeMergeIterator<N>
 where
-    T: IntoIterator<Item = &'a TimeRange<N>>,
-    N: 'a + Integer + One + Copy + Display + Debug,
+    N: Integer + One + Copy + Display + Debug,
 {
-    collection: T,
+    collection: std::iter::Peekable<std::vec::IntoIter<TimeType<N>>>,
+    count: usize,
 }
 
-pub trait TimeMerge<'a, T, N>
+impl<N> Iterator for TimeMergeIterator<N>
 where
-    T: IntoIterator<Item = &'a TimeRange<N>>,
-    N: 'a + Integer + Copy + Display + Debug,
+    N: Integer + One + Copy + Display + Debug,
 {
-    fn time_merge(self) -> TimeMergeIterator<'a, T, N>;
+    type Item = TimeRange<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let start: TimeType<N> = self.collection.next()?;
+
+        // We always continue at the next start
+        debug_assert!(matches!(start, TimeType::Start(_)));
+
+        let start = match start {
+            TimeType::Start(n) => n,
+            _ => unreachable!(),
+        };
+        let mut end: N = <N>::one();
+
+        loop {
+            self.count += 1;
+
+            while self.count > 0 {
+                match self.collection.next()? {
+                    TimeType::Start(_) => self.count += 1,
+                    TimeType::End(n) => {
+                        end = n;
+                        self.count -= 1;
+                    }
+                }
+            }
+
+            match self.collection.peek() {
+                Some(TimeType::Start(v)) if *v <= end + <N>::one() => {
+                    self.collection.next(); // Throw away new "start"
+                }
+                _ => break,
+            }
+        }
+
+        Some(TimeRange::new(start, end))
+    }
 }
 
-impl<'a, T, N> TimeMerge<'a, T, N> for T
+#[derive(Debug, Eq, PartialEq)]
+enum TimeType<N> {
+    Start(N),
+    End(N),
+}
+
+impl<N> PartialOrd for TimeType<N>
 where
-    T: IntoIterator<Item = &'a TimeRange<N>>,
+    N: Ord,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<N> Ord for TimeType<N>
+where
+    N: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        let one = match self {
+            TimeType::Start(v) => v,
+            TimeType::End(v) => v,
+        };
+        let other_time = match other {
+            TimeType::Start(v) => v,
+            TimeType::End(v) => v,
+        };
+
+        match one.cmp(other_time) {
+            Ordering::Less => Ordering::Less,
+            Ordering::Greater => Ordering::Greater,
+            Ordering::Equal => {
+                if (matches!(self, TimeType::Start(_)) && matches!(other, TimeType::Start(_)))
+                    || (matches!(self, TimeType::End(_)) && matches!(other, TimeType::End(_)))
+                {
+                    Ordering::Equal
+                } else if matches!(self, TimeType::Start(_)) {
+                    Ordering::Less
+                } else {
+                    Ordering::Greater
+                }
+            }
+        }
+    }
+}
+
+pub trait TimeMerge<N>
+where
+    N: Integer + Copy + Display + Debug,
+{
+    fn time_merge(self) -> TimeMergeIterator<N>;
+}
+
+impl<'a, T, N> TimeMerge<N> for T
+where
+    T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy + Display + Debug,
 {
     /// Combines overlapping TimeRanges together
@@ -237,39 +326,14 @@ where
     ///     vec![ TimeRange::new(0, 4), TimeRange::new(6,6) ]
     /// );
     /// ```
-    fn time_merge(self) -> TimeMergeIterator<'a, T, N> {
-        TimeMergeIterator { collection: self }
-    }
-}
-
-impl<'a, T, N> IntoIterator for TimeMergeIterator<'a, T, N>
-where
-    T: IntoIterator<Item = &'a TimeRange<N>>,
-    N: 'a + Integer + One + Copy + CheckedAdd + CheckedSub + Display + Debug,
-{
-    type Item = TimeRange<N>;
-    type IntoIter = std::vec::IntoIter<TimeRange<N>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        let mut set: BTreeSet<InternalTimeRange<N>> = BTreeSet::new();
-        self.collection
-            .into_iter()
-            .map(InternalTimeRange::from)
-            .for_each(|mut time| {
-                while let Some(found) = set.take(&time.around()) {
-                    let new_time = InternalTimeRange::new(
-                        found.start().min(time.start()),
-                        found.end().max(time.end()),
-                    );
-                    time = new_time;
-                }
-                set.insert(time);
-            });
-
-        set.into_iter()
-            .map(|time| TimeRange::new(time.0, time.1))
-            .collect_vec()
-            .into_iter()
+    fn time_merge(self) -> TimeMergeIterator<N> {
+        TimeMergeIterator {
+            collection: self
+                .flat_map(|t| [TimeType::Start(t.start()), TimeType::End(t.end())])
+                .sorted_unstable()
+                .peekable(),
+            count: 0,
+        }
     }
 }
 
