@@ -5,10 +5,10 @@ use zeitplan_libs::time::{TimeRange, TimeMerge};
 fuzz_target!(|data: Vec<TimeRange<u8>>| {
     // fuzzed code goes here
 
-    let data = data.iter().time_merge().into_iter().collect::<Vec<_>>();
+    let data = data.iter().time_merge();
 
     assert!(
-        data.iter().zip(data.iter().skip(1)).all(|(l, r)| l < r),
+        data.clone().zip(data.skip(1)).all(|(l, r)| l < r),
         "Each element is *not* less than the following element"
     );
 });

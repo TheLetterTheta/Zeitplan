@@ -151,7 +151,6 @@ where
         available_times
             .iter()
             .time_merge()
-            .into_iter()
             .flat_map(move |available_time| {
                 let end = available_time.1;
                 let mut sub_times = vec![];
@@ -195,18 +194,17 @@ where
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TimeMergeIterator<N>
 where
     N: Integer + One + Copy + Display + Debug,
 {
     collection: std::iter::Peekable<std::vec::IntoIter<TimeType<N>>>,
-    count: usize,
 }
 
 impl<N> Iterator for TimeMergeIterator<N>
 where
-    N: Integer + One + Copy + Display + Debug,
+    N: Integer + One + Copy + Display + Debug + CheckedAdd,
 {
     type Item = TimeRange<N>;
 
@@ -222,24 +220,30 @@ where
         };
         let mut end: N = <N>::one();
 
-        loop {
-            self.count += 1;
+        let mut count = 0;
 
-            while self.count > 0 {
+        loop {
+            count += 1;
+
+            while count > 0 {
                 match self.collection.next()? {
-                    TimeType::Start(_) => self.count += 1,
+                    TimeType::Start(_) => count += 1,
                     TimeType::End(n) => {
                         end = n;
-                        self.count -= 1;
+                        count -= 1;
                     }
                 }
             }
 
-            match self.collection.peek() {
-                Some(TimeType::Start(v)) if *v <= end + <N>::one() => {
-                    self.collection.next(); // Throw away new "start"
+            if let Some(checked_end) = end.checked_add(&<N>::one()) {
+                match self.collection.peek() {
+                    Some(TimeType::Start(v)) if *v <= checked_end => {
+                        self.collection.next(); // Throw away new "start"
+                    }
+                    _ => break,
                 }
-                _ => break,
+            } else {
+                break;
             }
         }
 
@@ -247,7 +251,7 @@ where
     }
 }
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Copy, Clone)]
 enum TimeType<N> {
     Start(N),
     End(N),
@@ -322,7 +326,7 @@ where
     /// ];
     ///
     /// assert_eq!(
-    ///     time_merge.iter().time_merge().into_iter().collect::<Vec<_>>(),
+    ///     time_merge.iter().time_merge().collect::<Vec<_>>(),
     ///     vec![ TimeRange::new(0, 4), TimeRange::new(6,6) ]
     /// );
     /// ```
@@ -332,7 +336,6 @@ where
                 .flat_map(|t| [TimeType::Start(t.start()), TimeType::End(t.end())])
                 .sorted_unstable()
                 .peekable(),
-            count: 0,
         }
     }
 }
@@ -423,80 +426,5 @@ where
         }
 
         windows
-    }
-}
-
-/// Inclusive [start, end] time range
-/// <N>: Any integer type
-#[derive(Debug, Copy, Clone, Eq)]
-struct InternalTimeRange<N>(pub N, pub N)
-where
-    N: Integer + One + Copy;
-
-impl<N> InternalTimeRange<N>
-where
-    N: Integer + One + Copy + CheckedAdd + CheckedSub,
-{
-    fn new(start: N, end: N) -> Self {
-        if start > end {
-            InternalTimeRange(end, start)
-        } else {
-            InternalTimeRange(start, end)
-        }
-    }
-
-    fn around(&self) -> Self {
-        InternalTimeRange(
-            self.0.checked_sub(&<N>::one()).unwrap_or(self.0),
-            self.1.checked_add(&<N>::one()).unwrap_or(self.1),
-        )
-    }
-
-    fn start(self) -> N {
-        self.0
-    }
-
-    fn end(self) -> N {
-        self.1
-    }
-}
-
-impl<N> From<&TimeRange<N>> for InternalTimeRange<N>
-where
-    N: Integer + One + Copy + CheckedAdd + CheckedSub + Display + Debug,
-{
-    fn from(other: &TimeRange<N>) -> Self {
-        InternalTimeRange::new(other.0, other.1)
-    }
-}
-
-impl<N> Ord for InternalTimeRange<N>
-where
-    N: Integer + Copy + CheckedAdd + CheckedSub,
-{
-    fn cmp(&self, other: &Self) -> Ordering {
-        match self.start().cmp(&other.start()) {
-            Ordering::Less if self.end() < other.start() => Ordering::Less,
-            Ordering::Greater if self.start() > other.end() => Ordering::Greater,
-            _ => Ordering::Equal,
-        }
-    }
-}
-
-impl<N> PartialOrd for InternalTimeRange<N>
-where
-    N: Integer + Copy + CheckedAdd + CheckedSub,
-{
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<N> PartialEq for InternalTimeRange<N>
-where
-    N: Integer + Copy,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 == other.1
     }
 }
