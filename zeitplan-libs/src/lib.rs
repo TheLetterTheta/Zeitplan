@@ -161,7 +161,7 @@ mod tests {
         ];
 
         assert_eq!(
-            available_time.iter().windowed(1),
+            available_time.iter().windowed(1).collect::<Vec<_>>(),
             vec![
                 TimeRange::new(0, 0),
                 TimeRange::new(1, 1),
@@ -180,7 +180,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            available_time.iter().windowed(2),
+            available_time.iter().windowed(2).collect::<Vec<_>>(),
             vec![
                 TimeRange::new(0, 1),
                 TimeRange::new(1, 2),
@@ -196,7 +196,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            available_time.iter().windowed(3),
+            available_time.iter().windowed(3).collect::<Vec<_>>(),
             vec![
                 TimeRange::new(0, 2),
                 TimeRange::new(1, 3),
@@ -209,7 +209,7 @@ mod tests {
             ]
         );
         assert_eq!(
-            available_time.iter().windowed(4),
+            available_time.iter().windowed(4).collect::<Vec<_>>(),
             vec![
                 TimeRange::new(0, 3),
                 TimeRange::new(1, 4),

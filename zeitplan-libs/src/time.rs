@@ -373,14 +373,73 @@ where
     }
 }
 
-pub trait Windowed<N>
+pub trait Windowed<'a, T, N>
 where
-    N: Integer + Copy + Display + Debug,
+    T: Iterator<Item = &'a TimeRange<N>>,
+    N: 'a + Integer + Copy + Display + Debug,
 {
-    fn windowed(self, duration: N) -> Vec<TimeRange<N>>;
+    fn windowed(self, duration: N) -> TimeWindow<'a, T, N>;
 }
 
-impl<'a, T, N> Windowed<N> for T
+#[derive(Clone)]
+pub struct TimeWindow<'a, T, N>
+where
+    T: Iterator<Item = &'a TimeRange<N>>,
+    N: 'a + Integer + Copy + Display + Debug,
+{
+    collection: T,
+    duration: N,
+    time: Option<TimeRange<N>>,
+    start: N,
+}
+
+impl<'a, T, N> Iterator for TimeWindow<'a, T, N>
+where
+    T: Iterator<Item = &'a TimeRange<N>>,
+    N: 'a + Integer + One + Copy + Display + Debug + CheckedSub + CheckedAdd,
+{
+    type Item = TimeRange<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let zero_duration = self.duration.checked_sub(&<N>::one())?;
+        loop {
+            match self.time {
+                Some(time) => {
+                    if self.start.checked_add(&zero_duration)? > time.end() {
+                        self.time = None;
+                        continue;
+                    }
+
+                    let curr_start = self.start;
+                    self.start = self.start.checked_add(&<N>::one())?;
+
+                    return Some(TimeRange::new(curr_start, curr_start + zero_duration));
+                }
+                None => match self.collection.next() {
+                    Some(time) => {
+                        self.time = Some(*time);
+
+                        let curr_start = time.start();
+
+                        if curr_start.checked_add(&zero_duration)? > time.end() {
+                            self.time = None;
+                            continue;
+                        }
+
+                        self.start = curr_start.checked_add(&<N>::one())?;
+
+                        return Some(TimeRange::new(curr_start, curr_start + zero_duration));
+                    }
+                    None => {
+                        return None;
+                    }
+                },
+            }
+        }
+    }
+}
+
+impl<'a, T, N> Windowed<'a, T, N> for T
 where
     T: Iterator<Item = &'a TimeRange<N>>,
     N: 'a + Integer + One + Copy + Display + Debug,
@@ -393,7 +452,7 @@ where
     ///
     /// let times = vec![ TimeRange::new(0, 4) ];
     ///
-    /// assert_eq!(times.iter().windowed(1),
+    /// assert_eq!(times.iter().windowed(1).collect::<Vec<_>>(),
     ///     vec![
     ///         TimeRange::new(0,0),
     ///         TimeRange::new(1,1),
@@ -403,7 +462,7 @@ where
     ///     ]
     /// );
     ///
-    /// assert_eq!(times.iter().windowed(3),
+    /// assert_eq!(times.iter().windowed(3).collect::<Vec<_>>(),
     ///     vec![
     ///         TimeRange::new(0,2),
     ///         TimeRange::new(1,3),
@@ -411,7 +470,14 @@ where
     ///     ]
     /// );
     /// ```
-    fn windowed(self, duration: N) -> Vec<TimeRange<N>> {
+    fn windowed(self, duration: N) -> TimeWindow<'a, T, N> {
+        TimeWindow {
+            collection: self,
+            duration,
+            time: None,
+            start: <N>::zero(),
+        }
+        /*
         let mut windows: Vec<TimeRange<N>> = Vec::with_capacity(self.size_hint().1.unwrap_or(0));
 
         let zero_duration = duration - <N>::one();
@@ -426,5 +492,6 @@ where
         }
 
         windows
+        */
     }
 }

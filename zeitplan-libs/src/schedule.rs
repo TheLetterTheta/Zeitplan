@@ -61,7 +61,6 @@ where
             })
             .collect()
     }
-
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
         let meeting_availability = self.meeting_availability();
 
@@ -107,18 +106,160 @@ where
     /// returned. This means that we are trying to schedule meetings with less available
     /// times than meetings to be scheduled.
     ///
+    /// # Pigeonhole Error Example
+    /// ```
+    /// use zeitplan_libs::{
+    ///     meeting::Meeting,
+    ///     participant::Participant,
+    ///     schedule::{Schedule, ValidationError},
+    ///     time::TimeRange,
+    /// };
+    ///
+    /// // 105 possible timeslots
+    /// let available_slots: Vec<TimeRange<u8>> = vec![
+    ///     TimeRange::new(0, 100),
+    ///     TimeRange::new(200, 200),
+    ///     TimeRange::new(201, 203),
+    /// ];
+    ///
+    /// let mut meetings = Vec::with_capacity(106);
+    ///
+    /// // We create 106 meetings
+    /// for i in 0..106_u8 {
+    ///     // No blocked times in each participant
+    ///     let participant = Participant::new(&i.to_string(), vec![]);
+    ///
+    ///     // This meeting's duration is 1
+    ///     meetings.push(Meeting::new(&i.to_string(), vec![participant], 1));
+    /// }
+    ///
+    /// let schedule = Schedule::new(meetings, available_slots);
+    /// let result = schedule.schedule_meetings(None);
+    /// assert!(result.is_err());
+    ///
+    /// match result.unwrap_err() {
+    ///     ValidationError::PigeonholeError {
+    ///         pigeons,
+    ///         pigeon_holes,
+    ///     } => {
+    ///         assert_eq!(pigeons, 106);
+    ///         assert_eq!(pigeon_holes, 105);
+    ///     }
+    ///     _ => unreachable!(),
+    /// }
+    ///
+    /// ```
+    ///
+    /// Pigeons are counted after being trimmed:
+    /// ```
+    /// use zeitplan_libs::{
+    ///     meeting::Meeting,
+    ///     participant::Participant,
+    ///     schedule::{Schedule, ValidationError},
+    ///     time::TimeRange,
+    /// };
+    ///
+    /// // 106 possible timeslots
+    /// let available_slots: Vec<TimeRange<u8>> = vec![
+    ///     TimeRange::new(0, 100),
+    ///     TimeRange::new(200, 200),
+    ///     TimeRange::new(201, 203),
+    ///     TimeRange::new(150, 150), // This one - however - is not available to any!
+    /// ];
+    ///
+    /// let mut meetings = Vec::with_capacity(106);
+    ///
+    /// // We create 106 meetings
+    /// for i in 0..106_u8 {
+    ///     // No blocked times in each participant
+    ///     let participant = Participant::new(&i.to_string(), vec![TimeRange::new(150, 150)]);
+    ///
+    ///     // This meeting's duration is 1
+    ///     meetings.push(Meeting::new(&i.to_string(), vec![participant], 1));
+    /// }
+    ///
+    /// let schedule = Schedule::new(meetings, available_slots);
+    /// let result = schedule.schedule_meetings(None);
+    /// assert!(result.is_err());
+    ///
+    ///
+    /// // We still get the PigeonholeError because there are only 105 *used* timeslots
+    /// match result.unwrap_err() {
+    ///     ValidationError::PigeonholeError {
+    ///         pigeons,
+    ///         pigeon_holes,
+    ///     } => {
+    ///         assert_eq!(pigeons, 106);
+    ///         assert_eq!(pigeon_holes, 105);
+    ///     }
+    ///     _ => unreachable!(),
+    /// }
+    /// ```
+    ///
     /// Otherwise, we iterate for the duration of `count` (or limitless if `None`). If
     /// no solution is found, we return a `ValidationError::NoSolution` error. We currently
     /// make no distinction if `count` was reached, or if all solutions were checked before
     /// the solution was not reached.
+    ///
+    /// # NoSolution Error Example
+    /// ```
+    /// use zeitplan_libs::{
+    ///     meeting::Meeting,
+    ///     participant::Participant,
+    ///     schedule::{Schedule, ValidationError},
+    ///     time::TimeRange,
+    /// };
+    ///
+    /// let available_slots: Vec<TimeRange<u8>> = vec![
+    ///     TimeRange::new(0, 5)
+    /// ];
+    ///
+    /// // Only TimeRange(4, 5) are available for 3 of the meetings.
+    /// let blocked_times : Vec<TimeRange<u8>> = vec![TimeRange::new(0, 3)];
+    ///
+    /// let mut meetings = Vec::with_capacity(5);
+    /// for i in 0..3_u8 {
+    ///     let participant = Participant::new(&i.to_string(), blocked_times.clone());
+    ///
+    ///     meetings.push(Meeting::new(&i.to_string(), vec![participant], 1));
+    /// }
+    ///
+    /// // to avoid a PigonholeError, we create an extra meeting
+    /// let participant = Participant::new("extra", vec![]);
+    /// meetings.push(Meeting::new("extra", vec![participant], 1));
+    ///
+    /// // Trying to schedule this will trigger a NoSolution error no matter how many
+    /// // iterations we provide it:
+    /// let schedule = Schedule::new(meetings, available_slots);
+    ///
+    /// // First - A single iteration is attempted
+    /// let result = schedule.schedule_meetings(Some(1));
+    /// assert!(match result {
+    ///     Err(ValidationError::NoSolution) => true,
+    ///     _ => false
+    /// });
+    ///
+    /// // No matter how many iterations we provide, no solution will be found
+    /// let result = schedule.schedule_meetings(None);
+    /// assert!(match result {
+    ///     Err(ValidationError::NoSolution) => true,
+    ///     _ => false
+    /// });
+    /// ```
     pub fn schedule_meetings(
         &self,
         count: Option<usize>,
     ) -> Result<HashMap<String, TimeRange<N>>, ValidationError<N>> {
-        let meetings = self.setup()?;
-        let meetings = meetings.into_iter().map(|(id, duration, availability)| {
-            (id, duration, availability.iter().windowed(duration))
-        });
+        let meetings = self
+            .setup()?
+            .into_iter()
+            .map(|(id, duration, availability)| {
+                (
+                    id,
+                    duration,
+                    availability.iter().windowed(duration).collect::<Vec<_>>(),
+                )
+            });
 
         let mut nth: usize = 1;
         let mut count_iter: usize = 0;
