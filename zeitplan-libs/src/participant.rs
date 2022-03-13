@@ -1,4 +1,4 @@
-use crate::time::{Available, TimeRange};
+use crate::time::{Available, Blocks, TimeRange};
 use log::{debug, info, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::Deserialize;
@@ -40,7 +40,9 @@ where
         } else if self.blocked_times.is_empty() {
             available_times.to_vec()
         } else {
-            self.blocked_times.iter().get_availability(available_times)
+            available_times.iter()
+                .blocks(self.blocked_times.iter())
+                .collect()
         }
     }
 }

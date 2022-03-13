@@ -70,9 +70,6 @@ where
             .values()
             .flatten()
             .time_merge()
-            .into_iter()
-            .collect::<Vec<_>>()
-            .iter()
             .count_pigeons();
 
         if pigeons > pigeon_holes {
@@ -134,19 +131,17 @@ where
     /// }
     ///
     /// let schedule = Schedule::new(meetings, available_slots);
-    /// let result = schedule.schedule_meetings(None);
-    /// assert!(result.is_err());
     ///
-    /// match result.unwrap_err() {
-    ///     ValidationError::PigeonholeError {
+    /// match schedule.schedule_meetings(None) {
+    ///     Err(ValidationError::PigeonholeError {
     ///         pigeons,
     ///         pigeon_holes,
-    ///     } => {
+    ///     }) => {
     ///         assert_eq!(pigeons, 106);
     ///         assert_eq!(pigeon_holes, 105);
-    ///     }
-    ///     _ => unreachable!(),
-    /// }
+    ///     },
+    ///     _ => panic!("This did not result in a PigeonholeError")
+    /// };
     ///
     /// ```
     ///
@@ -171,7 +166,7 @@ where
     ///
     /// // We create 106 meetings
     /// for i in 0..106_u8 {
-    ///     // No blocked times in each participant
+    ///     // Only block off the common time
     ///     let participant = Participant::new(&i.to_string(), vec![TimeRange::new(150, 150)]);
     ///
     ///     // This meeting's duration is 1
@@ -179,21 +174,17 @@ where
     /// }
     ///
     /// let schedule = Schedule::new(meetings, available_slots);
-    /// let result = schedule.schedule_meetings(None);
-    /// assert!(result.is_err());
     ///
-    ///
-    /// // We still get the PigeonholeError because there are only 105 *used* timeslots
-    /// match result.unwrap_err() {
-    ///     ValidationError::PigeonholeError {
+    /// match schedule.schedule_meetings(None) {
+    ///     Err(ValidationError::PigeonholeError {
     ///         pigeons,
     ///         pigeon_holes,
-    ///     } => {
+    ///     }) => {
     ///         assert_eq!(pigeons, 106);
-    ///         assert_eq!(pigeon_holes, 105);
-    ///     }
-    ///     _ => unreachable!(),
-    /// }
+    ///         assert_eq!(pigeon_holes, 105); // TODO: This test fails... Find out why
+    ///     },
+    ///     _ => panic!("This did not result in a PigeonholeError")
+    /// };
     /// ```
     ///
     /// Otherwise, we iterate for the duration of `count` (or limitless if `None`). If
@@ -210,12 +201,10 @@ where
     ///     time::TimeRange,
     /// };
     ///
-    /// let available_slots: Vec<TimeRange<u8>> = vec![
-    ///     TimeRange::new(0, 5)
-    /// ];
+    /// let available_slots: Vec<TimeRange<u8>> = vec![TimeRange::new(0, 5)];
     ///
     /// // Only TimeRange(4, 5) are available for 3 of the meetings.
-    /// let blocked_times : Vec<TimeRange<u8>> = vec![TimeRange::new(0, 3)];
+    /// let blocked_times: Vec<TimeRange<u8>> = vec![TimeRange::new(0, 3)];
     ///
     /// let mut meetings = Vec::with_capacity(5);
     /// for i in 0..3_u8 {
@@ -233,18 +222,16 @@ where
     /// let schedule = Schedule::new(meetings, available_slots);
     ///
     /// // First - A single iteration is attempted
-    /// let result = schedule.schedule_meetings(Some(1));
-    /// assert!(match result {
-    ///     Err(ValidationError::NoSolution) => true,
-    ///     _ => false
-    /// });
+    /// assert!(matches!(
+    ///     schedule.schedule_meetings(Some(1)),
+    ///     Err(ValidationError::NoSolution)
+    /// ));
     ///
     /// // No matter how many iterations we provide, no solution will be found
-    /// let result = schedule.schedule_meetings(None);
-    /// assert!(match result {
-    ///     Err(ValidationError::NoSolution) => true,
-    ///     _ => false
-    /// });
+    /// assert!(matches!(
+    ///     schedule.schedule_meetings(None),
+    ///     Err(ValidationError::NoSolution)
+    /// ));
     /// ```
     pub fn schedule_meetings(
         &self,

@@ -112,86 +112,202 @@ where
     }
 }
 
+#[derive(Eq, PartialEq, Debug)]
+pub enum Time<N> {
+    Start(N),
+    End(N),
+}
+
+impl<N> Ord for Time<N>
+where
+    N: Ord,
+{
+    fn cmp(&self, other: &Self) -> Ordering {
+        match self {
+            Time::Start(v) => match other {
+                Time::Start(o) => v.cmp(o),
+                Time::End(o) => match v.cmp(o) {
+                    Ordering::Equal => Ordering::Less,
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                },
+            },
+            Time::End(v) => match other {
+                Time::End(o) => v.cmp(o),
+                Time::Start(o) => match v.cmp(o) {
+                    Ordering::Equal => Ordering::Greater,
+                    Ordering::Less => Ordering::Less,
+                    Ordering::Greater => Ordering::Greater,
+                },
+            },
+        }
+    }
+}
+
+impl<N> PartialOrd for Time<N>
+where
+    N: Ord,
+{
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+/// ```
+/// use zeitplan_libs::time::{Blocks, TimeRange};
+///
+/// let available_times : Vec<TimeRange<u8>> = vec![ TimeRange::new(0, 2) ];
+/// let blocked_times : Vec<TimeRange<u8>> = vec![ TimeRange::new(1, 1) ];
+/// let block_result : Vec<TimeRange<u8>> =
+///     vec![
+///         TimeRange::new(0,0),
+///         TimeRange::new(2,2)
+///     ];
+///
+/// assert_eq!(
+///     available_times
+///         .iter()
+///         .blocks(blocked_times.iter())
+///         .collect::<Vec<TimeRange<u8>>>(),
+///     block_result
+/// );
+///
+/// let available_times : Vec<TimeRange<u8>> = vec![ TimeRange::new(0, 100), TimeRange::new(150, 150),
+///                             TimeRange::new(200, 201) ];
+/// let blocked_times : Vec<TimeRange<u8>> = vec![ TimeRange::new(150, 150) ];
+/// let block_result : Vec<TimeRange<u8>> = vec![TimeRange::new(0,100), TimeRange::new(200, 201)];
+///
+/// assert_eq!(
+///     available_times
+///         .iter()
+///         .blocks(blocked_times.iter())
+///         .collect::<Vec<TimeRange<u8>>>(),
+///    block_result
+/// );
+/// ```
+#[derive(Debug)]
+pub struct Blocker<N>
+where
+    N: Integer + Copy + Display + Debug,
+{
+    times: std::vec::IntoIter<Time<N>>,
+    count: isize,
+}
+
+impl<N> Iterator for Blocker<N>
+where
+    N: Integer + Copy + Display + Debug + CheckedSub,
+{
+    type Item = TimeRange<N>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        while self.count < 1 {
+            match self.times.next()? {
+                Time::Start(s) if self.count == 0 => {
+                    match self.times.next()? {
+                        Time::End(e) => {
+                            return Some(TimeRange::new(s, e));
+                        }
+                        _ => {
+                            unreachable!();
+                        }
+                    };
+                }
+                Time::End(_) => {
+                    self.count -= 1;
+                }
+                Time::Start(_) => {
+                    self.count += 1;
+                }
+            }
+        }
+
+        None
+    }
+
+    /*
+    TimeMerge Available and Blocked
+
+    Convert Available to Start(start), End(end) pairs;
+    Convert Block to End(start -1), Start(end);
+
+    Merge, as they should be sorted together.
+    collection: Merge
+
+    Next:
+    let count = 0;
+    while count < 1 {
+      match collection.next()? {
+        Start(n) if count == 0 => {
+          start = n;
+          count = 1;
+       },
+       End(_) => {
+          count -= 1;
+       },
+       Start(_) => {
+          count += 1;
+       }
+    }
+
+    let end = match collection.next()? {
+      End(n) => n,
+      _ => unreachable!();
+    };
+
+    return TimeRange::new(start, end);
+    */
+}
+
+pub trait Blocks<'a, T, N>
+where
+    T: Iterator<Item = &'a TimeRange<N>>,
+    N: 'a + Integer + Copy + Display + Debug,
+{
+    fn blocks(&mut self, blocking: T) -> Blocker<N>;
+}
+
+impl<'a, I, T, N> Blocks<'a, I, N> for T
+where
+    T: Iterator<Item = &'a TimeRange<N>>,
+    I: Iterator<Item = &'a TimeRange<N>>,
+    N: 'a + Integer + Copy + Display + Debug + CheckedSub + CheckedAdd,
+{
+    fn blocks(&mut self, blocking: I) -> Blocker<N> {
+        let mut count = 0;
+        let chain = self
+            .time_merge()
+            .flat_map(|time| [Time::Start(time.0), Time::End(time.1)])
+            .merge(blocking.time_merge().flat_map(|time| {
+                let mut times: Vec<Time<N>> = Vec::with_capacity(2);
+
+                match time.0.checked_sub(&<N>::one()) {
+                    Some(n) => times.push(Time::End(n)),
+                    None => {
+                        count -= 1;
+                    }
+                }
+
+                if let Some(n) = time.1.checked_add(&<N>::one()) {
+                    times.push(Time::Start(n))
+                }
+
+                times
+            }))
+            .collect_vec();
+
+        Blocker {
+            times: chain.into_iter(),
+            count,
+        }
+    }
+}
+
 pub trait Available<N>
 where
     N: Integer + Copy + Display + Debug,
 {
     fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>>;
-}
-
-impl<'a, T, N> Available<N> for T
-where
-    T: IntoIterator<Item = &'a TimeRange<N>>,
-    N: 'a + Integer + One + Copy + CheckedAdd + CheckedSub + Display + Debug,
-{
-    /// Self is blocked times that cannot be scheduled
-    /// This performs a type of Set Exclusion of available times
-    /// and self. `available_times - self`
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use zeitplan_libs::time::{Available, TimeRange};
-    ///
-    /// let blocked_times : Vec<TimeRange<u8>> = vec![ TimeRange::new(1, 1) ];
-    /// let available_times = vec![ TimeRange::new(0, 2) ];
-    ///
-    /// assert_eq!(
-    ///     blocked_times
-    ///         .iter()
-    ///         .get_availability(&available_times),
-    ///     vec![TimeRange::new(0,0), TimeRange::new(2, 2)]
-    /// );
-    /// ```
-    fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
-        let blocked_iter = &mut self.into_iter().time_merge();
-
-        let mut last_block: Option<TimeRange<N>> = None;
-
-        available_times
-            .iter()
-            .time_merge()
-            .flat_map(move |available_time| {
-                let end = available_time.1;
-                let mut sub_times = vec![];
-
-                let mut start: N = match last_block {
-                    Some(block) => available_time.start().max(block.end() + <N>::one()),
-                    None => available_time.start(),
-                };
-
-                let mut blocking_times = blocked_iter
-                    .skip_while(|block| block < &available_time)
-                    .peekable();
-
-                for block_time in blocking_times.peeking_take_while(|block| {
-                    matches!(
-                        block.partial_cmp(&available_time),
-                        None | Some(Ordering::Equal)
-                    )
-                }) {
-                    if block_time.start() > start {
-                        sub_times.push(TimeRange(start, block_time.start() - <N>::one()));
-                    }
-
-                    start = block_time.end() + <N>::one();
-                    last_block = Some(block_time);
-                }
-
-                if let Some(block) = last_block {
-                    if block.end() < end {
-                        sub_times.push(TimeRange(start, end));
-                    }
-                }
-
-                if let Some(&block) = blocking_times.peek() {
-                    last_block = Some(block);
-                }
-
-                sub_times
-            })
-            .collect_vec()
-    }
 }
 
 #[derive(Debug, Clone)]
@@ -349,8 +465,8 @@ where
 
 impl<'a, T, N> Pigeons<N> for T
 where
-    T: Iterator<Item = &'a TimeRange<N>>,
-    N: 'a + Integer + One + Copy + std::iter::Sum + Display + Debug,
+    T: Iterator<Item = TimeRange<N>>,
+    N: Integer + One + Copy + std::iter::Sum + Display + Debug,
 {
     /// You cannot squeeze > N pigeons in <= N holes!
     /// We can "count" the pigeons of these `TimeRanges`
@@ -364,7 +480,7 @@ where
     ///     TimeRange::new(11, 11)
     /// ];
     ///
-    /// assert_eq!(times.iter().count_pigeons(), 11);
+    /// assert_eq!(times.into_iter().count_pigeons(), 11);
     ///
     /// ```
     fn count_pigeons(&mut self) -> N {

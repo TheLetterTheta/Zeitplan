@@ -1,5 +1,5 @@
 use crate::participant::Participant;
-use crate::time::{Available, TimeMerge, TimeRange};
+use crate::time::{Available, Blocks, TimeMerge, TimeRange};
 use itertools::Itertools;
 use log::{debug, info, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One};
@@ -86,22 +86,14 @@ where
             return vec![];
         }
 
-        let block_times = self
-            .participants
+        available_times
             .iter()
-            .flat_map(|p| p.blocked_times.iter())
-            .time_merge()
-            .into_iter()
-            .collect_vec();
-
-        if block_times.is_empty() {
-            available_times.to_vec()
-        } else {
-            block_times
-                .get_availability(available_times)
-                .into_iter()
-                .filter(|&time| <N>::one() + (time.1 - time.0) >= self.duration)
-                .collect_vec()
-        }
+            .blocks(
+                self.participants
+                    .iter()
+                    .flat_map(|p| p.blocked_times.iter()),
+            )
+            .filter(|&time| <N>::one() + (time.1 - time.0) >= self.duration)
+            .collect()
     }
 }

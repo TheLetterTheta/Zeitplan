@@ -1,4 +1,4 @@
-use criterion::{black_box, criterion_group, criterion_main, BatchSize, BenchmarkId, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use zeitplan_libs::meeting::Meeting;
 use zeitplan_libs::participant::Participant;
 use zeitplan_libs::schedule::Schedule;
@@ -46,13 +46,13 @@ fn merge_times(c: &mut Criterion) {
 fn pigeon_count(c: &mut Criterion) {
     let pigeon_set: Vec<TimeRange<u8>> = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
 
-    c.bench_with_input(
-        BenchmarkId::new("pigeon_count", "vec![TimeRange]"),
-        &pigeon_set,
-        |b, pigeons| {
-            b.iter(|| black_box(pigeons.iter().count_pigeons()));
-        },
-    );
+    c.bench_function("pigeon_count", |b| {
+        b.iter_batched(
+            || pigeon_set.clone(),
+            |data| black_box(data.into_iter().count_pigeons()),
+            BatchSize::SmallInput,
+        )
+    });
 }
 
 fn get_meeting_availability(c: &mut Criterion) {
@@ -207,14 +207,15 @@ fn schedules(c: &mut Criterion) {
     });
 }
 
-criterion_main!(benches);
-
-criterion_group!(
-    benches,
-    schedules,
+criterion_group! {
+    name = benches;
+    config = Criterion::default().significance_level(0.05).sample_size(1000);
+    targets = schedules,
     get_participant_avaiability,
     merge_times,
     pigeon_count,
     windows,
     get_meeting_availability
-);
+}
+
+criterion_main!(benches);
