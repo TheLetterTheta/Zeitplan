@@ -14,6 +14,18 @@ where
     pub blocked_times: Vec<TimeRange<N>>,
 }
 
+#[cfg(feature = "arbitrary")]
+impl<'a, N> arbitrary::Arbitrary<'a> for Participant<N>
+where
+    N: Integer + Copy + arbitrary::Arbitrary<'a> + Display + Debug,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let blocked_times = u.arbitrary::<Vec<TimeRange<N>>>()?;
+        let id = format!("{}", u.arbitrary::<uuid::Uuid>()?);
+        Ok(Participant::new(&id, blocked_times))
+    }
+}
+
 impl<N> Participant<N>
 where
     N: Integer + One + Clone + Copy + Display + Debug,
@@ -40,7 +52,8 @@ where
         } else if self.blocked_times.is_empty() {
             available_times.to_vec()
         } else {
-            available_times.iter()
+            available_times
+                .iter()
                 .blocks(self.blocked_times.iter())
                 .collect()
         }

@@ -114,7 +114,7 @@ mod tests {
 
         let pigeon_set: Vec<TimeRange<u8>> = vec![TimeRange::new(1, 9), TimeRange::new(11, 11)];
 
-        assert_eq!(pigeon_set.into_iter().count_pigeons(), 10);
+        assert_eq!(pigeon_set.into_iter().count_pigeons(), Some(10));
     }
 
     #[test]

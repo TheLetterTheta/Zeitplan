@@ -1,13 +1,14 @@
 use core::cmp::Ordering;
 use itertools::Itertools;
 use log::{debug, info, trace};
-use num::{CheckedAdd, CheckedSub, Integer, One};
+use num::{CheckedAdd, CheckedSub, Integer, One, Zero};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
+use std::hash::Hash;
 
 /// Inclusive [start, end] time range
 /// <N>: Any integer type
-#[derive(Deserialize, Serialize, Debug, Copy, Clone, Eq)]
+#[derive(Deserialize, PartialEq, Hash, Serialize, Debug, Copy, Clone, Eq)]
 pub struct TimeRange<N>(pub N, pub N)
 where
     N: Integer + One + Copy + Display + Debug;
@@ -100,15 +101,6 @@ where
                 None
             }
         }
-    }
-}
-
-impl<N> PartialEq for TimeRange<N>
-where
-    N: Integer + Copy + Display + Debug,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 == other.1
     }
 }
 
@@ -460,13 +452,17 @@ pub trait Pigeons<N>
 where
     N: Integer,
 {
-    fn count_pigeons(&mut self) -> N;
+    /// Returns an Option<N> if the result fails to add
+    /// one. In this case - it can be assumed that there are the
+    /// max number of pigeons, and therefore all checks can
+    /// succeed/fail on that condition
+    fn count_pigeons(&mut self) -> Option<N>;
 }
 
 impl<'a, T, N> Pigeons<N> for T
 where
     T: Iterator<Item = TimeRange<N>>,
-    N: Integer + One + Copy + std::iter::Sum + Display + Debug,
+    N: Integer + One + Zero + Copy + std::iter::Sum + Display + Debug + CheckedAdd,
 {
     /// You cannot squeeze > N pigeons in <= N holes!
     /// We can "count" the pigeons of these `TimeRanges`
@@ -480,12 +476,21 @@ where
     ///     TimeRange::new(11, 11)
     /// ];
     ///
-    /// assert_eq!(times.into_iter().count_pigeons(), 11);
+    /// assert_eq!(times.into_iter().count_pigeons(), Some(11));
+    ///
+    /// let times : Vec<TimeRange<u8>> = vec![ TimeRange::new(0,255) ];
+    ///
+    /// // This is assumed to be the max value, and beyond the value stored within u8
+    /// // (there are 256 available slots, and the max value allowed is 255)
+    /// assert_eq!(times.into_iter().count_pigeons(), None);
     ///
     /// ```
-    fn count_pigeons(&mut self) -> N {
-        self.map(|time| <N>::one() + (time.end() - time.start()))
-            .sum()
+    fn count_pigeons(&mut self) -> Option<N> {
+        let mut sum = <N>::zero();
+        for t in self.map(|time| (time.end() - time.start()).checked_add(&<N>::one())) {
+            sum = sum + t?;
+        }
+        Some(sum)
     }
 }
 

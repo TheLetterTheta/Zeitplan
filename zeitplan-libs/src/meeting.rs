@@ -1,6 +1,5 @@
 use crate::participant::Participant;
-use crate::time::{Available, Blocks, TimeMerge, TimeRange};
-use itertools::Itertools;
+use crate::time::{Available, Blocks, TimeRange};
 use log::{debug, info, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::Deserialize;
@@ -14,6 +13,30 @@ where
     pub id: String,
     pub participants: Vec<Participant<N>>,
     pub duration: N,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, N> arbitrary::Arbitrary<'a> for Meeting<N>
+where
+    N: Integer + Copy + arbitrary::Arbitrary<'a> + Display + Debug,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let mut participants = vec![];
+
+        for _ in 0..(u.arbitrary_len::<usize>()?.min(1)) {
+            participants.push(u.arbitrary::<Participant<N>>()?);
+        }
+
+        if participants.len() == 0 {
+            participants.push(u.arbitrary::<Participant<N>>()?);
+        }
+
+        let id = format!("{}", u.arbitrary::<uuid::Uuid>()?);
+
+        let n = u.arbitrary::<N>()?;
+        let d = n.min(<N>::one()); // duration > 0
+        Ok(Meeting::new(&id, participants, d))
+    }
 }
 
 impl<N> Meeting<N>
@@ -93,7 +116,14 @@ where
                     .iter()
                     .flat_map(|p| p.blocked_times.iter()),
             )
-            .filter(|&time| <N>::one() + (time.1 - time.0) >= self.duration)
+            .filter(|&time| {
+                (time.1 - time.0)
+                    .checked_add(&<N>::one())
+                    .map(|n| n >= self.duration)
+                    // Only happens if timespan is the max value available
+                    // - there would be no duration above this
+                    .unwrap_or(true)
+            })
             .collect()
     }
 }

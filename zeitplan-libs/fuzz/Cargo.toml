@@ -20,13 +20,13 @@ features = ["arbitrary"]
 members = ["."]
 
 [[bin]]
-name = "fuzz_target_1"
-path = "fuzz_targets/fuzz_target_1.rs"
+name = "time"
+path = "fuzz_targets/time.rs"
 test = false
 doc = false
 
 [[bin]]
-name = "time"
-path = "fuzz_targets/time.rs"
+name = "schedule"
+path = "fuzz_targets/schedule.rs"
 test = false
 doc = false

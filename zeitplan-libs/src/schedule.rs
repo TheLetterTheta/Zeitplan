@@ -18,13 +18,42 @@ where
     NoSolution,
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Debug)]
 pub struct Schedule<N>
 where
     N: Integer + One + Copy + Display + Debug,
 {
     pub meetings: Vec<Meeting<N>>,
     pub availability: Vec<TimeRange<N>>,
+}
+
+#[cfg(feature = "arbitrary")]
+impl<'a, N> arbitrary::Arbitrary<'a> for Schedule<N>
+where
+    N: Display
+        + Debug
+        + Integer
+        + One
+        + Clone
+        + Copy
+        + std::iter::Sum
+        + std::ops::AddAssign
+        + CheckedSub
+        + CheckedAdd
+        + arbitrary::Arbitrary<'a>,
+{
+    fn arbitrary(u: &mut arbitrary::Unstructured<'a>) -> arbitrary::Result<Self> {
+        let len = u.arbitrary_len::<usize>()?.min(1);
+        let mut meetings = Vec::with_capacity(len);
+        for _ in 0..len {
+            meetings.push(u.arbitrary::<Meeting<N>>()?);
+        }
+        let mut availability = u.arbitrary::<Vec<TimeRange<N>>>()?;
+        if availability.len() == 0 {
+            availability.push(u.arbitrary::<TimeRange<N>>()?);
+        }
+        Ok(Schedule::new(meetings, availability))
+    }
 }
 
 type MeetingSchedule<'a, N> = Vec<(String, N, Vec<TimeRange<N>>)>;
@@ -64,19 +93,21 @@ where
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
         let meeting_availability = self.meeting_availability();
 
+        // Duration - 1 because pigeon_holes is zero based
         let pigeons: N = self.meetings.iter().map(|m| m.duration).sum();
 
-        let pigeon_holes: N = meeting_availability
+        if let Some(pigeon_holes) = meeting_availability
             .values()
             .flatten()
             .time_merge()
-            .count_pigeons();
-
-        if pigeons > pigeon_holes {
-            return Err(ValidationError::PigeonholeError {
-                pigeons,
-                pigeon_holes,
-            });
+            .count_pigeons()
+        {
+            if pigeons > pigeon_holes {
+                return Err(ValidationError::PigeonholeError {
+                    pigeons,
+                    pigeon_holes,
+                });
+            }
         }
 
         let result = self

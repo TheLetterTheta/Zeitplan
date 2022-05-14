@@ -1,0 +1,14 @@
+check:
+    cargo check
+
+build: check
+    cargo build
+
+clippy: check
+    cargo clippy
+
+test: clippy
+    cargo test
+
+fuzz: test
+    cargo +nightly fuzz run time
