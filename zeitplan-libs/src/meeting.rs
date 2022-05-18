@@ -1,6 +1,6 @@
 use crate::participant::Participant;
-use crate::time::{Available, Blocks, TimeRange};
-use log::{debug, info, trace};
+use crate::time::{Available, Blocks, TimeRange, Validate};
+use log::debug;
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::Deserialize;
 use std::fmt::{Debug, Display};
@@ -13,6 +13,34 @@ where
     pub id: String,
     pub participants: Vec<Participant<N>>,
     pub duration: N,
+}
+
+impl<N> Validate for Meeting<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    fn validate(&self) -> Result<(), String> {
+        if self.duration < <N>::one() {
+            debug!(target:"Meeting", "Invalid Meeting Found: {}", self.id);
+            Err(format!(
+                "Meeting {} has an invalid duration {}",
+                self.id, self.duration
+            ))
+        } else if let Some(Err(p)) = self
+            .participants
+            .iter()
+            .map(|p| p.validate())
+            .find(Result::is_err)
+        {
+            debug!(target:"Meeting", "Invalid Meeting Found: {}", self.id);
+            Err(format!(
+                "Meeting {} has an invalid participant value:\n\t {}",
+                self.id, p
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -34,7 +62,7 @@ where
         let id = format!("{}", u.arbitrary::<uuid::Uuid>()?);
 
         let n = u.arbitrary::<N>()?;
-        let d = n.min(<N>::one()); // duration > 0
+        let d = n.max(<N>::one()); // duration > 0
         Ok(Meeting::new(&id, participants, d))
     }
 }

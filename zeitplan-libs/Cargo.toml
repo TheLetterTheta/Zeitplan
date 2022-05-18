@@ -1,6 +1,6 @@
 [package]
 name = "zeitplan_libs"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Nick Dolan <nicholas.dolan1@gmail.com>"]
 edition = "2018"
 description = "A scheduling application for scheduling multiple meetings at the same time"

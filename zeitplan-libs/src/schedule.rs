@@ -1,6 +1,7 @@
 use crate::meeting::Meeting;
-use crate::time::{Available, Pigeons, TimeMerge, TimeRange, Windowed};
+use crate::time::{Available, Pigeons, TimeMerge, TimeRange, Validate, Windowed};
 use core::fmt::{Debug, Display};
+use log::debug;
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use serde::{Deserialize, Serialize};
 use std::cmp::Ordering;
@@ -16,6 +17,8 @@ where
     PigeonholeError { pigeons: N, pigeon_holes: N },
     #[error("Could not find a solution")]
     NoSolution,
+    #[error("Bad Request\n{error}")]
+    InvalidData { error: String },
 }
 
 #[derive(Deserialize, Debug)]
@@ -25,6 +28,37 @@ where
 {
     pub meetings: Vec<Meeting<N>>,
     pub availability: Vec<TimeRange<N>>,
+}
+
+impl<N> Validate for Schedule<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    fn validate(&self) -> Result<(), String> {
+        if let Some(a) = self
+            .availability
+            .iter()
+            .map(|t| t.validate())
+            .find(Result::is_err)
+        {
+            Err(format!(
+                "Schedule contains invalid TimeRange:\n\t{}",
+                a.unwrap_err()
+            ))
+        } else if let Some(m) = self
+            .meetings
+            .iter()
+            .map(|m| m.validate())
+            .find(Result::is_err)
+        {
+            Err(format!(
+                "Schedule contains invalid meeting:\n\t{}",
+                m.unwrap_err()
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 #[cfg(feature = "arbitrary")]
@@ -91,6 +125,10 @@ where
             .collect()
     }
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
+        if let Err(e) = self.validate() {
+            return Err(ValidationError::InvalidData { error: e });
+        }
+
         let meeting_availability = self.meeting_availability();
 
         // Duration - 1 because pigeon_holes is zero based
@@ -332,6 +370,7 @@ where
             if nth == 0 {
                 return Err(ValidationError::NoSolution);
             }
+            debug!(target: "Schedule", "Continuing iteration of schedule; Count: {}", count_iter);
         }
     }
 }

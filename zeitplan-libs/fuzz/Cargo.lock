@@ -397,7 +397,7 @@ checksum = "0237232789cf037d5480773fe568aac745bfe2afbc11a863e97901780a6b47cc"
 
 [[package]]
 name = "zeitplan_libs"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "arbitrary",
  "itertools",

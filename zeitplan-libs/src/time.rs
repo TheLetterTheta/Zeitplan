@@ -1,6 +1,6 @@
 use core::cmp::Ordering;
 use itertools::Itertools;
-use log::{debug, info, trace};
+use log::{debug, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One, Zero};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
@@ -72,6 +72,27 @@ where
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
         write!(f, "TimeRange({}, {})", self.0, self.1)
+    }
+}
+
+pub trait Validate {
+    fn validate(&self) -> Result<(), String>;
+}
+
+impl<N> Validate for TimeRange<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    fn validate(&self) -> Result<(), String> {
+        if self.end() < self.start() {
+            Err(format!(
+                "Start ({}) is after End ({})",
+                self.start(),
+                self.end()
+            ))
+        } else {
+            Ok(())
+        }
     }
 }
 
@@ -216,39 +237,6 @@ where
 
         None
     }
-
-    /*
-    TimeMerge Available and Blocked
-
-    Convert Available to Start(start), End(end) pairs;
-    Convert Block to End(start -1), Start(end);
-
-    Merge, as they should be sorted together.
-    collection: Merge
-
-    Next:
-    let count = 0;
-    while count < 1 {
-      match collection.next()? {
-        Start(n) if count == 0 => {
-          start = n;
-          count = 1;
-       },
-       End(_) => {
-          count -= 1;
-       },
-       Start(_) => {
-          count += 1;
-       }
-    }
-
-    let end = match collection.next()? {
-      End(n) => n,
-      _ => unreachable!();
-    };
-
-    return TimeRange::new(start, end);
-    */
 }
 
 pub trait Blocks<'a, T, N>
