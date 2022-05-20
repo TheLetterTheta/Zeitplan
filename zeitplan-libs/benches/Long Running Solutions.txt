@@ -1,0 +1,241 @@
+[fuzz_targets/schedule.rs:12] &data = Schedule {
+    meetings: [
+        Meeting {
+            id: "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a000000",
+            blocked_times: [
+                TimeRange(
+                    0,
+                    10,
+                ),
+                TimeRange(
+                    59,
+                    212,
+                ),
+                TimeRange(
+                    212,
+                    254,
+                ),
+                TimeRange(
+                    255,
+                    255,
+                ),
+                TimeRange(
+                    255,
+                    255,
+                ),
+                TimeRange(
+                    255,
+                    255,
+                ),
+                TimeRange(
+                    42,
+                    42,
+                ),
+            ],
+            duration: 1,
+        },
+        Meeting {
+            id: "2a2a2a2a-d5d5-452a-93d5-d5d5d52a2a2a",
+            blocked_times: [
+                TimeRange(
+                    0,
+                    0,
+                ),
+            ],
+            duration: 42,
+        },
+        Meeting {
+            id: "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a282a2a",
+            blocked_times: [],
+            duration: 42,
+        },
+        Meeting {
+            id: "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a2a2a2a",
+            blocked_times: [],
+            duration: 42,
+        },
+        Meeting {
+            id: "2a2affff-0089-4f03-ab00-ffffffff5555",
+            blocked_times: [],
+            duration: 85,
+        },
+    ],
+    availability: [
+        TimeRange(
+            0,
+            3,
+        ),
+        TimeRange(
+            171,
+            255,
+        ),
+        TimeRange(
+            85,
+            85,
+        ),
+        TimeRange(
+            85,
+            85,
+        ),
+        TimeRange(
+            85,
+            85,
+        ),
+        TimeRange(
+            255,
+            255,
+        ),
+        TimeRange(
+            179,
+            179,
+        ),
+        TimeRange(
+            179,
+            179,
+        ),
+        TimeRange(
+            85,
+            179,
+        ),
+        TimeRange(
+            49,
+            85,
+        ),
+        TimeRange(
+            85,
+            85,
+        ),
+        TimeRange(
+            85,
+            255,
+        ),
+        TimeRange(
+            255,
+            255,
+        ),
+        TimeRange(
+            248,
+            255,
+        ),
+        TimeRange(
+            255,
+            255,
+        ),
+        TimeRange(
+            0,
+            46,
+        ),
+    ],
+}
+
+[fuzz_targets/schedule.rs:14] &schedule = [
+    (
+        "2a2a2a2a-d5d5-452a-93d5-d5d5d52a2a2a",
+        TimeRange(
+            1,
+            42,
+        ),
+    ),
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a000000",
+        TimeRange(
+            43,
+            43,
+        ),
+    ),
+    (
+        "2a2affff-0089-4f03-ab00-ffffffff5555",
+        TimeRange(
+            49,
+            133,
+        ),
+    ),
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a282a2a",
+        TimeRange(
+            134,
+            175,
+        ),
+    ),
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a2a2a2a",
+        TimeRange(
+            176,
+            217,
+        ),
+    ),
+]
+
+PROCESSING:
+[/home/nick/Projects/Zeitplan/zeitplan-libs/src/schedule.rs:403] &meetings = [
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a000000",
+        1,
+        [
+            TimeRange(
+                11,
+                41,
+            ),
+            TimeRange(
+                43,
+                46,
+            ),
+            TimeRange(
+                49,
+                58,
+            ),
+        ],
+    ),
+    (
+        "2a2affff-0089-4f03-ab00-ffffffff5555",
+        85,
+        [
+            TimeRange(
+                49,
+                255,
+            ),
+        ],
+    ),
+    (
+        "2a2a2a2a-d5d5-452a-93d5-d5d5d52a2a2a",
+        42,
+        [
+            TimeRange(
+                1,
+                46,
+            ),
+            TimeRange(
+                49,
+                255,
+            ),
+        ],
+    ),
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a282a2a",
+        42,
+        [
+            TimeRange(
+                0,
+                46,
+            ),
+            TimeRange(
+                49,
+                255,
+            ),
+        ],
+    ),
+    (
+        "2a2a2a2a-2a2a-4a2a-aa2a-2a2a2a2a2a2a",
+        42,
+        [
+            TimeRange(
+                0,
+                46,
+            ),
+            TimeRange(
+                49,
+                255,
+            ),
+        ],
+    ),
+]

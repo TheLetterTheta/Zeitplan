@@ -2,13 +2,13 @@ use core::cmp::Ordering;
 use itertools::Itertools;
 use log::{debug, trace};
 use num::{CheckedAdd, CheckedSub, Integer, One, Zero};
-use serde::{Deserialize, Serialize};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 
 /// Inclusive [start, end] time range
 /// <N>: Any integer type
-#[derive(Deserialize, PartialEq, Hash, Serialize, Debug, Copy, Clone, Eq)]
+#[derive(PartialEq, Hash, Debug, Copy, Clone, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub struct TimeRange<N>(pub N, pub N)
 where
     N: Integer + One + Copy + Display + Debug;
@@ -287,7 +287,7 @@ pub trait Available<N>
 where
     N: Integer + Copy + Display + Debug,
 {
-    fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>>;
+    fn get_availability(&self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>>;
 }
 
 #[derive(Debug, Clone)]

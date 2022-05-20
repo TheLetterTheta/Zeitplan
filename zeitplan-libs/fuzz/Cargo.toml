@@ -5,11 +5,17 @@ authors = ["Automatically generated"]
 publish = false
 edition = "2018"
 
+[features]
+rayon = ["zeitplan_libs/rayon"]
+log = ["dep:log", "dep:fern"]
+
 [package.metadata]
 cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+fern = { version = "0.6", optional = true }
+log = { version = "0.4", optional = true }
 
 [dependencies.zeitplan_libs]
 path = ".."

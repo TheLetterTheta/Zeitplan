@@ -2,6 +2,7 @@
 //!
 //! This is the core library for the Zeiplan Scheduling app.
 
+#[cfg(feature = "wasm")]
 use wasm_bindgen::prelude::*;
 
 /// Meetings to be scheduled
@@ -16,14 +17,18 @@ pub mod schedule;
 /// Utility functions for TimeRange. Used throughout the lib
 pub mod time;
 
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
 pub fn schedule(schedule: JsValue) -> Result<JsValue, JsValue> {
     use crate::schedule::Schedule;
 
     let schedule: Schedule<u16> = serde_wasm_bindgen::from_value(schedule)?;
-    Ok(serde_wasm_bindgen::to_value(&schedule.schedule_meetings(None)).unwrap())
+    Ok(serde_wasm_bindgen::to_value(
+        &schedule.schedule_meetings(None),
+    )?)
 }
 
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
 pub fn get_meeting_availability(
     meeting: JsValue,
@@ -35,9 +40,12 @@ pub fn get_meeting_availability(
     let meeting: Meeting<u16> = serde_wasm_bindgen::from_value(meeting)?;
     let available_times: Vec<TimeRange<u16>> = serde_wasm_bindgen::from_value(available_times)?;
 
-    Ok(serde_wasm_bindgen::to_value(&meeting.get_availability(&available_times)).unwrap())
+    Ok(serde_wasm_bindgen::to_value(
+        &meeting.get_availability(&available_times),
+    )?)
 }
 
+#[cfg(feature = "wasm")]
 #[wasm_bindgen]
 pub fn get_participant_availability(
     participant: JsValue,
@@ -49,7 +57,9 @@ pub fn get_participant_availability(
     let participant: Participant<u16> = serde_wasm_bindgen::from_value(participant)?;
     let available_times: Vec<TimeRange<u16>> = serde_wasm_bindgen::from_value(available_times)?;
 
-    Ok(serde_wasm_bindgen::to_value(&participant.get_availability(&available_times)).unwrap())
+    Ok(serde_wasm_bindgen::to_value(
+        &participant.get_availability(&available_times),
+    )?)
 }
 
 #[cfg(test)]
@@ -119,7 +129,7 @@ mod tests {
 
     #[test]
     fn gets_meeting_availability() {
-        use crate::meeting::Meeting;
+        use crate::meeting::{Meeting, MeetingParticipants};
         use crate::participant::Participant;
         use crate::time::{Available, TimeRange};
 
@@ -136,7 +146,9 @@ mod tests {
             Participant::new(&"2", blocked_times_2),
         ];
 
-        let meeting = Meeting::new(&"1", participants, 2);
+        let meeting: MeetingParticipants<u8> = MeetingParticipants::new(&"1", participants, 2);
+
+        let meeting: Meeting<u8> = meeting.into();
 
         let available_time = vec![
             TimeRange::new(0, 9),
@@ -223,25 +235,18 @@ mod tests {
     #[test]
     fn schedules() {
         use crate::meeting::Meeting;
-        use crate::participant::Participant;
         use crate::schedule::Schedule;
         use crate::time::TimeRange;
 
-        let user_1 = Participant::new("1", vec![TimeRange::new(2, 5)]);
-        let user_2 = Participant::new("2", vec![TimeRange::new(0, 0), TimeRange::new(2, 5)]);
-        let user_3 = Participant::new("3", vec![TimeRange::new(0, 1), TimeRange::new(3, 5)]);
-        let user_4 = Participant::new("4", vec![TimeRange::new(0, 2), TimeRange::new(4, 5)]);
-        let user_5 = Participant::new("5", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)]);
-
-        let meeting_1 = Meeting::new("1", vec![user_1], 1);
-        let meeting_2 = Meeting::new("2", vec![user_2], 1);
-        let meeting_3 = Meeting::new("3", vec![user_3], 1);
-        let meeting_4 = Meeting::new("4", vec![user_4], 1);
-        let meeting_5 = Meeting::new("5", vec![user_5.clone()], 1);
+        let meeting_1 = Meeting::new("1", vec![TimeRange::new(2, 5)], 1);
+        let meeting_2 = Meeting::new("2", vec![TimeRange::new(0, 0), TimeRange::new(2, 5)], 1);
+        let meeting_3 = Meeting::new("3", vec![TimeRange::new(0, 1), TimeRange::new(3, 5)], 1);
+        let meeting_4 = Meeting::new("4", vec![TimeRange::new(0, 2), TimeRange::new(4, 5)], 1);
+        let meeting_5 = Meeting::new("5", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)], 1);
 
         let available_time = vec![TimeRange::new(0, 5)];
 
-        let schedule = Schedule::new(
+        let schedule: Schedule<u8> = Schedule::new(
             vec![
                 meeting_1.clone(),
                 meeting_2.clone(),
@@ -254,7 +259,7 @@ mod tests {
 
         assert!(schedule.schedule_meetings(None).is_ok());
 
-        let meeting_6 = Meeting::new("6", vec![user_5.clone()], 1);
+        let meeting_6 = Meeting::new("6", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)], 1);
 
         let schedule = Schedule::new(
             vec![
@@ -264,24 +269,15 @@ mod tests {
         );
         assert!(schedule.schedule_meetings(None).is_err());
 
-        // this will run for a long time since it's impossible, but not detected
-        let user_1 = Participant::new("1", vec![TimeRange::new(1, 1000)]);
-        let user_2 = Participant::new("2", vec![TimeRange::new(1, 1000)]);
-        let user_3 = Participant::new("3", vec![]);
-        let user_4 = Participant::new("4", vec![]);
-        let user_5 = Participant::new("5", vec![]);
-        let user_6 = Participant::new("6", vec![]);
-        let user_7 = Participant::new("7", vec![]);
-
-        let schedule = Schedule::new(
+        let schedule: Schedule<u16> = Schedule::new(
             vec![
-                Meeting::new("1", vec![user_1], 1),
-                Meeting::new("2", vec![user_2], 1),
-                Meeting::new("3", vec![user_3], 1),
-                Meeting::new("4", vec![user_4], 1),
-                Meeting::new("5", vec![user_5], 1),
-                Meeting::new("6", vec![user_6], 1),
-                Meeting::new("7", vec![user_7], 1),
+                Meeting::new("1", vec![TimeRange::new(1, 1000)], 1),
+                Meeting::new("2", vec![TimeRange::new(1, 1000)], 1),
+                Meeting::new("3", vec![], 1),
+                Meeting::new("4", vec![], 1),
+                Meeting::new("5", vec![], 1),
+                Meeting::new("6", vec![], 1),
+                Meeting::new("7", vec![], 1),
             ],
             vec![TimeRange::new(0, 1000)],
         );

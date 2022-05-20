@@ -1,0 +1,111 @@
+{
+    "participants": {
+      "0": {
+        "blockedTimes": []
+      },
+      "1": {
+        "blockedTimes": []
+      },
+      "2": {
+        "blockedTimes": []
+      },
+      "3": {
+        "blockedTimes": []
+      },
+      "4": {
+        "blockedTimes": []
+      },
+      "5": {
+        "blockedTimes": []
+      },
+      "6": {
+        "blockedTimes": []
+      },
+      "7": {
+        "blockedTimes": []
+      },
+      "8": {
+        "blockedTimes": []
+      },
+      "9": {
+        "blockedTimes": []
+      },
+      "10": {
+        "blockedTimes": []
+      }
+    },
+    "meetings": {
+      "0": {
+        "duration": 1,
+        "participantIds": [
+          "0"
+        ]
+      },
+      "1": {
+        "duration": 1,
+        "participantIds": [
+          "1"
+        ]
+      },
+      "2": {
+        "duration": 1,
+        "participantIds": [
+          "2"
+        ]
+      },
+      "3": {
+        "duration": 1,
+        "participantIds": [
+          "3"
+        ]
+      },
+      "4": {
+        "duration": 1,
+        "participantIds": [
+          "4"
+        ]
+      },
+      "5": {
+        "duration": 1,
+        "participantIds": [
+          "5"
+        ]
+      },
+      "6": {
+        "duration": 1,
+        "participantIds": [
+          "6"
+        ]
+      },
+      "7": {
+        "duration": 1,
+        "participantIds": [
+          "7"
+        ]
+      },
+      "8": {
+        "duration": 1,
+        "participantIds": [
+          "8"
+        ]
+      },
+      "9": {
+        "duration": 1,
+        "participantIds": [
+          "9"
+        ]
+      },
+      "10": {
+        "duration": 1,
+        "participantIds": [
+          "10"
+        ]
+      }
+    },
+    "availableTimes": [
+      [
+        2,
+        11
+      ]
+    ]
+  }

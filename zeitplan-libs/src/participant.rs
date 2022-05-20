@@ -1,16 +1,16 @@
 use crate::time::{Available, Blocks, TimeRange, Validate};
 use log::debug;
 use num::{CheckedAdd, CheckedSub, Integer, One};
-use serde::Deserialize;
 use std::fmt::{Debug, Display};
 
-#[derive(Clone, Deserialize, Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize))]
+#[derive(Clone, Debug)]
 pub struct Participant<N>
 where
     N: Integer + One + Copy + Display + Debug,
 {
     pub id: String,
-    #[serde(rename = "blockedTimes")]
+    #[cfg_attr(feature = "serde", serde(rename = "blockedTimes"))]
     pub blocked_times: Vec<TimeRange<N>>,
 }
 
@@ -68,7 +68,7 @@ where
 {
     /// Gets the availability for this participant within the provided
     /// `available_times`.
-    fn get_availability(self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
+    fn get_availability(&self, available_times: &[TimeRange<N>]) -> Vec<TimeRange<N>> {
         if available_times.is_empty() {
             debug!(target: "Participant", "No available times, return empty;");
             vec![]

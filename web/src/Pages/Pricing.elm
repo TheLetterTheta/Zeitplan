@@ -173,6 +173,21 @@ view shared model =
                     project useful, consider sharing it with your friends!
                     """ ]
                     ]
+                , h1 [ class "is-1 title" ] [ text "Early Adoption Period" ]
+                , div [ class "content is-medium" ]
+                    [ p []
+                        [ text """
+                    Currently, there are no associated costs to using Zeitplan. The following is a
+                    future pricing model that will be used when Zeitplan has enough of a userbase to
+                    warrant a pricing system.
+                    """ ]
+                    , p []
+                    [ text """
+                    Accounts in the future will begin with a free trial period of 1 week, followed by a
+                    promotional new member discount on any of the following pricing models. In the future
+                    there may also be incentives for inviting other users.
+                    """]
+                    ]
                 , h1 [ class "is-1 title" ] [ text "Desktop Download" ]
                 , div [ class "content is-medium" ]
                     [ p []
@@ -184,7 +199,7 @@ view shared model =
                         [ li []
                             [ text "Features"
                             , ul []
-                                [ li [] [ text "Unlimited runs" ]
+                                [ li [] [ text "Unlimited use" ]
                                 , li [] [ text "Infinite search time" ]
                                 , li [] [ text "No recurring charges" ]
                                 ]
@@ -219,7 +234,7 @@ view shared model =
                             ]
                         , li [] [ text "Access anywhere" ]
                         , li [] [ text "Access anytime" ]
-                        , li [] [ text "Search for your perfect schedule on powerful Cloud based computers" ]
+                        , li [] [ text "Search for your perfect schedule on powerful Cloud computers" ]
                         ]
                     ]
                 , div [ class "pricing-table is-comparative" ]
@@ -238,7 +253,7 @@ view shared model =
                             [ Icon.viewIcon check
                             , Icon.viewIcon times
                             , Icon.viewIcon times
-                            , text "1s (1,000,000)"
+                            , text "1s (10,000)"
                             , text "20"
                             ]
                         , buttonText = "Choose"
@@ -253,7 +268,7 @@ view shared model =
                             [ Icon.viewIcon check
                             , Icon.viewIcon check
                             , Icon.viewIcon times
-                            , text "5s (50,000,000)"
+                            , text "5s (50,000)"
                             , text "50"
                             ]
                         , buttonText = "Choose"
@@ -268,8 +283,8 @@ view shared model =
                             [ Icon.viewIcon check
                             , Icon.viewIcon check
                             , text "1 hour"
-                            , text "15s (15,000,000)"
-                            , text "Unlimited"
+                            , text "15s (150,000)"
+                            , text "250"
                             ]
                         , buttonText = "Choose"
                         , color = Just Primary

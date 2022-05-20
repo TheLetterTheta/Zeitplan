@@ -7,8 +7,29 @@ build: check
 clippy: check
     cargo clippy
 
+bench: check
+    cargo bench
+
+check-rayon:
+    cargo check --features rayon
+
+bench-rayon: check-rayon
+    cargo bench --features rayon -- --baseline feature_rayon
+
 test: clippy
     cargo test
 
-fuzz: test
-    cargo +nightly fuzz run time
+fuzz-time: test
+    cargo +nightly fuzz run time -- -timeout=1
+
+fuzz-schedule: test
+    cargo +nightly fuzz run schedule -- -timeout=15
+
+test-rayon: clippy-rayon
+    cargo test --features rayon
+
+clippy-rayon: check-rayon
+    cargo clippy --features rayon
+
+fuzz-rayon-schedule: test-rayon
+    cargo +nightly fuzz run schedule --features rayon -- -timeout=15
