@@ -5,7 +5,7 @@ import FontAwesome.Icon as Icon
 import FontAwesome.Solid exposing (check, times)
 import Gen.Params.Pricing exposing (Params)
 import Html exposing (Html, br, button, div, em, h1, li, p, section, span, text, ul)
-import Html.Attributes exposing (class, classList, id)
+import Html.Attributes exposing (class)
 import Page
 import Request
 import Shared
@@ -41,7 +41,6 @@ init =
 
 type Msg
     = SharedMsg Shared.Msg
-    | NoOp
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -49,9 +48,6 @@ update msg model =
     case msg of
         SharedMsg sharedMsg ->
             ( model, Effect.fromShared sharedMsg )
-
-        NoOp ->
-            ( model, Effect.none )
 
 
 
@@ -64,11 +60,7 @@ subscriptions model =
 
 
 type Color
-    = Info
-    | Warning
-    | Success
-    | Danger
-    | Primary
+    = Primary
     | Light
 
 
@@ -87,18 +79,6 @@ pricingPlan item =
         [ class "pricing-plan"
         , class <|
             case item.color of
-                Just Warning ->
-                    "is-warning"
-
-                Just Info ->
-                    "is-info"
-
-                Just Success ->
-                    "is-success"
-
-                Just Danger ->
-                    "is-danger"
-
                 Just Primary ->
                     "is-primary"
 
@@ -182,11 +162,11 @@ view shared model =
                     warrant a pricing system.
                     """ ]
                     , p []
-                    [ text """
+                        [ text """
                     Accounts in the future will begin with a free trial period of 1 week, followed by a
                     promotional new member discount on any of the following pricing models. In the future
                     there may also be incentives for inviting other users.
-                    """]
+                    """ ]
                     ]
                 , h1 [ class "is-1 title" ] [ text "Desktop Download" ]
                 , div [ class "content is-medium" ]

@@ -7,6 +7,7 @@ import Gen.Params.About
 import Gen.Params.Home_
 import Gen.Params.Login
 import Gen.Params.Pricing
+import Gen.Params.Schedule
 import Gen.Params.SignUp
 import Gen.Params.NotFound
 import Gen.Model as Model
@@ -17,6 +18,7 @@ import Pages.About
 import Pages.Home_
 import Pages.Login
 import Pages.Pricing
+import Pages.Schedule
 import Pages.SignUp
 import Pages.NotFound
 import Request exposing (Request)
@@ -49,6 +51,9 @@ init route =
         Route.Pricing ->
             pages.pricing.init ()
     
+        Route.Schedule ->
+            pages.schedule.init ()
+    
         Route.SignUp ->
             pages.signUp.init ()
     
@@ -67,6 +72,9 @@ update msg_ model_ =
     
         ( Msg.Pricing msg, Model.Pricing params model ) ->
             pages.pricing.update params msg model
+    
+        ( Msg.Schedule msg, Model.Schedule params model ) ->
+            pages.schedule.update params msg model
     
         ( Msg.SignUp msg, Model.SignUp params model ) ->
             pages.signUp.update params msg model
@@ -93,6 +101,9 @@ view model_ =
         Model.Pricing params model ->
             pages.pricing.view params model
     
+        Model.Schedule params model ->
+            pages.schedule.view params model
+    
         Model.SignUp params model ->
             pages.signUp.view params model
     
@@ -118,6 +129,9 @@ subscriptions model_ =
         Model.Pricing params model ->
             pages.pricing.subscriptions params model
     
+        Model.Schedule params model ->
+            pages.schedule.subscriptions params model
+    
         Model.SignUp params model ->
             pages.signUp.subscriptions params model
     
@@ -134,6 +148,7 @@ pages :
     , home_ : Bundle Gen.Params.Home_.Params Pages.Home_.Model Pages.Home_.Msg
     , login : Static Gen.Params.Login.Params
     , pricing : Bundle Gen.Params.Pricing.Params Pages.Pricing.Model Pages.Pricing.Msg
+    , schedule : Bundle Gen.Params.Schedule.Params Pages.Schedule.Model Pages.Schedule.Msg
     , signUp : Bundle Gen.Params.SignUp.Params Pages.SignUp.Model Pages.SignUp.Msg
     , notFound : Static Gen.Params.NotFound.Params
     }
@@ -142,6 +157,7 @@ pages =
     , home_ = bundle Pages.Home_.page Model.Home_ Msg.Home_
     , login = static Pages.Login.view Model.Login
     , pricing = bundle Pages.Pricing.page Model.Pricing Msg.Pricing
+    , schedule = bundle Pages.Schedule.page Model.Schedule Msg.Schedule
     , signUp = bundle Pages.SignUp.page Model.SignUp Msg.SignUp
     , notFound = static Pages.NotFound.view Model.NotFound
     }

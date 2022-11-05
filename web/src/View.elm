@@ -1,15 +1,14 @@
-module View exposing (NavMsg(..), View, button, container, content, footer, map, none, placeholder, role, toBrowserDocument, zeitplanNav)
+module View exposing (NavMsg(..), View, container, content, footer, map, none, placeholder, toBrowserDocument, zeitplanNav)
 
 import Browser
 import FontAwesome.Brands exposing (facebook, github)
 import FontAwesome.Icon as Icon
 import FontAwesome.Solid exposing (heart, music)
 import Gen.Route as Route
-import Html exposing (Attribute, Html, a, div, i, img, nav, p, span, strong, text)
+import Html exposing (Attribute, Html, a, div, img, nav, p, span, text)
 import Html.Attributes exposing (attribute, class, classList, height, href, src, target, width)
 import Html.Events exposing (onClick)
 import Shared
-import Task exposing (Task)
 import Url.Builder as Url
 
 
@@ -172,19 +171,20 @@ zeitplanNav settings =
             , div [ class "navbar-end" ]
                 [ div [ class "navbar-item" ]
                     [ case settings.shared.user of
-                        Just _ -> 
+                        Just _ ->
                             button
-                            [ class "is-primary"
-                            , onClick Logout
-                            ]
-                            [ text "Logout"
-                            ]
+                                [ class "is-primary"
+                                , onClick Logout
+                                ]
+                                [ text "Logout"
+                                ]
+
                         Nothing ->
                             button
-                            [ class "is-primary"
-                            ]
-                            [ text "Log In"
-                            ]
+                                [ class "is-primary"
+                                ]
+                                [ text "Log In"
+                                ]
                     ]
                 ]
             ]

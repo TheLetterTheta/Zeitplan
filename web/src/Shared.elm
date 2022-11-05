@@ -1,8 +1,10 @@
-module Shared exposing
+port module Shared exposing
     ( Flags
     , Model
     , Msg(..)
+    , SaveValue
     , init
+    , saveKey
     , subscriptions
     , update
     )
@@ -10,6 +12,7 @@ module Shared exposing
 import Browser.Dom exposing (getElement, setViewport)
 import Json.Decode as Json
 import Json.Decode.Pipeline exposing (required)
+import Json.Encode as Encode
 import Request exposing (Request)
 import Task
 
@@ -82,3 +85,12 @@ update _ msg model =
 subscriptions : Request -> Model -> Sub Msg
 subscriptions _ _ =
     Sub.none
+
+
+type alias SaveValue =
+    { key : String
+    , value : Encode.Value
+    }
+
+
+port saveKey : SaveValue -> Cmd msg

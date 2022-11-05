@@ -2,14 +2,13 @@ module Pages.About exposing (Model, Msg, page)
 
 import Effect exposing (Effect)
 import Gen.Params.Home_ exposing (Params)
-import Gen.Route as Route
 import Html exposing (a, blockquote, code, div, h1, h2, h5, i, p, strong, text)
 import Html.Attributes exposing (class, href, id, style)
 import Html.Events exposing (onClick)
 import Page
 import Request
 import Shared
-import Url.Builder exposing (Root(..), custom, string)
+import Url.Builder exposing (Root(..), custom)
 import View exposing (View, container, content, footer, zeitplanNav)
 
 
@@ -42,7 +41,6 @@ init =
 
 type Msg
     = SharedMsg Shared.Msg
-    | NoOp
 
 
 update : Msg -> Model -> ( Model, Effect Msg )
@@ -50,9 +48,6 @@ update msg model =
     case msg of
         SharedMsg sharedMsg ->
             ( model, Effect.fromShared sharedMsg )
-
-        NoOp ->
-            ( model, Effect.none )
 
 
 
@@ -191,8 +186,8 @@ view shared _ =
                         [ strong [] [ text "This is taking a long time. I think it's stuck" ] ]
                     , p [ class "is-wrap-text" ]
                         [ text """
-                    That's not a question, but I'll answer it anyway! The possible configurations of 336 meetings if
-                    each has 336 available times to be schedules is a measly
+                    That's not a question, but I'll answer it anyway! The number of possible schedules we need to analyze for the default
+                    week view in Zeitplan is a whopping
                     """
                         , code [ style "word-break" "break-all" ]
                             [ text "707,941,224,973,776,291,093,837,493,051,267,117,605,376,723,076,915,563,513,477,597,978,647,196,852,710,146,048,782,874,897,075,955,894,104,953,184,864,576,196,144,825,576,943,931,128,199,472,378,261,795,861,931,974,957,688,311,237,681,682,031,691,366,087,383,492,525,475,626,202,835,152,044,870,005,449,098,250,592,421,885,320,204,847,428,102,564,080,042,137,500,502,947,619,347,768,122,327,941,080,451,839,131,251,991,696,797,801,434,243,553,028,397,371,613,542,311,928,832,902,663,472,677,761,721,549,526,113,056,029,984,995,819,524,704,354,822,624,666,292,991,477,232,130,327,433,304,881,523,787,028,883,795,947,102,784,291,416,129,589,695,015,805,337,539,264,492,307,555,753,716,879,695,344,357,979,188,084,112,721,486,214,822,552,206,966,345,890,231,289,687,237,950,447,464,115,396,984,096,898,391,196,909,695,809,036,630,324,500,769,619,930,968,248,631,451,227,869,005,449,623,566,329,692,609,930,440,559,431,377,271,635,608,873,359,171,946,166,367,460,584,277,699,826,134,971,929,228,806,950,423,081,181,843,641,763,509,694,660,317,093,440,761,351,296,251,922,615,893,476,691,290,071,647,755,667,379,012,463,240,136,359,936"

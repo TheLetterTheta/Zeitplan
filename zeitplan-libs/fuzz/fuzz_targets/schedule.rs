@@ -32,18 +32,14 @@ fuzz_target!(|data: Schedule<u8>| {
                 .any(|a| t.start() >= a.start() && t.end() <= a.end())
         }) {
             panic!(
-                "Returned TimeRange outside of Available slots: e{:?} not within {:?}",
+                "Returned TimeRange outside of Available slots: time {:?} not within {:?}",
                 e, available
             );
         }
 
         let mut unique = HashSet::with_capacity(schedule_times.len());
         for t in schedule_times.windowed(1) {
-            if unique.contains(&t) {
-                panic!("Overlapping Time found: {}", t);
-            } else {
-                assert!(unique.insert(t), "Couldn't insert duplicate value: {}", t);
-            }
+            assert!(unique.insert(t), "Overlapping Time found: {}", t);
         }
     }
 });

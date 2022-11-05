@@ -1,17 +1,15 @@
-module Pages.Home_ exposing (Model, Msg, page)
+module Pages.Home_ exposing (Model, Msg, TabView, page)
 
-import Dict
 import Effect exposing (Effect)
 import Gen.Params.Home_ exposing (Params)
-import Html exposing (Html, a, br, button, div, em, h1, h2, h3, li, p, section, strong, text, ul)
+import Html exposing (Html, a, br, div, em, h1, h3, li, p, section, strong, text, ul)
 import Html.Attributes exposing (class, classList, href, id, target)
 import Html.Events exposing (onClick)
 import Page
-import Request exposing (Request)
+import Request
 import Shared
-import Task
 import Url.Builder exposing (Root(..), crossOrigin, custom, relative)
-import View exposing (View, container, content, footer, role, zeitplanNav)
+import View exposing (View, footer, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
@@ -63,7 +61,6 @@ init req =
 type Msg
     = SharedMsg Shared.Msg
     | ChangeTab TabView
-    | NoOp
 
 
 tabString : TabView -> String
@@ -90,9 +87,6 @@ update msg model =
 
         SharedMsg sharedMsg ->
             ( model, Effect.fromShared sharedMsg )
-
-        NoOp ->
-            ( model, Effect.none )
 
 
 
@@ -320,12 +314,6 @@ scheduleSection model =
             ]
         ]
 
-type alias Section msg = {title: String, content: Html msg}
-type alias Tab msg = {title: String, content: List (Section msg)}
-
-renderTab: Tab msg -> Html msg
-renderTab tab = 
-    div [] []
 
 view : Shared.Model -> Model -> View Msg
 view shared model =

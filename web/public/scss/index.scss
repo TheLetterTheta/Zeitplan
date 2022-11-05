@@ -25,15 +25,31 @@
 
 @import "../../node_modules/@fortawesome/fontawesome-free/css/svg-with-js.min.css";
 
+@mixin no-spacing {
+    padding: 0;
+    margin: 0;
+}
+
+
+$primary : #65463E;
+$primary_text: white;
+$secondary: #AAD6A0;
+$secondary_text: black;
+$secondary_light: #DCE5D0;
+$secondary_light_text: black;
+$accent: #DCBAA9;
+$accent_text: white;
+
 a {
     text-decoration: none;
 }
 
-body, html {
+body,
+html {
+    @include no-spacing;
     height: 100%;
     width: 100%;
-    padding: 0;
-    margin: 0;
+    background-color: #EEEEEE;
 }
 
 * {
@@ -46,3 +62,165 @@ body, html {
     margin-right: auto;
     word-wrap: break-word;
 }
+
+/*
+********************
+    SCHEDULE PAGE
+********************
+*/
+
+.schedule {
+    table {
+        border-collapse: collapse;
+
+        td {
+            @include no-spacing
+        }
+    }
+
+    p { @include no-spacing; }
+
+    .week {
+        width: 100%;
+        min-width: calc(7 * 99px + 9px);
+        table-layout: fixed;
+        user-select: none;
+    }
+
+    .day-name {
+        text-align: center;
+        display: inline-block;
+        max-width: 100%;
+        width: 100%;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    .all-day{
+        &-line{
+            height: 10px;
+        }
+
+        &-interval {
+            border: solid 1px $accent;
+        }
+    }
+
+    .interval {
+        height: 25px;
+        border: 1px solid $accent;
+
+        &:hover {
+            background-color: $secondary;
+        }
+
+    }
+
+    .event {
+        position: relative;
+        width: calc(100% - 0.5rem);
+        background-color: $primary;
+        margin-inline: auto;
+        height: 100%;
+
+        &:not(.draft) {
+            cursor: -webkit-grab;
+            cursor: -moz-grab;
+        }
+
+        &:not(.event-end):not(.event-start){
+            margin-bottom: -1px;
+            height: calc(100% + 1px);
+        }
+
+        &-start {
+            top: 1px;
+            z-index: 1;
+            border-top-right-radius: 5px;
+            border-top-left-radius: 5px;
+
+            &:not(.event-end) > .event-time {
+                white-space: unset;
+                overflow: unset;
+            }
+
+            & > .event-resize {
+                top: 2;
+                cursor: n-resize;
+                border-top-color: $primary_text;
+                border-top-style: solid;
+                border-top-width: 1px;
+                border-bottom-color: unset;
+                border-bottom-style: unset;
+                border-bottom-width: unset;
+            }
+        }
+
+        &-end {
+            bottom: 1px;
+            border-bottom-right-radius: 5px;
+            border-bottom-left-radius: 5px;
+        }
+
+        &-time {
+            text-align: center;
+            color: $primary_text;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: absolute;
+            width: calc(100% - 20px);
+            font-size: 0.85em;
+            height: 100%;
+            vertical-align: center;
+            margin-top: 2px;
+        }
+
+        &-close {
+            position: absolute;
+            top: 2;
+            right: 0;
+            width: 20px;
+            background-color: transparent;
+            border: none;
+            color: $primary_text;
+            z-index: 1;
+        }
+
+        &-resize {
+            position: absolute;
+            border: none;
+            height: 15px;
+            min-width: 20px;
+            width: 25%;
+            margin-left: auto;
+            margin-right: auto;
+            left: 0;
+            right: 0;
+            bottom: 2;
+            background-color: transparent;
+            border-bottom-color: $primary_text;
+            border-bottom-style: solid;
+            border-bottom-width: 1px;
+            cursor: s-resize;
+            z-index: 1;
+        }
+
+        &.draft {
+            opacity: 0.5;
+            cursor: move;
+        }
+
+        &.dragging {
+            opacity: 0.9;
+        }
+
+    }
+
+    .event-start.event-end {
+        height: calc(100% - 2px);
+        top: 1px;
+        bottom: 1px;
+    }
+}
+

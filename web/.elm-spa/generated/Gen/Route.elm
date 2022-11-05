@@ -8,6 +8,7 @@ import Gen.Params.About
 import Gen.Params.Home_
 import Gen.Params.Login
 import Gen.Params.Pricing
+import Gen.Params.Schedule
 import Gen.Params.SignUp
 import Gen.Params.NotFound
 import Url exposing (Url)
@@ -19,6 +20,7 @@ type Route
     | Home_
     | Login
     | Pricing
+    | Schedule
     | SignUp
     | NotFound
 
@@ -34,6 +36,7 @@ routes =
     , Parser.map About Gen.Params.About.parser
     , Parser.map Login Gen.Params.Login.parser
     , Parser.map Pricing Gen.Params.Pricing.parser
+    , Parser.map Schedule Gen.Params.Schedule.parser
     , Parser.map SignUp Gen.Params.SignUp.parser
     , Parser.map NotFound Gen.Params.NotFound.parser
     ]
@@ -58,6 +61,9 @@ toHref route =
     
         Pricing ->
             joinAsHref [ "pricing" ]
+    
+        Schedule ->
+            joinAsHref [ "schedule" ]
     
         SignUp ->
             joinAsHref [ "sign-up" ]

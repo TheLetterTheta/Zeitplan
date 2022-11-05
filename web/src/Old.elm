@@ -1,7 +1,6 @@
-port module Main exposing (Meeting, MeetingTimeslot, ResultStatus, User, decodeMeetings, decodeResults, decodeTimeslots, decodeUsers, main)
+port module Old exposing (Flags, Meeting, MeetingTimeslot, Model, Msg, ResultStatus, User, main)
 
 import Animation exposing (rad)
-import Animation.Spring.Presets exposing (stiff)
 import Bootstrap.Alert as Alert
 import Bootstrap.Badge as Badge
 import Bootstrap.Button as Button
@@ -16,24 +15,22 @@ import Bootstrap.Navbar as Navbar
 import Bootstrap.Utilities.Border as Border
 import Bootstrap.Utilities.Display as Display
 import Bootstrap.Utilities.Flex as Flex
-import Bootstrap.Utilities.Size as Size
 import Bootstrap.Utilities.Spacing as Spacing
 import Browser exposing (Document)
 import Browser.Dom as Dom
-import Debug
 import Dict
-import FontAwesome.Icon as Icon exposing (Icon)
+import FontAwesome.Icon as Icon
 import FontAwesome.Solid as Icon
 import FontAwesome.Styles as Icon
 import Html exposing (Html, a, blockquote, button, div, footer, form, h1, h3, h5, h6, img, input, li, mark, p, span, strong, text, ul)
-import Html.Attributes as Attributes exposing (attribute, class, for, href, id, max, min, name, required, src, step, style, target, type_, value)
+import Html.Attributes as Attributes exposing (class, for, href, id, src, step, style, target, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Keyed
 import Html.Lazy exposing (lazy)
-import Json.Decode as Decode exposing (Decoder, Value, bool, decodeValue, int, list, string)
-import Json.Decode.Pipeline as Pipeline exposing (required)
-import Task as Task exposing (perform)
-import Time as Time exposing (Posix)
+import Json.Decode as Decode exposing (Decoder, bool, decodeValue, int, list, string)
+import Json.Decode.Pipeline as Pipeline
+import Task
+import Time
 
 
 
@@ -211,9 +208,9 @@ update msg model =
                     , case model.results of
                         Ok results ->
                             Dict.toList results
-                                |> List.filter (\( f, s ) -> s.locked)
+                                |> List.filter (\( _, s ) -> s.locked)
 
-                        Err e ->
+                        Err _ ->
                             []
                     )
                 )
@@ -225,9 +222,9 @@ update msg model =
                     , case model.results of
                         Ok results ->
                             Dict.toList results
-                                |> List.filter (\( f, s ) -> s.locked)
+                                |> List.filter (\( _, s ) -> s.locked)
 
-                        Err e ->
+                        Err _ ->
                             []
                     )
                 )
@@ -237,7 +234,7 @@ update msg model =
                 Ok data ->
                     ( { model | meetings = data }, getMeetingTimes data )
 
-                Err error ->
+                Err _ ->
                     ( model, Cmd.none )
 
         AddMeeting ->
@@ -274,7 +271,7 @@ update msg model =
                 Ok data ->
                     ( { model | meetingTimes = Dict.union data model.meetingTimes }, Cmd.none )
 
-                Err error ->
+                Err _ ->
                     ( model, Cmd.none )
 
         DisplayComputedSchedule jsValue ->
@@ -335,7 +332,7 @@ update msg model =
                 Ok data ->
                     ( { model | participants = data }, Cmd.none )
 
-                Err error ->
+                Err _ ->
                     ( model, Cmd.none )
 
         UpdateUserName name ->
@@ -346,18 +343,19 @@ update msg model =
 
         SaveUserWithId currentTimestamp ->
             let
-                newUser =
-                    { id =
-                        String.fromInt <|
-                            Time.posixToMillis currentTimestamp
-                    , name = model.newUserName
-                    }
-
                 shouldAdd =
                     String.trim model.newUserName /= ""
 
                 newModel =
                     if shouldAdd then
+                        let
+                            newUser =
+                                { id =
+                                    String.fromInt <|
+                                        Time.posixToMillis currentTimestamp
+                                , name = model.newUserName
+                                }
+                        in
                         { model
                             | participants = newUser :: model.participants
                             , newUserName = ""
@@ -632,11 +630,6 @@ sortedUsers participants =
 inputToInt : Int -> String -> Int
 inputToInt default value =
     value |> String.toInt |> Maybe.withDefault default
-
-
-calculateMeetingComplexity : Model -> Int
-calculateMeetingComplexity m =
-    List.length m.meetingParticipants * m.meetingDuration
 
 
 renderMeetingParticipant : List User -> String -> Html Msg
@@ -1043,7 +1036,7 @@ renderResults model =
                         Ok results ->
                             model.meetings
                                 |> List.filterMap (\m -> Dict.get m.id results |> Maybe.map (\i -> ( m, i )))
-                                |> List.sortBy (\( f, s ) -> s.ord)
+                                |> List.sortBy (\( _, s ) -> s.ord)
                                 |> List.map
                                     (renderKeyedResultMeeting model)
 

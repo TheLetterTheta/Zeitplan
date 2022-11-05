@@ -539,6 +539,11 @@ impl<
                             should_stop.clone(),
                         ) {
                             r if is_primary => {
+                                if matches!(r, Err(ValidationError::Interrupted)) {
+                                    // Main thread finished, but was caused by another
+                                    // thread locating the correct solution
+                                    return None;
+                                }
                                 debug!(target: "Schedule", thread = "primary"; "Primary thread finished with result");
                                 Some(r)
                             },
@@ -547,7 +552,7 @@ impl<
                                 Some(Ok(s))
                             },
                             Err(ValidationError::NoSolution) => {
-                                debug!(target: "Schedule", thread = "worker"; "Worker thread found solution");
+                                debug!(target: "Schedule", thread = "worker"; "Worker thread identified a no solution result");
                                 Some(Err(ValidationError::NoSolution))
                             }
                             _ => {

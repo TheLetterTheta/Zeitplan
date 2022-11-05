@@ -32,4 +32,4 @@ clippy-rayon: check-rayon
     cargo clippy --features rayon
 
 fuzz-rayon-schedule: test-rayon
-    cargo +nightly fuzz run schedule --features rayon -- -timeout=15
+    cargo +nightly fuzz run schedule --features rayon -- -timeout=0
