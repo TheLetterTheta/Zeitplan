@@ -206,13 +206,18 @@ html {
             z-index: 1;
         }
 
-        &.draft {
-            opacity: 0.5;
-            cursor: move;
-        }
-
         &.dragging {
             opacity: 0.9;
+        }
+
+
+        &.draft {
+            opacity: 0.5;
+            cursor: cell;
+
+            &.dragging {
+                cursor: grabbing;
+            }
         }
 
     }

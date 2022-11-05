@@ -99,25 +99,26 @@ encodeEvent e =
 
 
 type alias EditEvent =
-    { event : Event, time : Int }
+    { event : Event, shadowEvent : Maybe Event, time : Int }
+
 
 type alias MoveEventEnd =
-    { event: Event, end: Ends }
+    { event : Event, end : Ends }
+
 
 
 -- MODEL
 
-type CalendarState =
-    Resizing
-    | Dragging
-    | Creating
+
+type CalendarState
+    = Resizing MoveEventEnd
+    | Dragging EditEvent
+    | Creating EditEvent
     | Idle
+
 
 type alias Model =
     { events : List Event
-    , editEvent : Maybe EditEvent
-    , dragInfo : Maybe EditEvent
-    , resizeEvent : Maybe MoveEventEnd
     , state : CalendarState
     }
 
@@ -129,9 +130,6 @@ type alias Model =
 init : ( Model, Effect Msg )
 init =
     ( { events = []
-      , editEvent = Nothing
-      , dragInfo = Nothing
-      , resizeEvent = Nothing
       , state = Idle
       }
     , Effect.none
@@ -191,10 +189,15 @@ addEvent e l =
 
 -- UPDATE
 
-type Ends = Start | End
+
+type Ends
+    = Start
+    | End
+
 
 type Msg
-    = MouseChangeTime Direction Int
+    = BeginCreateEvent Int
+    | EndCreateEvent
     | MouseEnterTime Int
     | MouseLeaveCalendar
     | BeginDragEvent Event Int
@@ -213,48 +216,46 @@ update msg model =
         NoOp ->
             ( model, Effect.none )
 
-        MouseChangeTime d t ->
+        BeginCreateEvent t ->
             let
-                ( newEventsList, newEditEvent, state ) =
-                    case d of
-                        Down ->
-                            ( model.events, Just <| { event = Event t t True False, time = t }, Creating )
-
-                        Up ->
-                            case model.editEvent of
-                                Just { event, time } ->
-                                    let
-                                        ( _, newList ) =
-                                            addEvent { event | draft = False } model.events
-                                    in
-                                    ( newList, Nothing, Idle )
-
-                                Nothing ->
-                                    ( model.events, Nothing, Idle )
+                event =
+                    Event t t True False
             in
-            ( { model | editEvent = newEditEvent, events = newEventsList, state = state }, Effect.none )
+            ( { model | state = Creating { event = event, shadowEvent = Just event, time = t } }, Effect.none )
+
+        EndCreateEvent ->
+            case model.state of
+                Creating { event } ->
+                    let
+                        ( _, newList ) =
+                            addEvent { event | draft = False } model.events
+                    in
+                    ( { model | events = newList, state = Idle }, Effect.none )
+
+                _ ->
+                    ( model, Effect.none )
 
         MouseEnterTime t ->
-            let
-                newEvent =
-                    Maybe.map
-                        (\{ event, time } ->
-                            let
-                                ( newStart, newEnd ) =
-                                    if t < time then
-                                        ( t, time )
+            case model.state of
+                Creating { event, time } ->
+                    let
+                        ( newStart, newEnd ) =
+                            if t < time then
+                                ( t, time )
 
-                                    else
-                                        ( time, t )
-                            in
-                            { event = { event | end = newEnd, start = newStart }, time = time }
-                        )
-                        model.editEvent
-            in
-            ( { model | editEvent = newEvent }, Effect.none )
+                            else
+                                ( time, t )
+
+                        newEvent =
+                            { event | end = newEnd, start = newStart }
+                    in
+                    ( { model | state = Creating { event = newEvent, shadowEvent = Just newEvent, time = time } }, Effect.none )
+
+                _ ->
+                    ( model, Effect.none )
 
         MouseLeaveCalendar ->
-            ( { model | editEvent = Nothing, dragInfo = Nothing, resizeEvent = Nothing, state = Idle }, Effect.none )
+            ( { model | state = Idle }, Effect.none )
 
         BeginDragEvent event t ->
             let
@@ -269,11 +270,11 @@ update msg model =
                                     ev
                             )
             in
-            ( { model | events = events, dragInfo = Just { event = event, time = t }, state = Dragging }, Effect.none )
+            ( { model | events = events, state = Dragging { event = event, shadowEvent = Nothing, time = t } }, Effect.none )
 
         DragEventTo t ->
-            case model.dragInfo of
-                Just { event, time } ->
+            case model.state of
+                Dragging { event, time } ->
                     let
                         dragDistance =
                             t - time
@@ -284,28 +285,31 @@ update msg model =
                                 , end = event.end + dragDistance
                             }
                     in
-                    ( { model | editEvent = Just { event = newEvent, time =time }, dragInfo = Just { event = newEvent, time = t } }, Effect.none )
+                    ( { model
+                        | state = 
+                            Dragging { event = newEvent
+                            , shadowEvent = Just { newEvent | draft = True, dragging = True }
+                            , time = t } 
+                        }
+                    , Effect.none )
 
-                Nothing ->
+                _ ->
                     ( model, Effect.none )
 
         EndDragEvent ->
-            let
-                clearDragging =
-                    \e -> { e | dragging = False, draft = False }
-            in
-            case
-                model.dragInfo
-                    |> Maybe.map
-                        (\{ event, time } ->
+            case model.state of
+                Dragging { event, time } ->
+                    let
+                        clearDragging =
+                            \e -> { e | dragging = False, draft = False }
+
+                        ( _, newEvents ) =
                             addEvent { event | dragging = False } <|
                                 List.filter (\current -> not current.dragging) model.events
-                        )
-            of
-                Just ( _, newEvents ) ->
-                    ( { model | events = newEvents, editEvent = Nothing, dragInfo = Nothing, state = Idle }, Effect.none )
+                    in
+                    ( { model | events = newEvents, state = Idle }, Effect.none )
 
-                Nothing ->
+                _ ->
                     ( model, Effect.none )
 
         DeleteEvent event ->
@@ -316,30 +320,45 @@ update msg model =
             ( { model | events = filterEvent model.events }, Effect.none )
 
         ResizeEvent end event ->
-            ( { model | state = Resizing, resizeEvent = Just { event = event, end = end}}, Effect.none )
+            ( { model | state = Resizing { event = event, end = end } }, Effect.none )
 
-        {-- 
+        {--
         TODO: PLEASE - UPDATE this to not have overlapping events
         --}
         ResizeEventTo time ->
-            let
-                (resizeEvent, newEvents) = case model.resizeEvent of
-                    Just {event, end } ->
-                        let
-                            newEvent = case end of
-                                Start -> { event | start = min event.end time }
-                                End -> { event | end = max event.start time }
-                        in
-                        (Just { event = newEvent, end = end}, model.events |> List.map (\e -> if e == event then newEvent else e ))
-                        
-                    Nothing ->
-                        (Nothing, model.events)
-                                    
-            in
-            ( { model | resizeEvent = resizeEvent, events = newEvents }, Effect.none)
+            case model.state of
+                Resizing { event, end } ->
+                    let
+                        newEvent =
+                            case end of
+                                Start ->
+                                    { event | start = min event.end time }
+
+                                End ->
+                                    { event | end = max event.start time }
+                    in
+                    ( { model
+                        | state = Resizing { event = newEvent, end = end }
+                        , events =
+                            model.events
+                                |> List.map
+                                    (\e ->
+                                        if e == event then
+                                            newEvent
+
+                                        else
+                                            e
+                                    )
+                      }
+                    , Effect.none
+                    )
+
+                _ ->
+                    ( model, Effect.none )
 
         EndResizeEvent ->
-            ( { model | resizeEvent = Nothing, state = Idle }, Effect.none)
+            ( { model | state = Idle }, Effect.none )
+
 
 
 -- VIEW
@@ -349,13 +368,18 @@ view : Model -> Html Msg
 view model =
     let
         editEvent =
-            model.editEvent
+            case model.state of
+                Creating { shadowEvent } ->
+                    shadowEvent
+
+                Dragging { shadowEvent } ->
+                    shadowEvent
+
+                _ ->
+                    Nothing
 
         events =
             model.events
-
-        dragInfo =
-            model.dragInfo
 
         ignoreEvent : String -> Attribute Msg
         ignoreEvent s =
@@ -386,7 +410,7 @@ view model =
                 matchingDraft =
                     editEvent
                         |> Maybe.andThen
-                            (\{ event , time } ->
+                            (\event ->
                                 if index >= event.start && index <= event.end then
                                     Just event
 
@@ -396,10 +420,12 @@ view model =
 
                 viewDraft e =
                     div
-                        [ class "event draft"
+                        [ class "event"
                         , classList
                             [ ( "event-start", e.start == index )
                             , ( "event-end", e.end == index )
+                            , ( "dragging", e.dragging)
+                            , ( "draft", e.draft)
                             ]
                         ]
                     <|
@@ -412,20 +438,22 @@ view model =
                 mouseEvents =
                     case model.state of
                         Idle ->
-                            [ onMouseDown <| MouseChangeTime Down index ]
-                        Creating ->
+                            [ onMouseDown <| BeginCreateEvent index ]
+
+                        Creating _ ->
                             [ onMouseEnter <| MouseEnterTime index
-                            , onMouseUp <| MouseChangeTime Up index
+                            , onMouseUp <| EndCreateEvent
                             ]
-                        Dragging ->
+
+                        Dragging _ ->
                             [ onMouseEnter <| DragEventTo index
                             , onMouseUp <| EndDragEvent
                             ]
-                        Resizing ->
+
+                        Resizing _ ->
                             [ onMouseEnter <| ResizeEventTo index
                             , onMouseUp <| EndResizeEvent
                             ]
-
             in
             \_ ->
                 td
@@ -449,14 +477,14 @@ view model =
                                             , ( "event-end", e.end == index )
                                             , ( "dragging", e.dragging )
                                             ]
-                                        , stopPropagationOn "mousedown" (Decode.succeed ( BeginDragEvent e index, True))
+                                        , stopPropagationOn "mousedown" (Decode.succeed ( BeginDragEvent e index, True ))
                                         ]
                                       <|
                                         if e.start == index || i == 1 then
                                             (if e.start == index then
                                                 [ button
                                                     [ class "event-resize"
-                                                    , stopPropagationOn "mousedown" (Decode.succeed (ResizeEvent Start e, True))
+                                                    , stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent Start e, True ))
                                                     ]
                                                     []
                                                 ]
@@ -482,7 +510,7 @@ view model =
                                         else if e.end == index then
                                             [ button
                                                 [ class "event-resize"
-                                                , stopPropagationOn "mousedown" (Decode.succeed (ResizeEvent End e, True))
+                                                , stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent End e, True ))
                                                 ]
                                                 []
                                             ]
