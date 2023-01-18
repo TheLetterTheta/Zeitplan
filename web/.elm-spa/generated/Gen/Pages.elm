@@ -8,7 +8,6 @@ import Gen.Params.Home_
 import Gen.Params.Login
 import Gen.Params.Pricing
 import Gen.Params.Schedule
-import Gen.Params.SignUp
 import Gen.Params.NotFound
 import Gen.Model as Model
 import Gen.Msg as Msg
@@ -19,7 +18,6 @@ import Pages.Home_
 import Pages.Login
 import Pages.Pricing
 import Pages.Schedule
-import Pages.SignUp
 import Pages.NotFound
 import Request exposing (Request)
 import Shared
@@ -54,9 +52,6 @@ init route =
         Route.Schedule ->
             pages.schedule.init ()
     
-        Route.SignUp ->
-            pages.signUp.init ()
-    
         Route.NotFound ->
             pages.notFound.init ()
 
@@ -70,14 +65,14 @@ update msg_ model_ =
         ( Msg.Home_ msg, Model.Home_ params model ) ->
             pages.home_.update params msg model
     
+        ( Msg.Login msg, Model.Login params model ) ->
+            pages.login.update params msg model
+    
         ( Msg.Pricing msg, Model.Pricing params model ) ->
             pages.pricing.update params msg model
     
         ( Msg.Schedule msg, Model.Schedule params model ) ->
             pages.schedule.update params msg model
-    
-        ( Msg.SignUp msg, Model.SignUp params model ) ->
-            pages.signUp.update params msg model
 
         _ ->
             \_ _ _ -> ( model_, Effect.none )
@@ -95,17 +90,14 @@ view model_ =
         Model.Home_ params model ->
             pages.home_.view params model
     
-        Model.Login params ->
-            pages.login.view params ()
+        Model.Login params model ->
+            pages.login.view params model
     
         Model.Pricing params model ->
             pages.pricing.view params model
     
         Model.Schedule params model ->
             pages.schedule.view params model
-    
-        Model.SignUp params model ->
-            pages.signUp.view params model
     
         Model.NotFound params ->
             pages.notFound.view params ()
@@ -123,17 +115,14 @@ subscriptions model_ =
         Model.Home_ params model ->
             pages.home_.subscriptions params model
     
-        Model.Login params ->
-            pages.login.subscriptions params ()
+        Model.Login params model ->
+            pages.login.subscriptions params model
     
         Model.Pricing params model ->
             pages.pricing.subscriptions params model
     
         Model.Schedule params model ->
             pages.schedule.subscriptions params model
-    
-        Model.SignUp params model ->
-            pages.signUp.subscriptions params model
     
         Model.NotFound params ->
             pages.notFound.subscriptions params ()
@@ -146,19 +135,17 @@ subscriptions model_ =
 pages :
     { about : Bundle Gen.Params.About.Params Pages.About.Model Pages.About.Msg
     , home_ : Bundle Gen.Params.Home_.Params Pages.Home_.Model Pages.Home_.Msg
-    , login : Static Gen.Params.Login.Params
+    , login : Bundle Gen.Params.Login.Params Pages.Login.Model Pages.Login.Msg
     , pricing : Bundle Gen.Params.Pricing.Params Pages.Pricing.Model Pages.Pricing.Msg
     , schedule : Bundle Gen.Params.Schedule.Params Pages.Schedule.Model Pages.Schedule.Msg
-    , signUp : Bundle Gen.Params.SignUp.Params Pages.SignUp.Model Pages.SignUp.Msg
     , notFound : Static Gen.Params.NotFound.Params
     }
 pages =
     { about = bundle Pages.About.page Model.About Msg.About
     , home_ = bundle Pages.Home_.page Model.Home_ Msg.Home_
-    , login = static Pages.Login.view Model.Login
+    , login = bundle Pages.Login.page Model.Login Msg.Login
     , pricing = bundle Pages.Pricing.page Model.Pricing Msg.Pricing
     , schedule = bundle Pages.Schedule.page Model.Schedule Msg.Schedule
-    , signUp = bundle Pages.SignUp.page Model.SignUp Msg.SignUp
     , notFound = static Pages.NotFound.view Model.NotFound
     }
 

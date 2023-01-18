@@ -1,8 +1,8 @@
-module View exposing (NavMsg(..), View, container, content, footer, map, none, placeholder, toBrowserDocument, zeitplanNav)
+module View exposing (View, container, content, footer, map, none, placeholder, toBrowserDocument, zeitplanNav)
 
 import Browser
+import FontAwesome as Icon
 import FontAwesome.Brands exposing (facebook, github)
-import FontAwesome.Icon as Icon
 import FontAwesome.Solid exposing (heart, music)
 import Gen.Route as Route
 import Html exposing (Attribute, Html, a, div, img, nav, p, span, text)
@@ -73,7 +73,7 @@ footer =
                             , target "_blank"
                             ]
                             [ span [ class "icon" ]
-                                [ Icon.viewIcon heart
+                                [ Icon.view heart
                                 ]
                             , span [] [ text "Sponsor the project" ]
                             ]
@@ -83,7 +83,7 @@ footer =
                             , target "_blank"
                             ]
                             [ span [ class "icon" ]
-                                [ Icon.viewIcon github
+                                [ Icon.view github
                                 ]
                             , span [] [ text "Suggest an edit" ]
                             ]
@@ -99,7 +99,7 @@ footer =
                             , target "_blank"
                             ]
                             [ span [ class "icon" ]
-                                [ Icon.viewIcon facebook
+                                [ Icon.view facebook
                                 ]
                             , span [] [ text "Facebook" ]
                             ]
@@ -109,7 +109,7 @@ footer =
                             , target "_blank"
                             ]
                             [ span [ class "icon" ]
-                                [ Icon.viewIcon music
+                                [ Icon.view music
                                 ]
                             , span [] [ text "DrescherMusic.com" ]
                             ]
@@ -120,16 +120,21 @@ footer =
         ]
 
 
-type NavMsg
-    = ToggleHamburger
-    | Logout
+isNothing : Maybe s -> Bool
+isNothing s =
+    case s of
+        Just _ ->
+            False
+
+        Nothing ->
+            True
 
 
 zeitplanNav :
     { logo : String
     , shared : Shared.Model
     }
-    -> Html NavMsg
+    -> Html Shared.Msg
 zeitplanNav settings =
     nav
         [ class "navbar is-primary"
@@ -145,7 +150,7 @@ zeitplanNav settings =
                 , classList <|
                     [ ( "is-active", settings.shared.expandHamburger ) ]
                 , ariaLabel "menu"
-                , onClick ToggleHamburger
+                , onClick Shared.ToggleNavbarHamburger
                 ]
                 [ span [ ariaHidden True ] []
                 , span [ ariaHidden True ] []
@@ -158,34 +163,46 @@ zeitplanNav settings =
                 [ ( "is-active", settings.shared.expandHamburger ) ]
             ]
             [ div [ class "navbar-start" ]
-                [ a
+                ([ a
                     [ class "navbar-item is-size-4", href (Route.toHref Route.Home_) ]
                     [ text "Home" ]
-                , a
+                 , a
                     [ class "navbar-item is-size-4", href (Route.toHref Route.About) ]
                     [ text "About" ]
-                , a
+                 , a
                     [ class "navbar-item is-size-4", href (Route.toHref Route.Pricing) ]
                     [ text "Pricing" ]
-                ]
-            , div [ class "navbar-end" ]
-                [ div [ class "navbar-item" ]
-                    [ case settings.shared.user of
-                        Just _ ->
-                            button
-                                [ class "is-primary"
-                                , onClick Logout
-                                ]
-                                [ text "Logout"
-                                ]
+                 ]
+                    ++ (if isNothing settings.shared.user then
+                            []
 
-                        Nothing ->
-                            button
-                                [ class "is-primary"
+                        else
+                            [ a
+                                [ class "navbar-item is-size-4"
+                                , href (Route.toHref Route.Schedule)
                                 ]
-                                [ text "Log In"
-                                ]
-                    ]
+                                [ text "Schedule" ]
+                            ]
+                       )
+                )
+            , div [ class "navbar-end" ]
+                [ if isNothing settings.shared.user then
+                    a
+                        [ class "navbar-item"
+                        , href (Route.toHref Route.Login)
+                        ]
+                        [ text "Log In"
+                        ]
+
+                  else
+                    a
+                        [ class "navbar-item"
+                        , href "#"
+                        , onClick Shared.Logout
+                        , role "button"
+                        ]
+                        [ text "Logout"
+                        ]
                 ]
             ]
         ]
@@ -197,16 +214,18 @@ type alias View msg =
     }
 
 
+none : View msg
+none =
+    { title = "Zeitplan"
+    , body = []
+    }
+
+
 placeholder : String -> View msg
 placeholder str =
     { title = str
     , body = [ Html.text str ]
     }
-
-
-none : View msg
-none =
-    placeholder ""
 
 
 map : (a -> b) -> View a -> View b

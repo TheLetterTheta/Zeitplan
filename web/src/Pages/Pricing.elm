@@ -1,7 +1,7 @@
 module Pages.Pricing exposing (Model, Msg, page)
 
 import Effect exposing (Effect)
-import FontAwesome.Icon as Icon
+import FontAwesome as Icon
 import FontAwesome.Solid exposing (check, times)
 import Gen.Params.Pricing exposing (Params)
 import Html exposing (Html, br, button, div, em, h1, li, p, section, span, text, ul)
@@ -13,7 +13,7 @@ import View exposing (View, footer, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
-page shared req =
+page shared _ =
     Page.advanced
         { init = init
         , update = update
@@ -55,7 +55,7 @@ update msg model =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.none
 
 
@@ -123,22 +123,14 @@ features items =
 
 
 view : Shared.Model -> Model -> View Msg
-view shared model =
+view shared _ =
     { title = "Zeitplan - Pricing"
     , body =
         [ zeitplanNav
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map
-                (\navMsg ->
-                    case navMsg of
-                        View.ToggleHamburger ->
-                            SharedMsg Shared.ToggleNavbarHamburger
-
-                        View.Logout ->
-                            SharedMsg Shared.Logout
-                )
+            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
         , section [ class "section" ]
             [ div [ class "container" ]
                 [ h1 [ class "is-1 title" ] [ text "Costs" ]
@@ -230,9 +222,9 @@ view shared model =
                         , price = 15
                         , frequency = "/ week"
                         , items =
-                            [ Icon.viewIcon check
-                            , Icon.viewIcon times
-                            , Icon.viewIcon times
+                            [ Icon.view check
+                            , Icon.view times
+                            , Icon.view times
                             , text "1s (10,000)"
                             , text "20"
                             ]
@@ -245,9 +237,9 @@ view shared model =
                         , price = 25
                         , frequency = "/ month"
                         , items =
-                            [ Icon.viewIcon check
-                            , Icon.viewIcon check
-                            , Icon.viewIcon times
+                            [ Icon.view check
+                            , Icon.view check
+                            , Icon.view times
                             , text "5s (50,000)"
                             , text "50"
                             ]
@@ -260,8 +252,8 @@ view shared model =
                         , price = 100
                         , frequency = "/ year"
                         , items =
-                            [ Icon.viewIcon check
-                            , Icon.viewIcon check
+                            [ Icon.view check
+                            , Icon.view check
                             , text "1 hour"
                             , text "15s (150,000)"
                             , text "250"

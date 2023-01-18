@@ -13,7 +13,7 @@ import View exposing (View, container, content, footer, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
-page shared req =
+page shared _ =
     Page.advanced
         { init = init
         , update = update
@@ -71,15 +71,7 @@ view shared _ =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map
-                (\navMsg ->
-                    case navMsg of
-                        View.ToggleHamburger ->
-                            SharedMsg Shared.ToggleNavbarHamburger
-
-                        View.Logout ->
-                            SharedMsg Shared.ToggleNavbarHamburger
-                )
+            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
         , div [ class "is-small section" ]
             [ div [ class "hero is-info" ]
                 [ div [ class "hero-body" ]

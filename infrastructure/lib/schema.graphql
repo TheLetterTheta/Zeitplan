@@ -1,23 +1,10 @@
-schema {
-    query: Query
-    mutation: Mutation
-}
-
-type Query {
-    calendars: [Calendar!]!
-    @aws_cognito_user_pools 
-    meetings: [Meeting!]!
-    @aws_cognito_user_pools 
-}
-
 type User {
-    id: ID!
-    username: String
     credits: Int!
+    events: [Event!]!
 }
 
 type Calendar {
-    id: ID!
+    name: String!
     events: [Event!]!
 }
 
@@ -27,13 +14,30 @@ type Event {
 }
 
 type Meeting {
-    id: ID!
     participants: [ID!]!
     title: String!
     duration: Int!
+    created: Long!
+}
+
+type Query @aws_cognito_user_pools {
+    calendars: [Calendar!]!
+    meetings: [Meeting!]!
+    user: User!
+}
+
+input EventInput {
+    start: Int!
+    end: Int!
 }
 
 type Mutation @aws_cognito_user_pools {
-    addCalendar(events: [Event!]!): Calendar
-    addMeeting(participants: [ID!]!, title: String, duration: Int): Meeting
+    saveCalendar(name: String, events: [EventInput!]!): Calendar!
+    saveMeeting(participants: [ID!]!, title: String!, duration: Int!, created: Long): Meeting!
+    saveEvents(events: [EventInput!]!): [Event!]!
+}
+
+schema {
+    query: Query
+    mutation: Mutation
 }

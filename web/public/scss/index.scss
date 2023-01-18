@@ -2,6 +2,7 @@
 @import "node_modules/bulma/sass/utilities/_all";
 @import "node_modules/bulma/sass/utilities/initial-variables";
 @import "node_modules/bulma/sass/components/level";
+@import "node_modules/bulma/sass/components/card";
 @import "node_modules/bulma/sass/components/navbar";
 @import "node_modules/bulma/sass/components/tabs";
 @import "node_modules/bulma/sass/elements/box";
@@ -11,13 +12,17 @@
 @import "node_modules/bulma/sass/elements/icon";
 @import "node_modules/bulma/sass/elements/image";
 @import "node_modules/bulma/sass/elements/tag";
+@import "node_modules/bulma/sass/elements/notification";
+@import "node_modules/bulma/sass/elements/other";
 @import "node_modules/bulma/sass/elements/title";
 @import "node_modules/bulma/sass/form/_all";
 @import "node_modules/bulma/sass/grid/columns";
 @import "node_modules/bulma/sass/helpers/flexbox";
 @import "node_modules/bulma/sass/helpers/spacing";
 @import "node_modules/bulma/sass/helpers/typography";
+@import "node_modules/bulma/sass/helpers/position";
 @import "node_modules/bulma/sass/helpers/visibility";
+@import "node_modules/bulma/sass/helpers/color";
 @import "node_modules/bulma/sass/layout/footer";
 @import "node_modules/bulma/sass/layout/hero";
 @import "node_modules/bulma/sass/layout/section";
@@ -30,16 +35,6 @@
     margin: 0;
 }
 
-
-$primary : #65463E;
-$primary_text: white;
-$secondary: #AAD6A0;
-$secondary_text: black;
-$secondary_light: #DCE5D0;
-$secondary_light_text: black;
-$accent: #DCBAA9;
-$accent_text: white;
-
 a {
     text-decoration: none;
 }
@@ -49,7 +44,7 @@ html {
     @include no-spacing;
     height: 100%;
     width: 100%;
-    background-color: #EEEEEE;
+    background-color: $background;
 }
 
 * {
@@ -69,49 +64,119 @@ html {
 ********************
 */
 
-.schedule {
-    table {
-        border-collapse: collapse;
+.calendar {
 
-        td {
-            @include no-spacing
-        }
+    // VARIABLES
+    --calendar-background: white;
+    --calendar-hover: #{$info-light};
+    --calendar-hover-text: #{$info-dark};
+    --calendar-border-color: #{$border};
+    --calendar-event-color: #{$primary};
+    --calendar-event-text-color: #{$primary-invert};
+    --calendar-blocked-color: #{$dark};
+    --calendar-time-legend-color: #{$text};
+
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    user-select: none;
+    min-width: calc(7 * 99px + 9px);
+    background-color: var(--calendar-background);
+
+    >thead {
+        position: sticky;
+        top: 0;
+        box-shadow: 0 1px 1px 0px var(--calendar-border-color);
+        background-color: var(--calendar-background);
+        z-index: 100;
     }
 
-    p { @include no-spacing; }
+    td,
+    p {
+        @include no-spacing
+    }
 
     .week {
         width: 100%;
-        min-width: calc(7 * 99px + 9px);
         table-layout: fixed;
+    }
+
+    .time-header {
+        width: calc($size-small * 5);
+    }
+
+
+    .display-time>p {
+        font-size: $size-small;
+        position: relative;
+        top: -8px;
+        right: 2px;
+        color: var(--calendar-time-legend-color);
+        white-space: nowrap;
+        text-align: right;
         user-select: none;
     }
 
     .day-name {
         text-align: center;
         display: inline-block;
-        max-width: 100%;
         width: 100%;
         text-overflow: ellipsis;
         overflow: hidden;
     }
 
-    .all-day{
-        &-line{
-            height: 10px;
+    .all-day-interval {
+        border: solid 1px var(--calendar-border-color);
+        height: 17px;
+
+        svg {
+            height: 12px;
+            flex-shrink: 1;
         }
 
-        &-interval {
-            border: solid 1px $accent;
+        .lock-text {
+            color: var(--calendar-background);
+            font-size: 12px;
+            flex-grow: 1;
+        }
+
+        .all-day-lock,
+        .all-day-unlock {
+            display: flex;
+            padding-inline: 1rem;
+            align-items: center;
+            height: 100%;
+            gap: 0.25rem;
+        }
+
+        &:hover {
+            color: var(--calendar-hover-text) !important;
+
+            .lock-text {
+                color: var(--calendar-hover-text) !important;
+            }
+
+            background-color: var(--calendar-hover);
         }
     }
 
     .interval {
         height: 25px;
-        border: 1px solid $accent;
+        border: 1px solid var(--calendar-border-color);
 
         &:hover {
-            background-color: $secondary;
+            background-color: var(--calendar-hover);
+        }
+
+        &.blocked {
+            background-color: var(--calendar-blocked-color);
+            cursor: not-allowed;
+            border: none;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: var(--calendar-blocked-color);
+            }
         }
 
     }
@@ -119,7 +184,7 @@ html {
     .event {
         position: relative;
         width: calc(100% - 0.5rem);
-        background-color: $primary;
+        background-color: var(--calendar-event-color);
         margin-inline: auto;
         height: 100%;
 
@@ -128,7 +193,7 @@ html {
             cursor: -moz-grab;
         }
 
-        &:not(.event-end):not(.event-start){
+        &:not(.event-end):not(.event-start) {
             margin-bottom: -1px;
             height: calc(100% + 1px);
         }
@@ -139,15 +204,15 @@ html {
             border-top-right-radius: 5px;
             border-top-left-radius: 5px;
 
-            &:not(.event-end) > .event-time {
+            &:not(.event-end)>.event-time {
                 white-space: unset;
                 overflow: unset;
             }
 
-            & > .event-resize {
+            &>.event-resize {
                 top: 2;
                 cursor: n-resize;
-                border-top-color: $primary_text;
+                border-top-color: var(--calendar-event-text-color);
                 border-top-style: solid;
                 border-top-width: 1px;
                 border-bottom-color: unset;
@@ -164,7 +229,7 @@ html {
 
         &-time {
             text-align: center;
-            color: $primary_text;
+            color: var(--calendar-event-text-color);
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
@@ -177,13 +242,14 @@ html {
         }
 
         &-close {
-            position: absolute;
-            top: 2;
-            right: 0;
-            width: 20px;
             background-color: transparent;
             border: none;
-            color: $primary_text;
+            color: var(--calendar-event-text-color);
+            cursor: pointer;
+            position: absolute;
+            right: 0;
+            top: 4;
+            width: 20px;
             z-index: 1;
         }
 
@@ -199,7 +265,7 @@ html {
             right: 0;
             bottom: 2;
             background-color: transparent;
-            border-bottom-color: $primary_text;
+            border-bottom-color: var(--calendar-event-text-color);
             border-bottom-style: solid;
             border-bottom-width: 1px;
             cursor: s-resize;
@@ -213,13 +279,26 @@ html {
 
         &.draft {
             opacity: 0.5;
-            cursor: cell;
+            cursor: ns-resize;
 
             &.dragging {
                 cursor: grabbing;
             }
         }
 
+        &.blocked {
+            cursor: not-allowed;
+            background-color: var(--calendar-event-color);
+            opacity: 0.7;
+
+            .event-resize {
+                cursor: not-allowed;
+            }
+
+            .event-close {
+                cursor: not-allowed;
+            }
+        }
     }
 
     .event-start.event-end {
@@ -229,3 +308,14 @@ html {
     }
 }
 
+
+.participants {
+    display: flex;
+    flex-direction: row;
+    column-gap: $block-spacing;
+}
+
+#participant-calendar {
+    max-height: 65vh;
+    overflow: scroll;
+}

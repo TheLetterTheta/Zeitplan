@@ -102,8 +102,8 @@ subscriptions _ =
 -- VIEW
 
 
-overviewSection : Model -> Html Msg
-overviewSection model =
+overviewSection : Html Msg
+overviewSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Who is this for?" ]
         , div [ class "box" ]
@@ -195,8 +195,8 @@ overviewSection model =
         ]
 
 
-participantSection : Model -> Html Msg
-participantSection model =
+participantSection : Html Msg
+participantSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Step 1" ]
         , div [ class "box" ]
@@ -235,8 +235,8 @@ participantSection model =
         ]
 
 
-meetingsSection : Model -> Html Msg
-meetingsSection model =
+meetingsSection : Html Msg
+meetingsSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Step 2" ]
         , div [ class "box" ]
@@ -270,8 +270,8 @@ meetingsSection model =
         ]
 
 
-scheduleSection : Model -> Html Msg
-scheduleSection model =
+scheduleSection : Html Msg
+scheduleSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Zeitplan!" ]
         , div [ class "box" ]
@@ -323,15 +323,7 @@ view shared model =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map
-                (\navMsg ->
-                    case navMsg of
-                        View.ToggleHamburger ->
-                            SharedMsg Shared.ToggleNavbarHamburger
-
-                        View.Logout ->
-                            SharedMsg Shared.Logout
-                )
+            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
         , section [ class "hero is-fullheight-with-navbar is-dark" ]
             [ div [ class "hero-head" ]
                 [ div [ class "section" ]
@@ -405,16 +397,16 @@ view shared model =
             ]
         , case model.sectionTwo of
             Overview ->
-                overviewSection model
+                overviewSection
 
             SetupParticipants ->
-                participantSection model
+                participantSection
 
             PreplanMeetings ->
-                meetingsSection model
+                meetingsSection
 
             PlanSchedule ->
-                scheduleSection model
+                scheduleSection
         , footer
         ]
     }

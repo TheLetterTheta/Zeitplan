@@ -1,17 +1,14 @@
-module Calendar exposing (Event, Model, Msg, encodeEvent, init, update, view)
+module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, addEvent, encodeEvent, init, update, view)
 
 import Array
-import Dict exposing (Dict)
-import Effect exposing (Effect, fromCmd)
-import Gen.Params.Schedule exposing (Params)
+import Effect exposing (Effect)
+import FontAwesome as Icon
+import FontAwesome.Solid as Icon
 import Html exposing (Attribute, Html, button, div, p, span, table, tbody, td, text, th, thead, tr, wbr)
-import Html.Attributes exposing (class, classList, style, type_)
+import Html.Attributes exposing (class, classList, type_)
 import Html.Events exposing (onClick, onMouseDown, onMouseEnter, onMouseLeave, onMouseUp, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
-import Page
-import Request
-import View exposing (View)
 
 
 
@@ -77,16 +74,11 @@ minutesInDay =
 -- TYPES
 
 
-type Direction
-    = Down
-    | Up
-
-
 type alias Event =
     { start : Int
     , end : Int
-    , draft : Bool
     , dragging : Bool
+    , classList : List ( String, Bool )
     }
 
 
@@ -120,6 +112,7 @@ type CalendarState
 type alias Model =
     { events : List Event
     , state : CalendarState
+    , blockedDays : List Weekday
     }
 
 
@@ -131,6 +124,7 @@ init : ( Model, Effect Msg )
 init =
     ( { events = []
       , state = Idle
+      , blockedDays = []
       }
     , Effect.none
     )
@@ -141,20 +135,26 @@ init =
 
 
 timeSlotToString : Int -> String
-timeSlotToString t =
+timeSlotToString timeSlot =
     let
+        timeInDay : Int
         timeInDay =
-            const_interval * modBy slots (t - 1)
+            const_interval * modBy slots (timeSlot - 1)
 
+        time : Int
         time =
             modBy 60 timeInDay
 
+        hour : Int
         hour =
             timeInDay // 60
 
         ( meridian, twelveHour ) =
             if hour > 12 then
                 ( "PM", hour - 12 )
+
+            else if hour == 12 then
+                ( "PM", 12 )
 
             else if hour == 0 then
                 ( "AM", 12 )
@@ -166,11 +166,12 @@ timeSlotToString t =
 
 
 addEvent : Event -> List Event -> ( Event, List Event )
-addEvent e l =
+addEvent event list =
     let
         ( remainderEvents, conflictingEvents ) =
-            List.partition (\ev -> ev.end < (e.start - 1) || ev.start > (1 + e.end)) l
+            List.partition (\ev -> ev.end < (event.start - 1) || ev.start > (1 + event.end)) list
 
+        addedEvent : Event
         addedEvent =
             conflictingEvents
                 |> List.foldl
@@ -181,7 +182,7 @@ addEvent e l =
                                 , end = max ev.end n.end
                             }
                     )
-                    e
+                    event
     in
     ( addedEvent, addedEvent :: remainderEvents )
 
@@ -207,6 +208,7 @@ type Msg
     | ResizeEvent Ends Event
     | ResizeEventTo Int
     | EndResizeEvent
+    | ToggleAllDayBlock Weekday
     | NoOp
 
 
@@ -216,10 +218,35 @@ update msg model =
         NoOp ->
             ( model, Effect.none )
 
+        ToggleAllDayBlock day ->
+            let
+                dayBlocked : Bool
+                dayBlocked =
+                    List.member day model.blockedDays
+
+                blockedDays : List Weekday
+                blockedDays =
+                    if dayBlocked then
+                        List.filter (\d -> d /= day) model.blockedDays
+
+                    else
+                        day :: model.blockedDays
+            in
+            ( { model | blockedDays = blockedDays }, Effect.none )
+
+        MouseLeaveCalendar ->
+            let
+                clearEvents : Event -> Event
+                clearEvents =
+                    \event -> { event | dragging = False }
+            in
+            ( { model | events = List.map clearEvents model.events, state = Idle }, Effect.none )
+
         BeginCreateEvent t ->
             let
+                event : Event
                 event =
-                    Event t t True False
+                    Event t t False []
             in
             ( { model | state = Creating { event = event, shadowEvent = Just event, time = t } }, Effect.none )
 
@@ -228,7 +255,7 @@ update msg model =
                 Creating { event } ->
                     let
                         ( _, newList ) =
-                            addEvent { event | draft = False } model.events
+                            addEvent event model.events
                     in
                     ( { model | events = newList, state = Idle }, Effect.none )
 
@@ -246,6 +273,7 @@ update msg model =
                             else
                                 ( time, t )
 
+                        newEvent : Event
                         newEvent =
                             { event | end = newEnd, start = newStart }
                     in
@@ -254,11 +282,9 @@ update msg model =
                 _ ->
                     ( model, Effect.none )
 
-        MouseLeaveCalendar ->
-            ( { model | state = Idle }, Effect.none )
-
         BeginDragEvent event t ->
             let
+                events : List Event
                 events =
                     model.events
                         |> List.map
@@ -276,33 +302,35 @@ update msg model =
             case model.state of
                 Dragging { event, time } ->
                     let
+                        dragDistance : Int
                         dragDistance =
                             t - time
 
+                        newEvent : Event
                         newEvent =
                             { event
-                                | start = event.start + dragDistance
-                                , end = event.end + dragDistance
+                                | start = max 1 <| event.start + dragDistance
+                                , end = min (slots * Array.length days) <| event.end + dragDistance
                             }
                     in
                     ( { model
-                        | state = 
-                            Dragging { event = newEvent
-                            , shadowEvent = Just { newEvent | draft = True, dragging = True }
-                            , time = t } 
-                        }
-                    , Effect.none )
+                        | state =
+                            Dragging
+                                { event = newEvent
+                                , shadowEvent = Just { newEvent | dragging = True }
+                                , time = t
+                                }
+                      }
+                    , Effect.none
+                    )
 
                 _ ->
                     ( model, Effect.none )
 
         EndDragEvent ->
             case model.state of
-                Dragging { event, time } ->
+                Dragging { event } ->
                     let
-                        clearDragging =
-                            \e -> { e | dragging = False, draft = False }
-
                         ( _, newEvents ) =
                             addEvent { event | dragging = False } <|
                                 List.filter (\current -> not current.dragging) model.events
@@ -314,6 +342,7 @@ update msg model =
 
         DeleteEvent event ->
             let
+                filterEvent : List Event -> List Event
                 filterEvent =
                     List.filter (\pEvent -> pEvent /= event)
             in
@@ -322,13 +351,11 @@ update msg model =
         ResizeEvent end event ->
             ( { model | state = Resizing { event = event, end = end } }, Effect.none )
 
-        {--
-        TODO: PLEASE - UPDATE this to not have overlapping events
-        --}
         ResizeEventTo time ->
             case model.state of
                 Resizing { event, end } ->
                     let
+                        newEvent : Event
                         newEvent =
                             case end of
                                 Start ->
@@ -357,7 +384,16 @@ update msg model =
                     ( model, Effect.none )
 
         EndResizeEvent ->
-            ( { model | state = Idle }, Effect.none )
+            case model.state of
+                Resizing { event } ->
+                    let
+                        ( _, newEvents ) =
+                            addEvent event model.events
+                    in
+                    ( { model | events = newEvents, state = Idle }, Effect.none )
+
+                _ ->
+                    ( model, Effect.none )
 
 
 
@@ -367,6 +403,7 @@ update msg model =
 view : Model -> Html Msg
 view model =
     let
+        editEvent : Maybe Event
         editEvent =
             case model.state of
                 Creating { shadowEvent } ->
@@ -378,36 +415,61 @@ view model =
                 _ ->
                     Nothing
 
-        events =
-            model.events
-
         ignoreEvent : String -> Attribute Msg
         ignoreEvent s =
             stopPropagationOn s <| Decode.succeed ( NoOp, True )
 
+        viewDay : Weekday -> Html Msg
         viewDay day =
             th []
                 [ span [ class "day-name" ]
                     [ text <| dayString day ]
                 ]
 
+        viewAllDay : Weekday -> Html Msg
         viewAllDay day =
+            let
+                isBlocked : Bool
+                isBlocked =
+                    List.member day model.blockedDays
+            in
             td
                 [ class "all-day-interval"
+                , onClick <| ToggleAllDayBlock day
+                , classList [ ( "all-day-blocked", isBlocked ) ]
                 ]
-                []
+                [ if isBlocked then
+                    span [ class "icon-text" ]
+                        [ span [ class "icon" ] [ Icon.view Icon.calendarMinus ]
+                        , span [] [ text "Remove event" ]
+                        ]
 
-        viewTime i j =
+                  else
+                    span [ class "icon-text" ]
+                        [ span [ class "icon" ] [ Icon.view Icon.calendarPlus ]
+                        , span [] [ text "Whole day event" ]
+                        ]
+                ]
+
+        viewTime : Int -> Int -> Weekday -> Html Msg
+        viewTime row column day =
             let
-                index =
-                    slots * j + i
+                blockedDay : Bool
+                blockedDay =
+                    List.member day model.blockedDays
 
+                index : Int
+                index =
+                    slots * column + row
+
+                matchingEvent : Maybe Event
                 matchingEvent =
-                    events
-                        |> List.filter (\e -> index >= e.start && index <= e.end)
+                    model.events
+                        |> List.filter (\event -> index >= event.start && index <= event.end)
                         |> List.head
 
-                matchingDraft =
+                draftEvent : Maybe Event
+                draftEvent =
                     editEvent
                         |> Maybe.andThen
                             (\event ->
@@ -418,117 +480,133 @@ view model =
                                     Nothing
                             )
 
-                viewDraft e =
+                viewDraft : Event -> Html Msg
+                viewDraft event =
                     div
-                        [ class "event"
-                        , classList
-                            [ ( "event-start", e.start == index )
-                            , ( "event-end", e.end == index )
-                            , ( "dragging", e.dragging)
-                            , ( "draft", e.draft)
+                        [ class "event draft"
+                        , classList <|
+                            [ ( "event-start", event.start == index )
+                            , ( "event-end", event.end == index )
+                            , ( "dragging", event.dragging )
                             ]
+                                ++ event.classList
                         ]
                     <|
-                        if e.start == index then
-                            [ p [ class "event-time" ] [ text <| timeSlotToString e.start ++ " - " ++ timeSlotToString (1 + e.end) ] ]
+                        if event.start == index then
+                            [ p [ class "event-time" ] [ text <| timeSlotToString event.start ++ " - " ++ timeSlotToString (1 + event.end) ] ]
 
                         else
                             []
 
+                blockEvent : Attribute Msg -> Attribute Msg
+                blockEvent attribute =
+                    if blockedDay then
+                        class "blocked"
+
+                    else
+                        attribute
+
+                mouseEvents : List (Attribute Msg)
                 mouseEvents =
-                    case model.state of
-                        Idle ->
-                            [ onMouseDown <| BeginCreateEvent index ]
+                    if blockedDay then
+                        []
 
-                        Creating _ ->
-                            [ onMouseEnter <| MouseEnterTime index
-                            , onMouseUp <| EndCreateEvent
-                            ]
+                    else
+                        case model.state of
+                            Idle ->
+                                [ onMouseDown <| BeginCreateEvent index ]
 
-                        Dragging _ ->
-                            [ onMouseEnter <| DragEventTo index
-                            , onMouseUp <| EndDragEvent
-                            ]
+                            Creating _ ->
+                                [ onMouseEnter <| MouseEnterTime index
+                                , onMouseUp <| EndCreateEvent
+                                ]
 
-                        Resizing _ ->
-                            [ onMouseEnter <| ResizeEventTo index
-                            , onMouseUp <| EndResizeEvent
-                            ]
+                            Dragging _ ->
+                                [ onMouseEnter <| DragEventTo index
+                                , onMouseUp <| EndDragEvent
+                                ]
+
+                            Resizing _ ->
+                                [ onMouseEnter <| ResizeEventTo index
+                                , onMouseUp <| EndResizeEvent
+                                ]
             in
-            \_ ->
-                td
-                    ([ class "interval"
-                     , classList
-                        [ ( "first-row", i == 1 )
-                        , ( "last-row", i == slots )
-                        ]
-                     ]
-                        ++ mouseEvents
-                    )
-                <|
-                    List.take 1 <|
-                        List.reverse <|
-                            (case matchingEvent of
-                                Just e ->
-                                    [ div
-                                        [ class "event"
-                                        , classList
-                                            [ ( "event-start", e.start == index )
-                                            , ( "event-end", e.end == index )
-                                            , ( "dragging", e.dragging )
-                                            ]
-                                        , stopPropagationOn "mousedown" (Decode.succeed ( BeginDragEvent e index, True ))
+            td
+                ([ class "interval"
+                 , classList
+                    [ ( "first-row", row == 1 )
+                    , ( "last-row", row == slots )
+                    , ( "blocked", blockedDay )
+                    ]
+                 ]
+                    ++ mouseEvents
+                )
+            <|
+                List.take 1 <|
+                    List.reverse <|
+                        (case matchingEvent of
+                            Just event ->
+                                [ div
+                                    [ class "event"
+                                    , classList <|
+                                        [ ( "event-start", event.start == index )
+                                        , ( "event-end", event.end == index )
+                                        , ( "dragging", event.dragging )
                                         ]
-                                      <|
-                                        if e.start == index || i == 1 then
-                                            (if e.start == index then
-                                                [ button
-                                                    [ class "event-resize"
-                                                    , stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent Start e, True ))
-                                                    ]
-                                                    []
-                                                ]
-
-                                             else
-                                                []
-                                            )
-                                                ++ [ p [ class "event-time" ]
-                                                        [ text <| timeSlotToString e.start ++ " - "
-                                                        , wbr [] []
-                                                        , text <| timeSlotToString (1 + e.end)
-                                                        ]
-                                                   , button
-                                                        [ onClick <| DeleteEvent e
-                                                        , ignoreEvent "mouseup"
-                                                        , ignoreEvent "mousedown"
-                                                        , class "event-close"
-                                                        , type_ "button"
-                                                        ]
-                                                        [ text "X" ]
-                                                   ]
-
-                                        else if e.end == index then
+                                            ++ event.classList
+                                    , blockEvent <| stopPropagationOn "mousedown" (Decode.succeed ( BeginDragEvent event index, True ))
+                                    ]
+                                  <|
+                                    if event.start == index || row == 1 then
+                                        (if event.start == index then
                                             [ button
                                                 [ class "event-resize"
-                                                , stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent End e, True ))
+                                                , blockEvent <| stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent Start event, True ))
                                                 ]
                                                 []
                                             ]
 
-                                        else
+                                         else
                                             []
-                                    ]
+                                        )
+                                            ++ [ p [ class "event-time" ]
+                                                    [ text <| timeSlotToString event.start ++ " - "
+                                                    , wbr [] []
+                                                    , text <| timeSlotToString (1 + event.end)
+                                                    ]
+                                               , button
+                                                    [ blockEvent <| onClick <| DeleteEvent event
+                                                    , ignoreEvent "mouseup"
+                                                    , ignoreEvent "mousedown"
+                                                    , class "event-close"
+                                                    , type_ "button"
+                                                    ]
+                                                    [ Icon.view Icon.close ]
+                                               ]
 
-                                Nothing ->
-                                    []
-                            )
-                                ++ (matchingDraft
-                                        |> Maybe.map (viewDraft >> List.singleton)
-                                        |> Maybe.withDefault []
-                                   )
+                                    else if event.end == index then
+                                        [ button
+                                            [ class "event-resize"
+                                            , blockEvent <| stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent End event, True ))
+                                            ]
+                                            []
+                                        ]
+
+                                    else
+                                        []
+                                ]
+
+                            Nothing ->
+                                []
+                        )
+                            ++ (draftEvent
+                                    |> Maybe.map (viewDraft >> List.singleton)
+                                    |> Maybe.withDefault []
+                               )
     in
     table
-        (class "week"
+        (class "calendar"
+            :: class "week"
             :: (if model.state /= Idle then
                     [ onMouseLeave <| MouseLeaveCalendar ]
 
@@ -536,28 +614,37 @@ view model =
                     []
                )
         )
-        [ thead [ style "position" "sticky", style "top" "0" ]
+        [ thead []
             [ tr [ class "week-header" ]
-                (days
-                    |> Array.map viewDay
-                    |> Array.toList
+                (th [ class "time-header" ] []
+                    :: (days
+                            |> Array.map viewDay
+                            |> Array.toList
+                       )
                 )
             ]
         , tbody []
             (tr
-                [ class "all-day-line" ]
-                (days
-                    |> Array.map viewAllDay
-                    |> Array.toList
+                [ class "all-day-row" ]
+                (td [] []
+                    :: (days
+                            |> Array.map viewAllDay
+                            |> Array.toList
+                       )
                 )
                 :: (List.range 1 slots
                         |> List.map
-                            (\i ->
-                                tr []
-                                    (days
-                                        |> Array.indexedMap (viewTime i)
-                                        |> Array.toList
-                                    )
+                            (\row ->
+                                tr [] <|
+                                    td [ class "display-time" ]
+                                        [ p []
+                                            [ text <| timeSlotToString row
+                                            ]
+                                        ]
+                                        :: (days
+                                                |> Array.indexedMap (viewTime row)
+                                                |> Array.toList
+                                           )
                             )
                    )
             )

@@ -1,8 +1,8 @@
 {
-  "name": "infrastructure",
+  "name": "zeitplan-cdk",
   "version": "0.1.0",
   "bin": {
-    "infrastructure": "bin/infrastructure.js"
+    "infrastructure": "bin/zeitplan-cdk.js"
   },
   "scripts": {
     "build": "tsc",
