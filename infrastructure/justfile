@@ -1,0 +1,9 @@
+set dotenv-load
+
+build-stripe-checkout:
+    just lambdas/create_payment_intent/build
+    
+build-create-user:
+    just lambdas/create_user/build
+    
+build: build-stripe-checkout build-create-user

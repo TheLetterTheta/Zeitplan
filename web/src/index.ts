@@ -1,7 +1,10 @@
 import zeitplanLogo from "../public/Zeitplan.png?as=webp&width:50";
-import { CognitoUserPool, CognitoUser } from 'amazon-cognito-identity-js';
-import {signIn, signUp, signOut, submitConfirmationCode, submitResendConfirmationCode, getCurrentUser} from './auth';
+import * as process from 'process';
+import {signIn, signUp, signOut, submitConfirmationCode, submitResendConfirmationCode, getCurrentUser, CurrentLoginSession} from './auth';
 import { Elm } from "./Main.elm";
+import { loadStripe, Stripe, StripeElements, StripeError, StripeLinkAuthenticationElement, StripePaymentElement } from '@stripe/stripe-js';
+
+let { STRIPE_PUBLIC_API_KEY } = process.env
 
 function mapError<T>(promise: Promise<T>, map: (error: any) => T): Promise<T> {
     return promise
@@ -14,15 +17,93 @@ function ignoreException<T>(promise: Promise<T>, doFinally: (result: any) => voi
         .catch((v) => doFinally({...v, succeeded: false}))
 }
 
-interface LoggedInUser {
-    username: string;
-    userSub: string;
-}
+customElements.define("stripe-web-component", class extends HTMLElement {
+
+    private _clientSecret: string | null = null;
+    private _stripe: Stripe | null = null;
+    private _elements: StripeElements | null = null;
+    private _form: HTMLFormElement;
+    private _linkAuthenticationEL: HTMLDivElement;
+    private _paymentEL: HTMLDivElement;
+    private _stripeLinkAuthenticationEL: StripeLinkAuthenticationElement;
+    private _stripePaymentEL: StripePaymentElement;
+    private _email: string | null;
+    private _error: StripeError;
+    
+    get email() {
+        return this._email;
+    }
+    
+    get error() {
+        return this._error;
+    }
+
+    set clientSecret(value) {
+
+        if (value === this._clientSecret) return;
+
+        this._clientSecret = value;
+        if (this._stripe === null || this._clientSecret === null) return;
+
+        this._elements = this._stripe.elements({
+            clientSecret: this._clientSecret,
+            appearance: {
+                theme: 'night'
+            }
+        })
+    }
+    
+    constructor() {
+        super();
+        loadStripe(STRIPE_PUBLIC_API_KEY).then(stripe => {
+            this._stripe = stripe;
+        })
+    }
+    
+    connectedCallback() {
+        if (this._stripe === null || this._elements === null) return;
+
+        this._form = document.createElement("form");
+        this._paymentEL = document.createElement("div");
+        this._linkAuthenticationEL = document.createElement("div");
+        this._form.append(this._linkAuthenticationEL);
+        this._form.append(this._paymentEL);
+
+        this.append(this._form);
+        
+        this._stripePaymentEL = this._elements.create("payment");
+        this._stripeLinkAuthenticationEL = this._elements.create("linkAuthentication");
+        this._stripeLinkAuthenticationEL.on('change', (event) => {
+            this._email = event.value.email;
+            this.dispatchEvent(new CustomEvent('emailChanged'));
+        })
+        
+        this._stripePaymentEL.mount(this._paymentEL);
+        this._stripeLinkAuthenticationEL.mount(this._linkAuthenticationEL);
+        
+
+        this._form.onsubmit = async (e) => {
+            e.preventDefault();
+            if (this._elements === null || this._stripe === null) return;
+
+            this.dispatchEvent(new CustomEvent('formSubmit'));
+
+            const { error } = await this._stripe?.confirmPayment({
+                elements: this._elements,
+                confirmParams: {
+                    return_url: `${window.location.protocol}//${window.location.hostname}${window.location.port ? ':' + window.location.port: ''}/payment-confirmation`,
+                    receipt_email: this._email ?? undefined
+                }
+            });
+            
+            this._error = error;
+            this.dispatchEvent(new CustomEvent('paymentError'))
+        }
+    }
+})
 
 async function run() {
-    const currentlyLoggedInUser: LoggedInUser | null = await mapError(getCurrentUser(), () => null);
-
-    console.log(currentlyLoggedInUser);
+    const currentlyLoggedInUser: CurrentLoginSession | null = await mapError(getCurrentUser(), () => null);
 
     const app = Elm.Main.init({
         flags: {
@@ -61,12 +142,11 @@ async function run() {
    );
 
    app.ports.signOut.subscribe(username => {
-       signOut(username)
+       signOut()
            .then(app.ports.signOutOk.send)
            .catch(app.ports.signOutErr.send)
    });
-
-
+   
    /*
    app.ports.resendConfirmationCode.subscribe( username => {
        submitResendConfirmationCode(username)

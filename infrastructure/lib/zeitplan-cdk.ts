@@ -1,6 +1,7 @@
 import {
   aws_dynamodb,
   Duration,
+  lambda_layer_awscli,
   RemovalPolicy,
   Stack,
   StackProps,
@@ -8,12 +9,15 @@ import {
 import * as path from "path";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
-import { Construct } from "constructs";
+import { Construct, Node } from "constructs";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as sm from "aws-cdk-lib/aws-secretsmanager";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
 import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
+import { Code, Function, Runtime } from "aws-cdk-lib/aws-lambda";
+import { UserPoolOperation } from "aws-cdk-lib/aws-cognito";
 
 dotenv.config();
 
@@ -148,7 +152,16 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-meeting",
       removalPolicy: RemovalPolicy.DESTROY,
     });
-
+    
+    const paymentsTable = new Table(this, "payments-table", {
+      partitionKey: {
+        name: "clientSecret",
+        type: AttributeType.STRING,
+      },
+      tableName: "zeitplan-payments",
+      removalPolicy: RemovalPolicy.DESTROY
+    });
+    
     // GraphQL API
     // App Sync
 
@@ -177,23 +190,21 @@ export class ZeitplanCdk extends Stack {
     const userTableRole = new Role(this, "UserDBRole", {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
-    userTableRole.addManagedPolicy(
-      ManagedPolicy.fromAwsManagedPolicyName("AmazonDynamoDBFullAccess")
-    );
+    userTable.grantReadWriteData(userTableRole);
 
     const meetingTableRole = new Role(this, "MeetingDBRole", {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
-    meetingTableRole.addManagedPolicy(
-      ManagedPolicy.fromAwsManagedPolicyName("AmazonDynamoDBFullAccess")
-    );
+    meetingTable.grantReadWriteData(meetingTableRole);
 
     const calendarTableRole = new Role(this, "CalendarDBRole", {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
-    calendarTableRole.addManagedPolicy(
-      ManagedPolicy.fromAwsManagedPolicyName("AmazonDynamoDBFullAccess")
-    );
+    calendarTable.grantReadWriteData(calendarTableRole);
+
+    const executePaymentRole = new Role(this, "ExecutePaymentRole", {
+      assumedBy: new ServicePrincipal("appsync.amazonaws.com")
+    });
 
     // GQL RESOLVERS
 
@@ -364,7 +375,7 @@ export class ZeitplanCdk extends Stack {
 
     const userInsertResolver = new appsync.CfnResolver(
       this,
-      "user-insert-resolver",
+      "user-events-insert-resolver",
       {
         apiId: graphQL.attrApiId,
         typeName: "Mutation",
@@ -388,6 +399,68 @@ export class ZeitplanCdk extends Stack {
       }
     );
     userInsertResolver.addDependsOn(graphqlSchema);
+    
+    
+    const createUserCode = new Function(this, "zeitplan-create-user", {
+      functionName: "Zeitplan-Create-User",
+      description: "Trigger post user signup to create a new user",
+      handler: "main",
+      runtime: Runtime.GO_1_X,
+      code: Code.fromAsset(path.join(__dirname, "../lambdas/create_user/main.zip")),
+      environment: {
+        'DEFAULT_CREDITS': "20",
+        'USER_TABLE_NAME': userTable.tableName
+      }
+    });
+    
+    userTable.grantWriteData(createUserCode);
+
+    userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, createUserCode);
+
+    const createPaymentIntentLambda = new Function(this, "zeitplan-create-payment-intent", {
+      functionName: "Zeitplan-Create-Payment-Intent",
+      description: "Integration with payment service to initiate a checkout session",
+      handler: "main",
+      runtime: Runtime.GO_1_X,
+      code: Code.fromAsset(path.join(__dirname, "../lambdas/create_payment_intent/main.zip")),
+      environment: {
+        'PAYMENT_TABLE_NAME': paymentsTable.tableName
+      }
+    });
+   createPaymentIntentLambda.grantInvoke(executePaymentRole); 
+   paymentsTable.grantWriteData(createPaymentIntentLambda);
+    
+    const createPaymentDataSource = new appsync.CfnDataSource(this, "zeitplan-create-payment-data-source", {
+      apiId: graphQL.attrApiId,
+      name: "createPaymentLambdaSource",
+      type: "AWS_LAMBDA",
+      lambdaConfig: {
+        lambdaFunctionArn: createPaymentIntentLambda.functionArn
+      },
+      serviceRoleArn: executePaymentRole.roleArn,
+    })
+    
+    const createPaymentResolver = new appsync.CfnResolver(
+      this,
+      "create-payment-intent-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "beginCheckout",
+        dataSourceName: createPaymentDataSource.name,
+        requestMappingTemplate: 
+        `{
+          "version": "2018-05-29",
+          "operation": "Invoke",
+          "payload": {
+            "credits": "$context.arguments.credits",
+            "userId": "$context.identity.username"
+          }
+        }`,
+        responseMappingTemplate: `$util.toJson($ctx.result)`,
+      }
+    );
+    createPaymentResolver.addDependsOn(graphqlSchema);
 
     /*
     // Cloudfront access setup here
