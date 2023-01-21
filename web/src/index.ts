@@ -75,7 +75,7 @@ customElements.define("stripe-web-component", class extends HTMLElement {
         this._stripeLinkAuthenticationEL = this._elements.create("linkAuthentication");
         this._stripeLinkAuthenticationEL.on('change', (event) => {
             this._email = event.value.email;
-            this.dispatchEvent(new CustomEvent('emailChanged'));
+            this.dispatchEvent(new CustomEvent('emailChanged', { detail: event.value.email }));
         })
         
         this._stripePaymentEL.mount(this._paymentEL);
@@ -97,7 +97,9 @@ customElements.define("stripe-web-component", class extends HTMLElement {
             });
             
             this._error = error;
-            this.dispatchEvent(new CustomEvent('paymentError'))
+            this.dispatchEvent(new CustomEvent('paymentError', {
+                detail: error
+            }));
         }
     }
 })

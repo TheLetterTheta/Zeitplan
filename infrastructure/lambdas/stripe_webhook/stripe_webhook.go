@@ -13,6 +13,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	stripe "github.com/stripe/stripe-go"
 	"github.com/stripe/stripe-go/webhook"
 )
@@ -27,27 +28,31 @@ type Request struct {
 	Data []byte `json:"data"`
 }
 
-type PaymentDetails struct {
-	ClientSecret string `attributevalue:"clientSecret"`
-	Credits      int    `attributevalue:"credits"`
-	UserId       string `json:"userId"`
-	Amount       int    `attributevalue:"amount"`
-}
-type ClientSecret struct {
-	ClientSecret string `attributevalue:"clientSecret"`
+type PaymentKey struct {
+	OrderId string `dynamodbav:"orderId"`
 }
 
-type AddCreditsKey struct {
-	UserId string `"attributevalue:"userId"`
+type PaymentValues struct {
+	UserId  string `dynamodbav:"userId"`
+	Credits int    `dynamodbav:"credits"`
 }
-type PurchasedCredits struct {
-	PurchasedCredits int `attributevalue:":purchasedCredits"`
+
+type UserKey struct {
+	UserId string `dynamodbav:"userId"`
+}
+
+type UserKeyUpdate struct {
+	Credits int `dynamodbav:":credits"`
+}
+
+type CompleteUpdate struct {
+	Complete bool `dynamodbav:":complete"`
 }
 
 func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) error {
 	stripe.Key = stripeSecretKey
 
-	event, err := webhook.ConstructEvent([]byte(req.Body), req.Headers["Stripe-Signature"], endpointSecret)
+	event, err := webhook.ConstructEvent([]byte(req.Body), req.Headers["stripe-signature"], endpointSecret)
 
 	if err != nil {
 		fmt.Println("Could not verify request")
@@ -64,12 +69,20 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			return err
 		}
 
-		// TODO: Update customer with credits
-		// GET User by payment intent from Dynamodb
+		if paymentIntent.Currency != "usd" {
+			fmt.Println("Currency must be USD")
+			return errors.New("InvalidCurrency")
+		}
 
-		tableName := os.Getenv("PAYMENT_TABLE_NAME")
-		if tableName == "" {
-			fmt.Println("No users table found in environment")
+		paymentTableName := os.Getenv("PAYMENT_TABLE_NAME")
+		if paymentTableName == "" {
+			fmt.Println("No payment table found in environment")
+			return errors.New("InvalidEnvironment")
+		}
+
+		userTableName := os.Getenv("USER_TABLE_NAME")
+		if userTableName == "" {
+			fmt.Println("No user table found in environment")
 			return errors.New("InvalidEnvironment")
 		}
 
@@ -82,69 +95,80 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 
 		client := dynamodb.NewFromConfig(cfg)
 
-		clientSecret, err := attributevalue.MarshalMap(ClientSecret{
-			ClientSecret: paymentIntent.ClientSecret,
+		paymentKey, err := attributevalue.MarshalMap(PaymentKey{
+			OrderId: paymentIntent.ID,
 		})
 		if err != nil {
-			fmt.Println("Could not marshal Client Secret")
+			fmt.Println("Could not marshall payment key")
 			return err
 		}
 
-		getItemInput := &dynamodb.GetItemInput{
-			TableName: aws.String(tableName),
-			Key:       clientSecret,
-		}
+		paymentValues := PaymentValues{}
 
-		result, err := client.GetItem(ctx, getItemInput)
-		if err != nil {
-			fmt.Println("Could not generate query")
-			return err
-		}
-
-		if result.Item == nil {
-			fmt.Println("Could not find existing payment intent")
-			return errors.New("MissingPaymentIntent")
-		}
-
-		paymentDetails := PaymentDetails{}
-
-		err = attributevalue.UnmarshalMap(result.Item, &paymentDetails)
-		if err != nil {
-			fmt.Println("Could not unmarshal db value")
-			return err
-		}
-
-		key, err := attributevalue.MarshalMap(AddCreditsKey{
-			UserId: paymentDetails.UserId,
+		result, err := client.GetItem(ctx, &dynamodb.GetItemInput{
+			TableName:            &paymentTableName,
+			Key:                  paymentKey,
+			ProjectionExpression: aws.String("userId, credits"),
 		})
-
 		if err != nil {
-			fmt.Println("Could not marshall Key")
+			fmt.Println("Could not retrieve item")
 			return err
 		}
 
-		credits, err := attributevalue.MarshalMap(PurchasedCredits{
-			PurchasedCredits: paymentDetails.Credits,
+		err = attributevalue.UnmarshalMap(result.Item, &paymentValues)
+		if err != nil {
+			fmt.Println("Failed to unmarshal payment value")
+			return err
+		}
+
+		userKey, err := attributevalue.MarshalMap(UserKey{
+			UserId: paymentValues.UserId,
 		})
-
 		if err != nil {
-			fmt.Println("Could not marshall credits")
+			fmt.Println("Could not marshall user key")
 			return err
 		}
 
-		addCreditsInput := &dynamodb.UpdateItemInput{
-			Key:                       key,
-			UpdateExpression:          aws.String("SET credits = credits + :purchasedCredits"),
-			ExpressionAttributeValues: credits,
-		}
-
-		_, err = client.UpdateItem(ctx, addCreditsInput)
+		userUpdateValues, err := attributevalue.MarshalMap(UserKeyUpdate{
+			Credits: paymentValues.Credits,
+		})
 		if err != nil {
-			fmt.Println("CreditsNotAdded")
+			fmt.Println("Failed to marshal user update value")
 			return err
 		}
 
-		break
+		completeUpdateValue, err := attributevalue.MarshalMap(CompleteUpdate{
+			Complete: true,
+		})
+		if err != nil {
+			fmt.Println("Failed to marshal complete update value")
+			return err
+		}
+
+		_, err = client.TransactWriteItems(ctx, &dynamodb.TransactWriteItemsInput{
+			TransactItems: []types.TransactWriteItem{
+				{
+					Update: &types.Update{
+						TableName:                 &userTableName,
+						Key:                       userKey,
+						UpdateExpression:          aws.String("ADD credits :credits"),
+						ExpressionAttributeValues: userUpdateValues,
+					},
+				},
+				{
+					Update: &types.Update{
+						TableName:                 &paymentTableName,
+						Key:                       paymentKey,
+						UpdateExpression:          aws.String("SET complete = :complete"),
+						ExpressionAttributeValues: completeUpdateValue,
+					},
+				},
+			},
+		})
+		if err != nil {
+			fmt.Println("Could not perform database updates")
+			return err
+		}
 
 	default:
 		fmt.Println("Recieved event %s", event.Type)
@@ -160,8 +184,6 @@ func main() {
 	if endpointSecret == "" {
 		os.Exit(1)
 	}
-	fmt.Println(stripeSecretKey)
-	fmt.Println(endpointSecret)
 
 	lambda.Start(HandleRequest)
 }

@@ -23,6 +23,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/service/sts v1.18.0 // indirect
 	github.com/aws/aws-secretsmanager-caching-go v1.1.0 // indirect
 	github.com/aws/smithy-go v1.13.5 // indirect
+	github.com/google/uuid v1.3.0
 	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/stripe/stripe-go/v74 v74.5.0 // indirect
 )

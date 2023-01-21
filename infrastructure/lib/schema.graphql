@@ -41,7 +41,7 @@ type Mutation @aws_cognito_user_pools {
     saveCalendar(name: String, events: [EventInput!]!): Calendar!
     saveMeeting(participants: [ID!]!, title: String!, duration: Int!, created: Long): Meeting!
     saveEvents(events: [EventInput!]!): [Event!]!
-    beginCheckout(credits: Int): PaymentIntent
+    beginCheckout(credits: Int!): PaymentIntent
 }
 
 schema {

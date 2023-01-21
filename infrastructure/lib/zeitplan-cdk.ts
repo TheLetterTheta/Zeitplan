@@ -16,8 +16,10 @@ import * as appsync from "aws-cdk-lib/aws-appsync";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
 import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
-import { Code, Function, Runtime } from "aws-cdk-lib/aws-lambda";
+import { Code, Function, FunctionUrlAuthType, Runtime } from "aws-cdk-lib/aws-lambda";
 import { UserPoolOperation } from "aws-cdk-lib/aws-cognito";
+import { env } from "process";
+import { AuthType } from "aws-cdk-lib/aws-stepfunctions-tasks";
 
 dotenv.config();
 
@@ -152,16 +154,16 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-meeting",
       removalPolicy: RemovalPolicy.DESTROY,
     });
-    
+
     const paymentsTable = new Table(this, "payments-table", {
       partitionKey: {
-        name: "clientSecret",
+        name: "orderId",
         type: AttributeType.STRING,
       },
-      tableName: "zeitplan-payments",
-      removalPolicy: RemovalPolicy.DESTROY
+      tableName: "zeitplan-payment-order",
+      removalPolicy: RemovalPolicy.DESTROY,
     });
-    
+
     // GraphQL API
     // App Sync
 
@@ -203,7 +205,7 @@ export class ZeitplanCdk extends Stack {
     calendarTable.grantReadWriteData(calendarTableRole);
 
     const executePaymentRole = new Role(this, "ExecutePaymentRole", {
-      assumedBy: new ServicePrincipal("appsync.amazonaws.com")
+      assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
 
     // GQL RESOLVERS
@@ -296,8 +298,7 @@ export class ZeitplanCdk extends Stack {
         typeName: "Mutation",
         fieldName: "saveMeeting",
         dataSourceName: meetingTableDataSource.name,
-        requestMappingTemplate: 
-        `{
+        requestMappingTemplate: `{
           "version": "2018-05-29",
           "operation": "PutItem",
           "key": {
@@ -323,8 +324,7 @@ export class ZeitplanCdk extends Stack {
         typeName: "Query",
         fieldName: "meetings",
         dataSourceName: meetingTableDataSource.name,
-        requestMappingTemplate: 
-        `{
+        requestMappingTemplate: `{
           "version": "2018-05-29",
           "operation": "Query",
           "query": {
@@ -381,8 +381,7 @@ export class ZeitplanCdk extends Stack {
         typeName: "Mutation",
         fieldName: "saveEvents",
         dataSourceName: userTableDataSource.name,
-        requestMappingTemplate: 
-        `{
+        requestMappingTemplate: `{
           "version": "2018-05-29",
           "operation": "UpdateItem",
           "key": {
@@ -399,47 +398,59 @@ export class ZeitplanCdk extends Stack {
       }
     );
     userInsertResolver.addDependsOn(graphqlSchema);
-    
-    
+
     const createUserCode = new Function(this, "zeitplan-create-user", {
       functionName: "Zeitplan-Create-User",
       description: "Trigger post user signup to create a new user",
       handler: "main",
       runtime: Runtime.GO_1_X,
-      code: Code.fromAsset(path.join(__dirname, "../lambdas/create_user/main.zip")),
+      code: Code.fromAsset(
+        path.join(__dirname, "../lambdas/create_user/main.zip")
+      ),
       environment: {
-        'DEFAULT_CREDITS': "20",
-        'USER_TABLE_NAME': userTable.tableName
-      }
+        DEFAULT_CREDITS: "20",
+        USER_TABLE_NAME: userTable.tableName,
+      },
     });
-    
+
     userTable.grantWriteData(createUserCode);
 
     userPool.addTrigger(UserPoolOperation.POST_CONFIRMATION, createUserCode);
 
-    const createPaymentIntentLambda = new Function(this, "zeitplan-create-payment-intent", {
-      functionName: "Zeitplan-Create-Payment-Intent",
-      description: "Integration with payment service to initiate a checkout session",
-      handler: "main",
-      runtime: Runtime.GO_1_X,
-      code: Code.fromAsset(path.join(__dirname, "../lambdas/create_payment_intent/main.zip")),
-      environment: {
-        'PAYMENT_TABLE_NAME': paymentsTable.tableName
+    const createPaymentIntentLambda = new Function(
+      this,
+      "zeitplan-create-payment-intent",
+      {
+        functionName: "Zeitplan-Create-Payment-Intent",
+        description:
+          "Integration with payment service to initiate a checkout session",
+        handler: "main",
+        runtime: Runtime.GO_1_X,
+        code: Code.fromAsset(
+          path.join(__dirname, "../lambdas/create_payment_intent/main.zip")
+        ),
+        environment: {
+          PAYMENT_TABLE_NAME: paymentsTable.tableName,
+        },
       }
-    });
-   createPaymentIntentLambda.grantInvoke(executePaymentRole); 
-   paymentsTable.grantWriteData(createPaymentIntentLambda);
-    
-    const createPaymentDataSource = new appsync.CfnDataSource(this, "zeitplan-create-payment-data-source", {
-      apiId: graphQL.attrApiId,
-      name: "createPaymentLambdaSource",
-      type: "AWS_LAMBDA",
-      lambdaConfig: {
-        lambdaFunctionArn: createPaymentIntentLambda.functionArn
-      },
-      serviceRoleArn: executePaymentRole.roleArn,
-    })
-    
+    );
+    createPaymentIntentLambda.grantInvoke(executePaymentRole);
+    paymentsTable.grantWriteData(createPaymentIntentLambda);
+
+    const createPaymentDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-create-payment-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "createPaymentLambdaSource",
+        type: "AWS_LAMBDA",
+        lambdaConfig: {
+          lambdaFunctionArn: createPaymentIntentLambda.functionArn,
+        },
+        serviceRoleArn: executePaymentRole.roleArn,
+      }
+    );
+
     const createPaymentResolver = new appsync.CfnResolver(
       this,
       "create-payment-intent-resolver",
@@ -448,12 +459,11 @@ export class ZeitplanCdk extends Stack {
         typeName: "Mutation",
         fieldName: "beginCheckout",
         dataSourceName: createPaymentDataSource.name,
-        requestMappingTemplate: 
-        `{
+        requestMappingTemplate: `{
           "version": "2018-05-29",
           "operation": "Invoke",
           "payload": {
-            "credits": "$context.arguments.credits",
+            "credits": $context.arguments.credits,
             "userId": "$context.identity.username"
           }
         }`,
@@ -461,6 +471,26 @@ export class ZeitplanCdk extends Stack {
       }
     );
     createPaymentResolver.addDependsOn(graphqlSchema);
+
+    const stripeWebhookLambda = new Function(this, "zeitplan-stripe-webhook", {
+      functionName: "Zeitplan-Stripe-Webhook",
+      description: "Stripe's webhook integration via HTTP request.",
+      handler: "main",
+      runtime: Runtime.GO_1_X,
+      code: Code.fromAsset(
+        path.join(__dirname, "../lambdas/stripe_webhook/main.zip")
+      ),
+      environment: {
+        PAYMENT_TABLE_NAME: paymentsTable.tableName,
+        USER_TABLE_NAME: userTable.tableName,
+      },
+    });
+    paymentsTable.grantReadWriteData(stripeWebhookLambda);
+    userTable.grantWriteData(stripeWebhookLambda);
+    
+    stripeWebhookLambda.addFunctionUrl({
+      authType: FunctionUrlAuthType.NONE,
+    });
 
     /*
     // Cloudfront access setup here

@@ -8,7 +8,6 @@ import (
 	"os"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -24,13 +23,15 @@ type Request struct {
 type Response struct {
 	ClientSecret string `json:"clientSecret"`
 	Amount       int64  `json:"amount"`
+	OrderId      string `json:"orderId"`
 }
 
-type InsertItem struct {
-	ClientSecret string `attributevalue:"clientSecret"`
-	Credits      int    `attributevalue:"credits"`
-	UserId       string `json:"userId"`
-	Amount       int    `attributevalue:"amount"`
+type NewPurchase struct {
+	OrderId  string `dynamodbav:"orderId"`
+	Complete bool   `dynamodbav:"complete"`
+	UserId   string `dynamodbav:"userId"`
+	Amount   int    `dynamodbav:"amount"`
+	Credits  int    `dynamodbav:"credits"`
 }
 
 var (
@@ -44,19 +45,13 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		return Response{}, errors.New("CreditsRequired")
 	}
 
-	if req.UserName == nil {
-		return Response{}, errors.New("UsernameRequired")
-	}
-
 	credits := *req.Credits
 	if credits < 5 || credits > 250 {
 		return Response{}, errors.New("CreditsOutOfBounds")
 	}
 
-	tableName := os.Getenv("PAYMENT_TABLE_NAME")
-	if tableName == "" {
-		fmt.Println("No users table found in environment")
-		return Response{}, errors.New("InvalidEnvironment")
+	if req.UserName == nil {
+		return Response{}, errors.New("UsernameRequired")
 	}
 
 	paymentAmount := ComputeCreditAmount(credits)
@@ -76,6 +71,12 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 
+	tableName := os.Getenv("PAYMENT_TABLE_NAME")
+	if tableName == "" {
+		fmt.Println("No users table found in environment")
+		return Response{}, errors.New("InvalidEnvironment")
+	}
+
 	cfg, err := config.LoadDefaultConfig(ctx)
 
 	if err != nil {
@@ -85,33 +86,34 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 
 	client := dynamodb.NewFromConfig(cfg)
 
-	insertItem := InsertItem{
-		ClientSecret: pi.ClientSecret,
-		UserId:       *req.UserName,
-		Credits:      *req.Credits,
-		Amount:       int(paymentAmount),
-	}
-
-	result, err := attributevalue.MarshalMap(insertItem)
+	insertItem, err := attributevalue.MarshalMap(NewPurchase{
+		Amount:   int(paymentAmount),
+		OrderId:  pi.ID,
+		Complete: false,
+		Credits:  *req.Credits,
+		UserId:   *req.UserName,
+	})
 	if err != nil {
-		fmt.Println("Failed to marshall request")
+		fmt.Println("Could not marshall update values")
 		return Response{}, err
 	}
 
-	input := &dynamodb.PutItemInput{
-		Item:      result,
-		TableName: aws.String(tableName),
+	putItemInput := dynamodb.PutItemInput{
+		Item:      insertItem,
+		TableName: &tableName,
 	}
 
-	_, err = client.PutItem(ctx, input)
+	_, err = client.PutItem(ctx, &putItemInput)
+
 	if err != nil {
-		fmt.Println("Failed to write to db")
+		fmt.Println("Could not save order info")
 		return Response{}, err
 	}
 
 	return Response{
 		ClientSecret: pi.ClientSecret,
 		Amount:       pi.Amount,
+		OrderId:      pi.ID,
 	}, nil
 }
 

@@ -6,7 +6,7 @@
 ** TODO X-Ray
 ** TODO Cloudfront
 
-#+begin_src plantuml :noweb :file AWS-Login Sequence.svg
+#+begin_src plantuml :noweb :file AWS-Checkout Process
 @startuml
 
 !theme superhero-outline
@@ -17,18 +17,18 @@
 !include <awslib/Compute/Lambda.puml>
 !include <awslib/Database/DynamoDB.puml>
 !include <awslib/General/Client.puml>
+!include <logos/stripe>
 
 title AWS Login Sequence
 
-ClientParticipant(frontend, "Elm App", "")
-CognitoParticipant(cognito, "Zeitplan User Pool", "")
-LambdaParticipant(lambda, "Resolvers", "")
-DynamoDBParticipant(db, "Zeitplan DB", "")
-entity Stripe as stripe
+ClientParticipant(frontend, "Elm App", "Checkout")
+LambdaParticipant(lambda, "Begin Checkout", "")
+DynamoDBParticipant(db, "Users Table", "")
+entity "<$stripe>" as stripe
 
 frontend -> cognito: Login Request
 cognito -> frontend: Failed Request
-cognito -> lambda: Build User Claims
+cognito -> frontend: Successful Request
 note left: $success("Successful request")
 lambda -> db: Query user and subscription
 db --> lambda: User and subscription info

@@ -6,4 +6,7 @@ build-stripe-checkout:
 build-create-user:
     just lambdas/create_user/build
     
-build: build-stripe-checkout build-create-user
+build-stripe-webhook:
+    just lambdas/stripe_webhook/build
+    
+build: build-stripe-checkout build-create-user build-stripe-webhook
