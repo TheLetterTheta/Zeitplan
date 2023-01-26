@@ -22,29 +22,55 @@
 title AWS Login Sequence
 
 ClientParticipant(frontend, "Elm App", "Checkout")
-LambdaParticipant(lambda, "Begin Checkout", "")
+LambdaParticipant(checkout, "Begin Checkout", "")
+LambdaParticipant(webhook, "Stripe Webhook", "payment_intent.succeeded")
+LambdaParticipant(streamListener, "Stream Process DB", "MODIFY")
 DynamoDBParticipant(db, "Users Table", "")
-entity "<$stripe>" as stripe
+participant "<$stripe>" as stripe
 
-frontend -> cognito: Login Request
-cognito -> frontend: Failed Request
-cognito -> frontend: Successful Request
-note left: $success("Successful request")
-lambda -> db: Query user and subscription
-db --> lambda: User and subscription info
-opt $failure("User does not exist")
-  db --> lambda: Not Found
-  lambda -> stripe: Create Customer Request
-  stripe --> lambda: New Subscription info
-end
-lambda --> cognito: User and subscription info
-cognito --> frontend: Logged in with subscription info
+frontend -> checkout: Checkout with `int credits`
+checkout -> db: Update user with new Cart ID + PurchaseCredits
+checkout -> frontend: Return ClientSecret
+frontend -> stripe: Complete Payment
+stripe -> webhook: Payment Succeeded
+webhook -> db: Update order by OrderID with new credits
 
 @enduml
 #+end_src
 
 #+RESULTS:
-[[file:AWS-Login Sequence.svg]]
+[[file:AWS-Checkout Process]]
+
+
+#+begin_src plantuml :noweb :file AWS-Events
+@startuml
+
+!theme superhero-outline
+
+!include <awslib/AWSCommon.puml>
+!include <awslib/DeveloperTools/XRay.puml>
+!include <awslib/SecurityIdentityAndCompliance/Cognito.puml>
+!include <awslib/Compute/Lambda.puml>
+!include <awslib/Database/DynamoDB.puml>
+!include <awslib/General/Client.puml>
+!include <logos/stripe>
+
+title AWS Login Sequence
+
+ClientParticipant(frontend, "Elm App", "Subscribe to changes")
+DynamoDBParticipant(db, "Users Table", "")
+LambdaParticipant(streamListener, "Stream Process DB", "MODIFY")
+
+frontend -> subscriptionHub: Listen for user credit changes
+db -> streamListener: Record has changed
+streamListener -> subscriptionHub: User {_} now has {_} credits
+subscriptionHub -> frontend: Changed...
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:AWS-Events]]
 
 #+begin_src plantuml :noweb :file Stripe Subscription Sequence.svg
 @startuml

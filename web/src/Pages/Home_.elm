@@ -323,7 +323,7 @@ view shared model =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
+            |> Html.map SharedMsg
         , section [ class "hero is-fullheight-with-navbar is-dark" ]
             [ div [ class "hero-head" ]
                 [ div [ class "section" ]

@@ -1,10 +1,11 @@
 module Pages.Login exposing (Model, Msg, page)
 
-import Decoders exposing (authUserDecoder, signUpResultDecoder)
+import Decoders exposing (AuthUser, SignUpResult, authUserDecoder, signUpResultDecoder)
 import Effect exposing (Effect)
 import FontAwesome as Icon
 import FontAwesome.Solid exposing (spinner)
 import Gen.Params.Login exposing (Params)
+import Gen.Route
 import Html exposing (Html, button, div, form, h1, header, input, label, p, section, text)
 import Html.Attributes exposing (class, classList, disabled, for, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
@@ -13,17 +14,17 @@ import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
 import Page
 import Regex
-import Request
+import Request exposing (Request)
 import Shared exposing (AuthError(..), AuthSignIn, AuthSignUp, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, footer, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
-page shared _ =
+page shared req =
     Page.advanced
         { init = init
-        , update = update
+        , update = update req
         , view = view shared
         , subscriptions = subscriptions
         }
@@ -188,12 +189,13 @@ type alias Model =
     , requestError : Maybe String
     , loading : Bool
     , status : Maybe String
+    , signUpUser : Maybe SignUpResult
     }
 
 
 init : ( Model, Effect Msg )
 init =
-    ( Model Login (AuthSignIn "" "") "" "" Nothing Nothing Nothing Nothing False Nothing, Effect.none )
+    ( Model Login (AuthSignIn "" "") "" "" Nothing Nothing Nothing Nothing False Nothing Nothing, Effect.none )
 
 
 
@@ -226,8 +228,8 @@ type Msg
     | ResendConfirmationCodeErr Encode.Value
 
 
-update : Msg -> Model -> ( Model, Effect Msg )
-update msg model =
+update : Request.With Params -> Msg -> Model -> ( Model, Effect Msg )
+update req msg model =
     case msg of
         ChangeState state ->
             ( { model | state = state }, Effect.none )
@@ -303,7 +305,9 @@ update msg model =
                         ( { model | requestError = Nothing, state = SignUpConfirm, confirmPassword = "" }, Effect.none )
 
                     else
-                        ( { model | requestError = Nothing, state = Login }, Effect.none )
+                        ( { model | requestError = Nothing, state = Login }
+                        , Effect.none
+                        )
 
                 _ ->
                     ( { model | requestError = Just "Something unexpected went wrong!" }, Effect.none )
@@ -344,8 +348,12 @@ update msg model =
                     |> Effect.fromCmd
                 )
 
-        SignUpConfirmOk user ->
-            ( { model | state = Login, requestError = Nothing }, Effect.none )
+        SignUpConfirmOk jsVal ->
+            case Decode.decodeValue authUserDecoder jsVal of
+                Ok user ->
+                    ( { model | requestError = Nothing }, Effect.fromShared <| Shared.LogInUser user )
+                Err _ -> 
+                    ( { model | requestError = Just "Could not verify user, please refresh the page" } , Effect.none )
 
         SignUpConfirmErr error ->
             case Decode.decodeValue decodeSignUpConfirmError error of
@@ -723,7 +731,7 @@ view shared model =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
+            |> Html.map SharedMsg
         , section [ class "hero is-fullheight-with-navbar" ]
             [ div [ class "hero-body", style "justify-content" "center" ]
                 [ if model.loading then

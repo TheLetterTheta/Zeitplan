@@ -130,7 +130,7 @@ view shared _ =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
+            |> Html.map SharedMsg
         , section [ class "section" ]
             [ div [ class "container" ]
                 [ h1 [ class "is-1 title" ] [ text "Costs" ]

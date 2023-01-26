@@ -5,6 +5,7 @@ import {
   RemovalPolicy,
   Stack,
   StackProps,
+  CfnOutput,
 } from "aws-cdk-lib";
 import * as path from "path";
 import * as fs from "fs";
@@ -14,18 +15,40 @@ import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as sm from "aws-cdk-lib/aws-secretsmanager";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
-import { ManagedPolicy, Role, ServicePrincipal } from "aws-cdk-lib/aws-iam";
+import {
+  Effect,
+  Group,
+  ManagedPolicy,
+  Policy,
+  PolicyStatement,
+  Role,
+  ServicePrincipal,
+} from "aws-cdk-lib/aws-iam";
 import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
-import { Code, Function, FunctionUrlAuthType, Runtime } from "aws-cdk-lib/aws-lambda";
-import { UserPoolOperation } from "aws-cdk-lib/aws-cognito";
+import {
+  Code,
+  FilterCriteria,
+  FilterRule,
+  Function,
+  FunctionUrlAuthType,
+  Runtime,
+  StartingPosition,
+} from "aws-cdk-lib/aws-lambda";
+import { CfnIdentityPoolRoleAttachment, UserPoolOperation } from "aws-cdk-lib/aws-cognito";
 import { env } from "process";
 import { AuthType } from "aws-cdk-lib/aws-stepfunctions-tasks";
+import { DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
 
 dotenv.config();
 
 export class ZeitplanCdk extends Stack {
   constructor(scope: Construct, id: string, props?: StackProps) {
     super(scope, id, props);
+
+    new CfnOutput(this, "region", {
+      exportName: "region",
+      value: this.region,
+    });
 
     // AWS Cognito setup:
     const userPool = new cognito.UserPool(this, "zeitplanUserPool", {
@@ -87,7 +110,7 @@ export class ZeitplanCdk extends Stack {
       "zeitplanGoogleUserPool",
       {
         clientId: process.env.GOOGLE_CLIENT_ID ?? "",
-        clientSecret: googleClientSecret.secretValue.unsafeUnwrap(),
+        clientSecretValue: googleClientSecret.secretValue,
         userPool: userPool,
         attributeMapping: {
           email: cognito.ProviderAttribute.GOOGLE_EMAIL,
@@ -119,6 +142,19 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
+    new CfnOutput(this, "identity-pool-id", {
+      exportName: "identity-pool-id",
+      value: identityPool.logicalId,
+    });
+    new CfnOutput(this, "user-pool-id", {
+      exportName: "user-pool-id",
+      value: userPool.userPoolId,
+    });
+    new CfnOutput(this, "webclient-id", {
+      exportName: "webclient-id",
+      value: webClient.userPoolClientId,
+    });
+
     // DynamoDB setup
     const userTable = new Table(this, "user-table", {
       partitionKey: {
@@ -127,6 +163,7 @@ export class ZeitplanCdk extends Stack {
       },
       tableName: "zeitplan-user",
       removalPolicy: RemovalPolicy.DESTROY,
+      stream: aws_dynamodb.StreamViewType.NEW_IMAGE,
     });
 
     const calendarTable = new Table(this, "calendar-table", {
@@ -175,6 +212,28 @@ export class ZeitplanCdk extends Stack {
         awsRegion: this.region,
         defaultAction: "ALLOW",
       },
+      additionalAuthenticationProviders: [
+        {
+          authenticationType: "API_KEY",
+        },
+      ],
+    });
+
+    const graphQLApiKey = new appsync.CfnApiKey(this, "zeitplan-api-key", {
+      apiId: graphQL.attrApiId,
+      description: "Dev API Key",
+      expires: new Date(2023, 3, 1).valueOf() / 1000,
+    });
+    graphQLApiKey.addDependency(graphQL);
+
+    new CfnOutput(this, "graphql-api-endpoint", {
+      exportName: "graphql-api-endpoint",
+      value: graphQL.attrGraphQlUrl,
+    });
+
+    new CfnOutput(this, "grapql-api-key", {
+      exportName: "graphql-api-key",
+      value: graphQLApiKey.attrApiKey,
     });
 
     const graphqlSchema = new appsync.CfnGraphQLSchema(
@@ -209,6 +268,31 @@ export class ZeitplanCdk extends Stack {
     });
 
     // GQL RESOLVERS
+    //
+
+    const noDataSource = new appsync.CfnDataSource(this, "NoOpDataSource", {
+      apiId: graphQL.attrApiId,
+      name: "NoOpDataSource",
+      type: "NONE",
+    });
+
+    const creditsChangedResolver = new appsync.CfnResolver(
+      this,
+      "credits-changed-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "creditsChanged",
+        dataSourceName: noDataSource.name,
+        requestMappingTemplate: `{         
+          "version": "2018-05-29",
+          "payload": $util.toJson($context.args)
+        }`,
+        responseMappingTemplate: "$context.args.credits",
+      }
+    );
+    creditsChangedResolver.addDependency(graphqlSchema);
+    creditsChangedResolver.addDependency(noDataSource);
 
     const calendarTableDataSource = new appsync.CfnDataSource(
       this,
@@ -247,7 +331,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     );
-    calendarInsertResolver.addDependsOn(graphqlSchema);
+    calendarInsertResolver.addDependency(graphqlSchema);
 
     const calendarGetResolver = new appsync.CfnResolver(
       this,
@@ -273,7 +357,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($util.list.sortList($ctx.result.items, false, "name"))`,
       }
     );
-    calendarGetResolver.addDependsOn(graphqlSchema);
+    calendarGetResolver.addDependency(graphqlSchema);
 
     const meetingTableDataSource = new appsync.CfnDataSource(
       this,
@@ -314,7 +398,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     );
-    meetingInsertResolver.addDependsOn(graphqlSchema);
+    meetingInsertResolver.addDependency(graphqlSchema);
 
     const meetingGetResolver = new appsync.CfnResolver(
       this,
@@ -340,7 +424,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($util.list.sortList($ctx.result.items, false, "created"))`,
       }
     );
-    meetingGetResolver.addDependsOn(graphqlSchema);
+    meetingGetResolver.addDependency(graphqlSchema);
 
     const userTableDataSource = new appsync.CfnDataSource(
       this,
@@ -371,7 +455,7 @@ export class ZeitplanCdk extends Stack {
       }`,
       responseMappingTemplate: `$util.toJson($ctx.result)`,
     });
-    userGetResolver.addDependsOn(graphqlSchema);
+    userGetResolver.addDependency(graphqlSchema);
 
     const userInsertResolver = new appsync.CfnResolver(
       this,
@@ -397,7 +481,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($ctx.result.events)`,
       }
     );
-    userInsertResolver.addDependsOn(graphqlSchema);
+    userInsertResolver.addDependency(graphqlSchema);
 
     const createUserCode = new Function(this, "zeitplan-create-user", {
       functionName: "Zeitplan-Create-User",
@@ -470,7 +554,7 @@ export class ZeitplanCdk extends Stack {
         responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     );
-    createPaymentResolver.addDependsOn(graphqlSchema);
+    createPaymentResolver.addDependency(graphqlSchema);
 
     const stripeWebhookLambda = new Function(this, "zeitplan-stripe-webhook", {
       functionName: "Zeitplan-Stripe-Webhook",
@@ -487,10 +571,51 @@ export class ZeitplanCdk extends Stack {
     });
     paymentsTable.grantReadWriteData(stripeWebhookLambda);
     userTable.grantWriteData(stripeWebhookLambda);
-    
-    stripeWebhookLambda.addFunctionUrl({
+
+    const stripeLambdaUrl = stripeWebhookLambda.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
     });
+
+    new CfnOutput(this, "stripe-webhook-url", {
+      exportName: "stripe-webhook-url",
+      value: stripeLambdaUrl.url,
+    });
+
+    const userDbStreamLambda = new Function(
+      this,
+      "zeitplan-user-db-stream-process",
+      {
+        functionName: "Zeitplan-Process-User-DB-Stream",
+        description:
+          "Handler for DynamoDB Streams event to trigger AppSync mutation",
+        handler: "main",
+        runtime: Runtime.GO_1_X,
+        code: Code.fromAsset(
+          path.join(__dirname, "../lambdas/user_db_stream/main.zip")
+        ),
+        environment: {
+          GQL_URL: graphQL.attrGraphQlUrl,
+        },
+      }
+    );
+
+    userDbStreamLambda.addEventSource(
+      new DynamoEventSource(userTable, {
+        startingPosition: StartingPosition.LATEST,
+        maxRecordAge: Duration.minutes(5),
+        filters: [
+          FilterCriteria.filter({ eventName: FilterRule.isEqual("MODIFY") }),
+        ],
+      })
+    );
+
+    userDbStreamLambda.addToRolePolicy(
+      new PolicyStatement({
+        effect: Effect.ALLOW,
+        actions: ["appsync:GraphQL"],
+        resources: [graphQL.attrArn + "/types/Mutation/fields/creditsChanged"],
+      })
+    );
 
     /*
     // Cloudfront access setup here

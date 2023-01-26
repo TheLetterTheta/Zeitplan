@@ -71,7 +71,7 @@ view shared _ =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
+            |> Html.map SharedMsg
         , div [ class "is-small section" ]
             [ div [ class "hero is-info" ]
                 [ div [ class "hero-body" ]

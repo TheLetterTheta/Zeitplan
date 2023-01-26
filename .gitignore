@@ -9,3 +9,4 @@ target/
 .parcel-cache/
 .cache/
 *.env
+web/aws-cdk-outputs.json

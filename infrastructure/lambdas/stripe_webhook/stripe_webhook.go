@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"log"
 	"os"
 
 	"github.com/aws/aws-lambda-go/events"
@@ -50,12 +50,10 @@ type CompleteUpdate struct {
 }
 
 func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) error {
-	stripe.Key = stripeSecretKey
-
 	event, err := webhook.ConstructEvent([]byte(req.Body), req.Headers["stripe-signature"], endpointSecret)
 
 	if err != nil {
-		fmt.Println("Could not verify request")
+		log.Println("Could not verify request")
 		return errors.New("InvalidRequest")
 	}
 
@@ -65,31 +63,31 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 		err := json.Unmarshal(event.Data.Raw, &paymentIntent)
 
 		if err != nil {
-			fmt.Println("Could not parse Payment Intent")
+			log.Println("Could not parse Payment Intent")
 			return err
 		}
 
 		if paymentIntent.Currency != "usd" {
-			fmt.Println("Currency must be USD")
+			log.Println("Currency must be USD")
 			return errors.New("InvalidCurrency")
 		}
 
 		paymentTableName := os.Getenv("PAYMENT_TABLE_NAME")
 		if paymentTableName == "" {
-			fmt.Println("No payment table found in environment")
+			log.Println("No payment table found in environment")
 			return errors.New("InvalidEnvironment")
 		}
 
 		userTableName := os.Getenv("USER_TABLE_NAME")
 		if userTableName == "" {
-			fmt.Println("No user table found in environment")
+			log.Println("No user table found in environment")
 			return errors.New("InvalidEnvironment")
 		}
 
 		cfg, err := config.LoadDefaultConfig(ctx)
 
 		if err != nil {
-			fmt.Println("Configuration not set")
+			log.Println("Configuration not set")
 			return err
 		}
 
@@ -99,7 +97,7 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			OrderId: paymentIntent.ID,
 		})
 		if err != nil {
-			fmt.Println("Could not marshall payment key")
+			log.Println("Could not marshall payment key")
 			return err
 		}
 
@@ -111,13 +109,13 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			ProjectionExpression: aws.String("userId, credits"),
 		})
 		if err != nil {
-			fmt.Println("Could not retrieve item")
+			log.Println("Could not retrieve item")
 			return err
 		}
 
 		err = attributevalue.UnmarshalMap(result.Item, &paymentValues)
 		if err != nil {
-			fmt.Println("Failed to unmarshal payment value")
+			log.Println("Failed to unmarshal payment value")
 			return err
 		}
 
@@ -125,7 +123,7 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			UserId: paymentValues.UserId,
 		})
 		if err != nil {
-			fmt.Println("Could not marshall user key")
+			log.Println("Could not marshall user key")
 			return err
 		}
 
@@ -133,7 +131,7 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			Credits: paymentValues.Credits,
 		})
 		if err != nil {
-			fmt.Println("Failed to marshal user update value")
+			log.Println("Failed to marshal user update value")
 			return err
 		}
 
@@ -141,7 +139,7 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			Complete: true,
 		})
 		if err != nil {
-			fmt.Println("Failed to marshal complete update value")
+			log.Println("Failed to marshal complete update value")
 			return err
 		}
 
@@ -166,12 +164,12 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 			},
 		})
 		if err != nil {
-			fmt.Println("Could not perform database updates")
+			log.Println("Could not perform database updates")
 			return err
 		}
 
 	default:
-		fmt.Println("Recieved event %s", event.Type)
+		log.Println("Recieved event ", event.Type)
 	}
 
 	return nil
@@ -179,11 +177,15 @@ func HandleRequest(ctx context.Context, req events.LambdaFunctionURLRequest) err
 
 func main() {
 	if stripeSecretKey == "" {
-		os.Exit(1)
+		log.Fatal("Could not find stripe secret key")
 	}
 	if endpointSecret == "" {
-		os.Exit(1)
+		log.Fatal("Could not find endpoint secret key")
 	}
 
 	lambda.Start(HandleRequest)
+}
+
+func init() {
+	stripe.Key = stripeSecretKey
 }

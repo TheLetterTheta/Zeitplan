@@ -247,7 +247,7 @@ view shared model =
             { logo = shared.logo
             , shared = shared
             }
-            |> Html.map (\sharedMsg -> SharedMsg sharedMsg)
+            |> Html.map SharedMsg
         , div [ class "container is-fullhd" ]
             [ div [ class "box participants" ]
                 [ aside []

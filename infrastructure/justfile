@@ -9,4 +9,10 @@ build-create-user:
 build-stripe-webhook:
     just lambdas/stripe_webhook/build
     
-build: build-stripe-checkout build-create-user build-stripe-webhook
+build-user-db-stream:
+    just lambdas/user_db_stream/build
+    
+deploy:
+    cdk deploy --outputs-file ../web/aws-cdk-outputs.json
+    
+build: build-stripe-checkout build-create-user build-stripe-webhook build-user-db-stream

@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"errors"
-	"fmt"
+	"log"
 	"math"
 	"os"
 
@@ -39,8 +39,6 @@ var (
 )
 
 func HandleRequest(ctx context.Context, req Request) (Response, error) {
-	stripe.Key = stripeSecretKey
-
 	if req.Credits == nil {
 		return Response{}, errors.New("CreditsRequired")
 	}
@@ -67,20 +65,20 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 
 	pi, err := paymentintent.New(stripePayment)
 	if err != nil {
-		fmt.Println("Could not create Stripe Payment Intent")
+		log.Println("Could not create Stripe Payment Intent")
 		return Response{}, err
 	}
 
 	tableName := os.Getenv("PAYMENT_TABLE_NAME")
 	if tableName == "" {
-		fmt.Println("No users table found in environment")
+		log.Println("No users table found in environment")
 		return Response{}, errors.New("InvalidEnvironment")
 	}
 
 	cfg, err := config.LoadDefaultConfig(ctx)
 
 	if err != nil {
-		fmt.Println("Configuration not set")
+		log.Println("Configuration not set")
 		return Response{}, err
 	}
 
@@ -94,7 +92,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		UserId:   *req.UserName,
 	})
 	if err != nil {
-		fmt.Println("Could not marshall update values")
+		log.Println("Could not marshall update values")
 		return Response{}, err
 	}
 
@@ -106,7 +104,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 	_, err = client.PutItem(ctx, &putItemInput)
 
 	if err != nil {
-		fmt.Println("Could not save order info")
+		log.Print("Could not save order info")
 		return Response{}, err
 	}
 
@@ -123,5 +121,13 @@ func ComputeCreditAmount(credits int) int64 {
 }
 
 func main() {
+	if stripeSecretKey == "" {
+		log.Fatal("Could not find stripe secret Key")
+	}
+
 	lambda.Start(HandleRequest)
+}
+
+func init() {
+	stripe.Key = stripeSecretKey
 }

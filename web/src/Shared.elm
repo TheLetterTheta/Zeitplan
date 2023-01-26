@@ -142,7 +142,7 @@ update req msg model =
             ( { model | user = Nothing }
             , case model.user of
                 Just user ->
-                    signOut user.user.username
+                    signOut ()
 
                 Nothing ->
                     Cmd.none
@@ -187,7 +187,7 @@ port signUpConfirmOk : (Encode.Value -> msg) -> Sub msg
 port signUpConfirmErr : (Encode.Value -> msg) -> Sub msg
 
 
-port signOut : String -> Cmd msg
+port signOut : () -> Cmd msg
 
 
 port signOutOk : (Encode.Value -> msg) -> Sub msg

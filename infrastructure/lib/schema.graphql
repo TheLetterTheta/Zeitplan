@@ -1,50 +1,60 @@
 type User {
-    credits: Int!
-    events: [Event!]!
+  credits: Int!
+  events: [Event!]!
 }
 
 type Calendar {
-    name: String!
-    events: [Event!]!
+  name: String!
+  events: [Event!]!
 }
 
 type Event {
-    start: Int!
-    end: Int!
+  start: Int!
+  end: Int!
 }
 
 type Meeting {
-    participants: [ID!]!
-    title: String!
-    duration: Int!
-    created: Long!
+  participants: [ID!]!
+  title: String!
+  duration: Int!
+  created: Long!
 }
 
 type PaymentIntent {
-    clientSecret: String!,
-    amount: Int
+  clientSecret: String!
+  amount: Int
 }
 
-
 type Query @aws_cognito_user_pools {
-    calendars: [Calendar!]!
-    meetings: [Meeting!]!
-    user: User!
+  calendars: [Calendar!]!
+  meetings: [Meeting!]!
+  user: User!
 }
 
 input EventInput {
-    start: Int!
-    end: Int!
+  start: Int!
+  end: Int!
 }
 
 type Mutation @aws_cognito_user_pools {
-    saveCalendar(name: String, events: [EventInput!]!): Calendar!
-    saveMeeting(participants: [ID!]!, title: String!, duration: Int!, created: Long): Meeting!
-    saveEvents(events: [EventInput!]!): [Event!]!
-    beginCheckout(credits: Int!): PaymentIntent
+  saveCalendar(name: String, events: [EventInput!]!): Calendar!
+  saveMeeting(
+    participants: [ID!]!
+    title: String!
+    duration: Int!
+    created: Long
+  ): Meeting!
+  saveEvents(events: [EventInput!]!): [Event!]!
+  beginCheckout(credits: Int!): PaymentIntent
+  creditsChanged(userId: ID!, credits: Int!): Int! @aws_iam
+}
+
+type Subscription {
+  onCreditsChanged(userId: ID!): Int!
+    @aws_subscribe(mutations: ["creditsChanged"])
 }
 
 schema {
-    query: Query
-    mutation: Mutation
+  query: Query
+  mutation: Mutation
 }

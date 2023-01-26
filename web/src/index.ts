@@ -1,10 +1,28 @@
 import zeitplanLogo from "../public/Zeitplan.png?as=webp&width:50";
 import * as process from 'process';
-import {signIn, signUp, signOut, submitConfirmationCode, submitResendConfirmationCode, getCurrentUser, CurrentLoginSession} from './auth';
 import { Elm } from "./Main.elm";
 import { loadStripe, Stripe, StripeElements, StripeError, StripeLinkAuthenticationElement, StripePaymentElement } from '@stripe/stripe-js';
+import { Amplify, Auth } from 'aws-amplify';
+import { ZeitplanCdkStack } from '../aws-cdk-outputs.json';
 
-let { STRIPE_PUBLIC_API_KEY } = process.env
+Amplify.configure({
+    Auth: {
+        region: ZeitplanCdkStack.region,
+        userPoolId: ZeitplanCdkStack.userpoolid,
+        userPoolWebClientId: ZeitplanCdkStack.webclientid,
+        signUpVerificationMethod: 'code',
+        cookieStorage: {
+            domain: 'localhost',
+            path: '/',
+            expires: 7,
+            sameSite: "strict",
+            secure: true
+        },
+        authenticationFlowType: 'USER_SRP_AUTH'
+    }
+});
+
+const { STRIPE_PUBLIC_API_KEY } = process.env
 
 function mapError<T>(promise: Promise<T>, map: (error: any) => T): Promise<T> {
     return promise
@@ -105,7 +123,7 @@ customElements.define("stripe-web-component", class extends HTMLElement {
 })
 
 async function run() {
-    const currentlyLoggedInUser: CurrentLoginSession | null = await mapError(getCurrentUser(), () => null);
+    const currentlyLoggedInUser = await mapError(Auth.currentAuthenticatedUser(), () => null);
 
     const app = Elm.Main.init({
         flags: {
@@ -119,32 +137,39 @@ async function run() {
         localStorage.setItem(key, JSON.stringify(value));
     })
     
-   app.ports.signIn.subscribe(signInParams =>
-       signIn(signInParams)
+   app.ports.signIn.subscribe(({username, password}) =>
+       Auth.signIn(username, password)
         .then(app.ports.signInOk.send)
         .catch(app.ports.signInErr.send)
    );
 
-   app.ports.signUp.subscribe(signUpParams =>
-       signUp(signUpParams)
-        .then(app.ports.signUpOk.send)
-        .catch(app.ports.signUpErr.send)
-   );
+   app.ports.signUp.subscribe(({username, password}) => {
+       Auth.signUp(
+           {
+               username,
+               password,
+               autoSignIn: { enabled: true} 
+           }
+       )
+       .then(app.ports.signUpOk.send)
+       .catch(app.ports.signUpErr.send)
+   });
 
-   app.ports.signUpConfirm.subscribe(( {username, code} ) =>
-       submitConfirmationCode(username, code)
-        .then(app.ports.signUpConfirmOk.send)
-        .catch(app.ports.signUpConfirmErr.send)
-   );
+   app.ports.signUpConfirm.subscribe(( {username, code} ) => {
+       Auth.confirmSignUp(username, code)
+       .then(_ => Auth.currentAuthenticatedUser())
+       .then(app.ports.signUpConfirmOk.send)
+       .catch(app.ports.signUpConfirmErr.send)
+   });
 
-   app.ports.resendConfirmationCode.subscribe((username) =>
-       submitResendConfirmationCode(username)
-           .then(app.ports.resendConfirmationCodeOk.send)
-           .catch(app.ports.resendConfirmationCodeErr.send)
-   );
+   app.ports.resendConfirmationCode.subscribe((username) => {
+       Auth.resendSignUp(username)
+       .then(app.ports.resendConfirmationCodeOk.send)
+       .catch(app.ports.resendConfirmationCodeErr.send)
+   });
 
-   app.ports.signOut.subscribe(username => {
-       signOut()
+   app.ports.signOut.subscribe(() => {
+       Auth.signOut()
            .then(app.ports.signOutOk.send)
            .catch(app.ports.signOutErr.send)
    });

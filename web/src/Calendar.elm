@@ -532,8 +532,7 @@ view model =
                                 ]
             in
             td
-                ([ class "interval"
-                 , classList
+                ([ classList
                     [ ( "first-row", row == 1 )
                     , ( "last-row", row == slots )
                     , ( "blocked", blockedDay )
