@@ -1,12 +1,13 @@
 port module Shared exposing
-    ( AuthError
-    , AuthSignIn
+    ( AuthSignIn
     , AuthSignUp
     , Flags
     , Model
     , Msg(..)
     , SaveValue
     , init
+    , isError
+    , refreshToken
     , resendConfirmationCode
     , resendConfirmationCodeErr
     , resendConfirmationCodeOk
@@ -25,13 +26,25 @@ port module Shared exposing
     )
 
 import Browser.Dom exposing (getElement, setViewport)
-import Decoders exposing (AuthUser, authUserDecoder)
+import Decoders exposing (AuthUser, RefreshTokenPayload, authUserDecoder, refreshTokenDecoder)
 import Gen.Route
-import Json.Decode as Decode exposing (Decoder, bool, nullable, string)
-import Json.Decode.Pipeline exposing (optional, required)
+import Json.Decode as Decode exposing (Decoder, nullable, string)
+import Json.Decode.Pipeline exposing (required)
 import Json.Encode as Encode
+import Process
 import Request exposing (Request)
 import Task
+import Time
+
+
+isError : Result a b -> Bool
+isError r =
+    case r of
+        Ok _ ->
+            False
+
+        Err _ ->
+            True
 
 
 type alias SaveValue =
@@ -53,18 +66,8 @@ type alias AuthSignUp =
     }
 
 
-type alias CognitoUser =
-    { username : String }
-
-
-type AuthError
-    = UserNotFound
-    | PasswordIncorrect
-    | Other String
-
-
 type alias DecodedFlags =
-    { logo : String, user : Maybe AuthUser }
+    { logo : String, user : Maybe AuthUser, graphQlEndpoint : String }
 
 
 type alias Flags =
@@ -76,12 +79,14 @@ decodeFlags =
     Decode.succeed DecodedFlags
         |> required "logo" string
         |> required "currentlyLoggedInUser" (nullable authUserDecoder)
+        |> required "graphQlEndpoint" string
 
 
 type alias Model =
     { logo : String
     , expandHamburger : Bool
     , user : Maybe AuthUser
+    , graphQlEndpoint : String
     }
 
 
@@ -92,6 +97,8 @@ type Msg
     | LogInUser AuthUser
     | SignOutOk
     | SignOutErr Encode.Value
+    | RequestRefreshToken
+    | RefreshToken Encode.Value
     | Logout
 
 
@@ -100,6 +107,16 @@ scrollToElement msg id =
     getElement id
         |> Task.andThen (\element -> setViewport element.element.x element.element.y)
         |> Task.attempt (\_ -> msg)
+
+
+delayUntilTimestamp : Int -> msg -> Cmd msg
+delayUntilTimestamp time msg =
+    Time.now
+        |> Task.map Time.posixToMillis
+        |> Task.map (\now -> time - now)
+        |> Task.map toFloat
+        |> Task.andThen Process.sleep
+        |> Task.perform (always msg)
 
 
 init : Request -> Flags -> ( Model, Cmd Msg )
@@ -111,10 +128,16 @@ init _ flags =
     in
     case tryDecodedFlags of
         Ok decodedFlags ->
-            ( Model decodedFlags.logo False decodedFlags.user, Cmd.none )
+            let
+                maybeCommand =
+                    decodedFlags.user
+                        |> Maybe.map (\user -> delayUntilTimestamp user.expiration RequestRefreshToken)
+                        |> Maybe.withDefault Cmd.none
+            in
+            ( Model decodedFlags.logo False decodedFlags.user decodedFlags.graphQlEndpoint, maybeCommand )
 
         Err _ ->
-            ( Model "" False Nothing, Cmd.none )
+            ( Model "" False Nothing "", Cmd.none )
 
 
 update : Request -> Msg -> Model -> ( Model, Cmd Msg )
@@ -130,18 +153,43 @@ update req msg model =
             ( model, Cmd.none )
 
         LogInUser user ->
-            ( { model | user = Just user }, Request.pushRoute Gen.Route.Schedule req )
+            ( { model | user = Just user }
+            , Cmd.batch
+                [ Request.pushRoute Gen.Route.Schedule req
+                , delayUntilTimestamp user.expiration RequestRefreshToken
+                ]
+            )
 
         SignOutOk ->
             ( { model | user = Nothing }, Request.pushRoute Gen.Route.Login req )
 
-        SignOutErr val ->
+        RequestRefreshToken ->
+            ( model, requestRefreshToken () )
+
+        SignOutErr _ ->
             ( model, Cmd.none )
+
+        RefreshToken token ->
+            case Decode.decodeValue refreshTokenDecoder token of
+                Ok tokenValue ->
+                    case model.user of
+                        Just user ->
+                            let
+                                updatedUserToken =
+                                    { user | jwt = tokenValue.jwt, expiration = tokenValue.expiration }
+                            in
+                            ( { model | user = Just updatedUserToken }, delayUntilTimestamp tokenValue.expiration RequestRefreshToken )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                Err _ ->
+                    ( model, Cmd.none )
 
         Logout ->
             ( { model | user = Nothing }
             , case model.user of
-                Just user ->
+                Just _ ->
                     signOut ()
 
                 Nothing ->
@@ -154,6 +202,7 @@ subscriptions _ _ =
     Sub.batch
         [ signOutOk (\_ -> SignOutOk)
         , signOutErr SignOutErr
+        , refreshToken RefreshToken
         ]
 
 
@@ -203,3 +252,9 @@ port resendConfirmationCodeOk : (Encode.Value -> msg) -> Sub msg
 
 
 port resendConfirmationCodeErr : (Encode.Value -> msg) -> Sub msg
+
+
+port refreshToken : (Encode.Value -> msg) -> Sub msg
+
+
+port requestRefreshToken : () -> Cmd msg

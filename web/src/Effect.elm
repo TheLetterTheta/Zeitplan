@@ -12,8 +12,7 @@ module Effect exposing
 
 -}
 
-import Json.Encode as Encode
-import Shared exposing (AuthSignIn, AuthSignUp, SaveValue)
+import Shared
 import Task
 
 

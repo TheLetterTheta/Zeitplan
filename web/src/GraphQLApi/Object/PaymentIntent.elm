@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Object.Calendar exposing (..)
+module GraphQLApi.Object.PaymentIntent exposing (..)
 
 import GraphQLApi.InputObject
 import GraphQLApi.Interface
@@ -19,18 +19,11 @@ import Graphql.SelectionSet exposing (SelectionSet)
 import Json.Decode as Decode
 
 
-name : SelectionSet String GraphQLApi.Object.Calendar
-name =
-    Object.selectionForField "String" "name" [] Decode.string
+clientSecret : SelectionSet String GraphQLApi.Object.PaymentIntent
+clientSecret =
+    Object.selectionForField "String" "clientSecret" [] Decode.string
 
 
-events :
-    SelectionSet decodesTo GraphQLApi.Object.Event
-    -> SelectionSet (List decodesTo) GraphQLApi.Object.Calendar
-events object____ =
-    Object.selectionForCompositeField "events" [] object____ (Basics.identity >> Decode.list)
-
-
-blockedDays : SelectionSet (List String) GraphQLApi.Object.Calendar
-blockedDays =
-    Object.selectionForField "(List String)" "blockedDays" [] (Decode.string |> Decode.list)
+amount : SelectionSet (Maybe Int) GraphQLApi.Object.PaymentIntent
+amount =
+    Object.selectionForField "(Maybe Int)" "amount" [] (Decode.int |> Decode.nullable)

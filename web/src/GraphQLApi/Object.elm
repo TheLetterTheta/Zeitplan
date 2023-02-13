@@ -17,5 +17,9 @@ type Meeting
     = Meeting
 
 
+type PaymentIntent
+    = PaymentIntent
+
+
 type User
     = User

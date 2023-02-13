@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Object.Calendar exposing (..)
+module GraphQLApi.Subscription exposing (..)
 
 import GraphQLApi.InputObject
 import GraphQLApi.Interface
@@ -16,21 +16,9 @@ import Graphql.Internal.Encode as Encode exposing (Value)
 import Graphql.Operation exposing (RootMutation, RootQuery, RootSubscription)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet exposing (SelectionSet)
-import Json.Decode as Decode
+import Json.Decode as Decode exposing (Decoder)
 
 
-name : SelectionSet String GraphQLApi.Object.Calendar
-name =
-    Object.selectionForField "String" "name" [] Decode.string
-
-
-events :
-    SelectionSet decodesTo GraphQLApi.Object.Event
-    -> SelectionSet (List decodesTo) GraphQLApi.Object.Calendar
-events object____ =
-    Object.selectionForCompositeField "events" [] object____ (Basics.identity >> Decode.list)
-
-
-blockedDays : SelectionSet (List String) GraphQLApi.Object.Calendar
-blockedDays =
-    Object.selectionForField "(List String)" "blockedDays" [] (Decode.string |> Decode.list)
+onCreditsChanged : SelectionSet Int RootSubscription
+onCreditsChanged =
+    Object.selectionForField "Int" "onCreditsChanged" [] Decode.int

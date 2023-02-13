@@ -45,7 +45,8 @@
     "@toast-ui/calendar": "^2.1.3",
     "aws-amplify": "^5.0.11",
     "bulma": "^0.9.4",
-    "bulma-pricingtable": "^0.2.0"
+    "bulma-pricingtable": "^0.2.0",
+    "bulma-steps-component": "^0.5.3"
   },
   "browserlist": "defaults"
 }

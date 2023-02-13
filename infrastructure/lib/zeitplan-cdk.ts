@@ -6,6 +6,7 @@ import {
   Stack,
   StackProps,
   CfnOutput,
+  aws_pinpoint,
 } from "aws-cdk-lib";
 import * as path from "path";
 import * as fs from "fs";
@@ -96,6 +97,22 @@ export class ZeitplanCdk extends Stack {
         description: "Default group",
       }
     );
+    
+    const lambdaGroup = new cognito.CfnUserPoolGroup(
+      this,
+      "zeitplan-lambda-user",
+      {
+        userPoolId: userPool.userPoolId,
+        groupName: "zeitplan-lambda-user",
+        description: "API User for automated tasks"
+      }
+    );
+    const lambdaClient = userPool.addClient("lambda-client", {
+      generateSecret: true,
+      authFlows: {
+        adminUserPassword: true,
+      },
+    });
 
     const googleClientSecret = sm.Secret.fromSecretAttributes(
       this,
@@ -163,7 +180,7 @@ export class ZeitplanCdk extends Stack {
       },
       tableName: "zeitplan-user",
       removalPolicy: RemovalPolicy.DESTROY,
-      stream: aws_dynamodb.StreamViewType.NEW_IMAGE,
+      // stream: aws_dynamodb.StreamViewType.NEW_IMAGE,
     });
 
     const calendarTable = new Table(this, "calendar-table", {
@@ -325,7 +342,8 @@ export class ZeitplanCdk extends Stack {
           "name": $util.dynamodb.toStringJson($context.arguments.name)
         },
         "attributeValues": {
-          "events": $util.dynamodb.toListJson($context.arguments.events)
+          "events": $util.dynamodb.toListJson($context.arguments.events),
+          "blockedDays": $util.dynamodb.toListJson($context.arguments.blockedDays)
         }
       }`,
         responseMappingTemplate: `$util.toJson($ctx.result)`,
@@ -358,6 +376,27 @@ export class ZeitplanCdk extends Stack {
       }
     );
     calendarGetResolver.addDependency(graphqlSchema);
+    
+    const calendarDeleteResolver = new appsync.CfnResolver(
+      this,
+      "calendar-delete-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "deleteCalendar",
+        dataSourceName: calendarTableDataSource.name,
+        requestMappingTemplate: `{
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "userId": $util.dynamodb.toDynamoDBJson($context.identity.username),
+            "name": $util.dynamodb.toDynamoDBJson($ctx.arguments.name)
+          }
+        }`,
+        responseMappingTemplate: `$util.toJson($ctx.result)`
+      }
+    );
+    calendarDeleteResolver.addDependency(graphqlSchema);
 
     const meetingTableDataSource = new appsync.CfnDataSource(
       this,
@@ -425,6 +464,27 @@ export class ZeitplanCdk extends Stack {
       }
     );
     meetingGetResolver.addDependency(graphqlSchema);
+    
+    const meetingDeleteResolver = new appsync.CfnResolver(
+      this,
+      "meeting-delete-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "deleteMeeting",
+        dataSourceName: meetingTableDataSource.name,
+        requestMappingTemplate: `{
+          "version": "2018-05-29",
+          "operation": "DeleteItem",
+          "key": {
+            "userId": $util.dynamodb.toDynamoDBJson($context.identity.username),
+            "created": $util.dynamodb.toDynamoDBJson($ctx.arguments.created)
+          }
+        }`,
+        responseMappingTemplate: `$util.toJson($ctx.result)`
+      }
+    );
+    meetingDeleteResolver.addDependency(graphqlSchema);
 
     const userTableDataSource = new appsync.CfnDataSource(
       this,
@@ -555,6 +615,37 @@ export class ZeitplanCdk extends Stack {
       }
     );
     createPaymentResolver.addDependency(graphqlSchema);
+    
+    const creditsCreatedSubscriptionResolver = new appsync.CfnResolver(
+      this,
+      "credits-changed-subscription-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Subscription",
+        fieldName: "onCreditsChanged",
+        dataSourceName: noDataSource.name,
+        requestMappingTemplate: `{
+          "version": "2018-05-29",
+          "payload": { }
+        }`,
+        responseMappingTemplate: `
+        $extensions.setSubscriptionFilter({
+          "filterGroup": [
+            {
+              "filters": [
+                {
+                  "fieldName": "userId",
+                  "operator": "eq",
+                  "value": $ctx.identity.username
+                }
+              ]
+            }
+          ]
+        })
+        $util.toJson($context.result)
+        `
+      }
+    )
 
     const stripeWebhookLambda = new Function(this, "zeitplan-stripe-webhook", {
       functionName: "Zeitplan-Stripe-Webhook",
@@ -599,6 +690,7 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
+    /*
     userDbStreamLambda.addEventSource(
       new DynamoEventSource(userTable, {
         startingPosition: StartingPosition.LATEST,
@@ -608,62 +700,7 @@ export class ZeitplanCdk extends Stack {
         ],
       })
     );
+    */
 
-    userDbStreamLambda.addToRolePolicy(
-      new PolicyStatement({
-        effect: Effect.ALLOW,
-        actions: ["appsync:GraphQL"],
-        resources: [graphQL.attrArn + "/types/Mutation/fields/creditsChanged"],
-      })
-    );
-
-    /*
-    // Cloudfront access setup here
-    const zeitplanCloudfrontOAI = new cloudfront.OriginAccessIdentity(this, 'cloudfront-OAI', {
-      comment: 'OAI for Zeitplan'
-    });
-
-    // Bucket for site declared here - no content deployed yet
-    const zeitplanBucket = new s3.Bucket(this, 'ZeitplanBucket', {
-      bucketName: 'zeitplan-web-bucket',
-      publicReadAccess: true,
-      removalPolicy: RemovalPolicy.DESTROY,
-    });
-
-    // Now we must give access to cloudfront to our bucket:
-    zeitplanBucket.addToResourcePolicy(new iam.PolicyStatement({
-      actions: ['s3:GetObject'],
-      resources: [zeitplanBucket.arnForObjects('*')],
-      principals: [new iam.CanonicalUserPrincipal(zeitplanCloudfrontOAI.cloudFrontOriginAccessIdentityS3CanonicalUserId)]
-    }));
-
-    // Setup cloudfront to our bucket
-    const cloudfrontDistribution = new cloudfront.Distribution(this, 'Zeitplan Distribution', {
-      defaultRootObject: 'index.html',
-      minimumProtocolVersion: cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
-      errorResponses: [
-        {
-          httpStatus: 403,
-          responseHttpStatus: 403,
-          responsePagePath: '/error.html',
-          ttl: Duration.minutes(30)
-        }
-      ],
-      defaultBehavior: {
-        origin: new cloudfront_origins.S3Origin(zeitplanBucket, { originAccessIdentity: zeitplanCloudfrontOAI }),
-        compress: true,
-        allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
-        viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-      }
-    });
-
-    new s3Deploy.BucketDeployment(this, 'Deploy Zeitplan with Invalidation', {
-      sources: [s3Deploy.Source.asset('../web/dist')],
-      destinationBucket: zeitplanBucket,
-      distribution: cloudfrontDistribution,
-      distributionPaths: ['/*'],
-    })
-
-   */
   }
 }

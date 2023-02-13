@@ -42,7 +42,7 @@ webhook -> db: Update order by OrderID with new credits
 [[file:AWS-Checkout Process]]
 
 
-#+begin_src plantuml :noweb :file AWS-Events
+#+begin_src plantuml :noweb :file AWS-Events.png
 @startuml
 
 !theme superhero-outline
@@ -50,15 +50,17 @@ webhook -> db: Update order by OrderID with new credits
 !include <awslib/AWSCommon.puml>
 !include <awslib/DeveloperTools/XRay.puml>
 !include <awslib/SecurityIdentityAndCompliance/Cognito.puml>
+!include <awslib/ApplicationIntegration/AppSync.puml>
 !include <awslib/Compute/Lambda.puml>
 !include <awslib/Database/DynamoDB.puml>
 !include <awslib/General/Client.puml>
 !include <logos/stripe>
 
-title AWS Login Sequence
+title AWS Stripe Update Subscription
 
-ClientParticipant(frontend, "Elm App", "Subscribe to changes")
+ClientParticipant(frontend, "Web App", "Subscribe to changes")
 DynamoDBParticipant(db, "Users Table", "")
+AppSyncParticipant(subscriptionHub, "Users Table", "")
 LambdaParticipant(streamListener, "Stream Process DB", "MODIFY")
 
 frontend -> subscriptionHub: Listen for user credit changes
@@ -70,7 +72,7 @@ subscriptionHub -> frontend: Changed...
 #+end_src
 
 #+RESULTS:
-[[file:AWS-Events]]
+[[file:AWS-Events.png]]
 
 #+begin_src plantuml :noweb :file Stripe Subscription Sequence.svg
 @startuml

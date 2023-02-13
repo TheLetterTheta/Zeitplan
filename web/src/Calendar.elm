@@ -1,11 +1,11 @@
-module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, addEvent, encodeEvent, init, update, view)
+module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, dayString, encodeEvent, init, isSaveMsg, stringToDay, update, view)
 
 import Array
 import Effect exposing (Effect)
 import FontAwesome as Icon
 import FontAwesome.Solid as Icon
 import Html exposing (Attribute, Html, button, div, p, span, table, tbody, td, text, th, thead, tr, wbr)
-import Html.Attributes exposing (class, classList, type_)
+import Html.Attributes exposing (class, classList, style, type_)
 import Html.Events exposing (onClick, onMouseDown, onMouseEnter, onMouseLeave, onMouseUp, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -33,6 +33,35 @@ type Weekday
     | Thursday
     | Friday
     | Saturday
+    | NotValidDay
+
+
+stringToDay : String -> Weekday
+stringToDay s =
+    case s of
+        "Sunday" ->
+            Sunday
+
+        "Monday" ->
+            Monday
+
+        "Tuesday" ->
+            Tuesday
+
+        "Wednesday" ->
+            Wednesday
+
+        "Thursday" ->
+            Thursday
+
+        "Friday" ->
+            Friday
+
+        "Saturday" ->
+            Saturday
+
+        _ ->
+            NotValidDay
 
 
 dayString : Weekday -> String
@@ -58,6 +87,9 @@ dayString d =
 
         Saturday ->
             "Saturday"
+
+        _ ->
+            ""
 
 
 days : Array.Array Weekday
@@ -113,6 +145,8 @@ type alias Model =
     { events : List Event
     , state : CalendarState
     , blockedDays : List Weekday
+    , overlayEvents : List Event
+    , viewAllDayLine : Bool
     }
 
 
@@ -125,6 +159,8 @@ init =
     ( { events = []
       , state = Idle
       , blockedDays = []
+      , overlayEvents = []
+      , viewAllDayLine = True
       }
     , Effect.none
     )
@@ -194,6 +230,28 @@ addEvent event list =
 type Ends
     = Start
     | End
+
+
+isSaveMsg : Msg -> Bool
+isSaveMsg msg =
+    case msg of
+        DeleteEvent _ ->
+            True
+
+        EndCreateEvent ->
+            True
+
+        EndDragEvent ->
+            True
+
+        EndResizeEvent ->
+            True
+
+        ToggleAllDayBlock _ ->
+            True
+
+        _ ->
+            False
 
 
 type Msg
@@ -468,6 +526,12 @@ view model =
                         |> List.filter (\event -> index >= event.start && index <= event.end)
                         |> List.head
 
+                matchingOverlay : Maybe Event
+                matchingOverlay =
+                    model.overlayEvents
+                        |> List.filter (\event -> index >= event.start && index <= event.end)
+                        |> List.head
+
                 draftEvent : Maybe Event
                 draftEvent =
                     editEvent
@@ -532,13 +596,13 @@ view model =
                                 ]
             in
             td
-                ([ classList
+                (classList
                     [ ( "first-row", row == 1 )
                     , ( "last-row", row == slots )
+                    , ( "overlay-event", matchingOverlay /= Nothing )
                     , ( "blocked", blockedDay )
                     ]
-                 ]
-                    ++ mouseEvents
+                    :: mouseEvents
                 )
             <|
                 List.take 1 <|
@@ -623,14 +687,19 @@ view model =
                 )
             ]
         , tbody []
-            (tr
-                [ class "all-day-row" ]
-                (td [] []
-                    :: (days
-                            |> Array.map viewAllDay
-                            |> Array.toList
-                       )
-                )
+            ((if model.viewAllDayLine then
+                tr
+                    [ class "all-day-row" ]
+                    (td [] []
+                        :: (days
+                                |> Array.map viewAllDay
+                                |> Array.toList
+                           )
+                    )
+
+              else
+                tr [ style "height" "10px" ] []
+             )
                 :: (List.range 1 slots
                         |> List.map
                             (\row ->

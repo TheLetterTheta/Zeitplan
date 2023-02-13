@@ -36,7 +36,9 @@ type GraphQlQuery struct {
 }
 
 var (
-	apiUrl string
+	apiUrl              string
+	cognitoClientId     string
+	cognitoClientSecret string
 )
 
 func init() {
@@ -112,6 +114,10 @@ func HandleRequest(ctx context.Context, req events.DynamoDBEvent) error {
 		log.Println("Could not make request")
 		return err
 	}
+
+	request.Header.Add("accept", "application/json, text/javascript")
+	request.Header.Add("content-encoding", "amz-1.0")
+	request.Header.Add("content-type", "application/json;charset=UTF-8")
 
 	signer := v4.NewSigner(func(signer *v4.SignerOptions) {
 		signer.LogSigning = true

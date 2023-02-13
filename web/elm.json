@@ -17,6 +17,7 @@
             "elm/regex": "1.0.0",
             "elm/time": "1.0.0",
             "elm/url": "1.0.0",
+            "krisajenkins/remotedata": "6.0.1",
             "lattyware/elm-fontawesome": "6.0.0",
             "rtfeldman/elm-validate": "4.0.1",
             "ryannhg/elm-spa": "6.0.0"

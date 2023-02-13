@@ -1,21 +1,19 @@
-module Pages.Login exposing (Model, Msg, page)
+module Pages.Login exposing (Model, Msg, State, page)
 
-import Decoders exposing (AuthUser, SignUpResult, authUserDecoder, signUpResultDecoder)
+import Decoders exposing (SignUpResult, authUserDecoder, signUpResultDecoder)
 import Effect exposing (Effect)
 import FontAwesome as Icon
 import FontAwesome.Solid exposing (spinner)
 import Gen.Params.Login exposing (Params)
-import Gen.Route
 import Html exposing (Html, button, div, form, h1, header, input, label, p, section, text)
 import Html.Attributes exposing (class, classList, disabled, for, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
-import Json.Decode as Decode exposing (Decoder, bool, string)
-import Json.Decode.Pipeline exposing (required)
+import Json.Decode as Decode exposing (Decoder, string)
 import Json.Encode as Encode
 import Page
 import Regex
-import Request exposing (Request)
-import Shared exposing (AuthError(..), AuthSignIn, AuthSignUp, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
+import Request
+import Shared exposing (AuthSignIn, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, footer, zeitplanNav)
 
@@ -32,16 +30,6 @@ page shared req =
 
 
 -- INIT
-
-
-isError : Result a b -> Bool
-isError r =
-    case r of
-        Ok _ ->
-            False
-
-        Err _ ->
-            True
 
 
 validateUsername : Validator String String
@@ -175,7 +163,6 @@ type State
     = Login
     | SignUpStart
     | SignUpConfirm
-    | ResetPassword
 
 
 type alias Model =
@@ -352,8 +339,9 @@ update req msg model =
             case Decode.decodeValue authUserDecoder jsVal of
                 Ok user ->
                     ( { model | requestError = Nothing }, Effect.fromShared <| Shared.LogInUser user )
-                Err _ -> 
-                    ( { model | requestError = Just "Could not verify user, please refresh the page" } , Effect.none )
+
+                Err _ ->
+                    ( { model | requestError = Just "Could not verify user, please refresh the page" }, Effect.none )
 
         SignUpConfirmErr error ->
             case Decode.decodeValue decodeSignUpConfirmError error of
@@ -369,10 +357,10 @@ update req msg model =
         ResendConfirmationCode ->
             ( { model | loading = True }, Effect.fromCmd <| resendConfirmationCode model.authSignIn.username )
 
-        ResendConfirmationCodeOk val ->
+        ResendConfirmationCodeOk _ ->
             ( { model | loading = False, status = Just "A new confirmation code has been sent" }, Effect.none )
 
-        ResendConfirmationCodeErr err ->
+        ResendConfirmationCodeErr _ ->
             ( { model | loading = False, requestError = Just "Something went wrong!" }, Effect.none )
 
         DismissRequestError ->
@@ -718,9 +706,6 @@ pageForm model =
                         ]
                     ]
                 ]
-
-        ResetPassword ->
-            div [] []
 
 
 view : Shared.Model -> Model -> View Msg

@@ -47,11 +47,6 @@ container attrs children =
     div (class "container" :: attrs) children
 
 
-button : List (Attribute msg) -> List (Html msg) -> Html msg
-button attrs children =
-    Html.button (class "button" :: attrs) children
-
-
 content : List (Attribute msg) -> List (Html msg) -> Html msg
 content attrs children =
     div (class "content" :: attrs) children

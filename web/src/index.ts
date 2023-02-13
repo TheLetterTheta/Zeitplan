@@ -22,6 +22,7 @@ Amplify.configure({
     }
 });
 
+
 const { STRIPE_PUBLIC_API_KEY } = process.env
 
 function mapError<T>(promise: Promise<T>, map: (error: any) => T): Promise<T> {
@@ -123,12 +124,21 @@ customElements.define("stripe-web-component", class extends HTMLElement {
 })
 
 async function run() {
-    const currentlyLoggedInUser = await mapError(Auth.currentAuthenticatedUser(), () => null);
+    const currentlyLoggedInUser = await mapError(Auth.currentAuthenticatedUser().then(async (user) => {
+        return Auth.currentSession()
+        .then((token) => token.getAccessToken())
+        .then((token) => {
+            return { ...user, jwt: token.getJwtToken(), expires: token.getExpiration() * 1000 };
+        })
+    }), () => null);
+
+    const graphQlEndpoint = ZeitplanCdkStack.graphqlapiendpoint;
 
     const app = Elm.Main.init({
         flags: {
             currentlyLoggedInUser,
-            logo: zeitplanLogo
+            logo: zeitplanLogo,
+            graphQlEndpoint
         },
         node: document.getElementById('zeitplan')
     })
@@ -139,6 +149,13 @@ async function run() {
     
    app.ports.signIn.subscribe(({username, password}) =>
        Auth.signIn(username, password)
+        .then(async user => {
+            return Auth.currentSession()
+            .then((token) => token.getAccessToken())
+            .then((token) => {
+                return { ...user, jwt: token.getJwtToken(), expires: token.getExpiration() * 1000 };
+            })
+        })
         .then(app.ports.signInOk.send)
         .catch(app.ports.signInErr.send)
    );
@@ -158,11 +175,18 @@ async function run() {
    app.ports.signUpConfirm.subscribe(( {username, code} ) => {
        Auth.confirmSignUp(username, code)
        .then(_ => Auth.currentAuthenticatedUser())
+        .then(async user => {
+            return Auth.currentSession()
+            .then((token) => token.getAccessToken())
+            .then((token) => {
+                return { ...user, jwt: token.getJwtToken(), expires: token.getExpiration() * 1000 };
+            })
+        })
        .then(app.ports.signUpConfirmOk.send)
        .catch(app.ports.signUpConfirmErr.send)
    });
 
-   app.ports.resendConfirmationCode.subscribe((username) => {
+   app.ports.resendConfirmationCode.subscribe((username: string) => {
        Auth.resendSignUp(username)
        .then(app.ports.resendConfirmationCodeOk.send)
        .catch(app.ports.resendConfirmationCodeErr.send)
@@ -173,6 +197,15 @@ async function run() {
            .then(app.ports.signOutOk.send)
            .catch(app.ports.signOutErr.send)
    });
+
+
+    app.ports.requestRefreshToken.subscribe(() => {
+        Auth.currentSession()
+            .then((token) => token.getAccessToken())
+            .then((token) => {
+                app.ports.refreshToken.send({ jwt: token.getJwtToken(), expires: token.getExpiration() * 1000 });
+            });
+    });
    
    /*
    app.ports.resendConfirmationCode.subscribe( username => {
