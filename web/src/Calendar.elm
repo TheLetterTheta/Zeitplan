@@ -1,11 +1,11 @@
-module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, dayString, encodeEvent, init, isSaveMsg, stringToDay, update, view)
+module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, dayString, dayToEvent, encodeEvent, init, isSaveMsg, stringToDay, update, view)
 
 import Array
 import Effect exposing (Effect)
 import FontAwesome as Icon
 import FontAwesome.Solid as Icon
 import Html exposing (Attribute, Html, button, div, p, span, table, tbody, td, text, th, thead, tr, wbr)
-import Html.Attributes exposing (class, classList, style, type_)
+import Html.Attributes exposing (attribute, class, classList, style, type_)
 import Html.Events exposing (onClick, onMouseDown, onMouseEnter, onMouseLeave, onMouseUp, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -13,6 +13,11 @@ import Json.Encode as Encode
 
 
 -- VARS
+
+
+ariaLabel : String -> Attribute msg
+ariaLabel label =
+    attribute "aria-label" label
 
 
 const_interval : Int
@@ -95,6 +100,22 @@ dayString d =
 days : Array.Array Weekday
 days =
     Array.fromList [ Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday ]
+
+
+dayToEvent : Weekday -> Event
+dayToEvent day =
+    Array.toIndexedList days
+        |> List.filterMap
+            (\( index, weekday ) ->
+                if weekday == day then
+                    Just index
+
+                else
+                    Nothing
+            )
+        |> List.head
+        |> Maybe.withDefault 0
+        |> (\index -> Event (index * slots) ((index + 1) * slots) False [])
 
 
 minutesInDay : Int
@@ -625,6 +646,7 @@ view model =
                                             [ button
                                                 [ class "event-resize"
                                                 , blockEvent <| stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent Start event, True ))
+                                                , ariaLabel "Resize start of event"
                                                 ]
                                                 []
                                             ]
@@ -642,6 +664,7 @@ view model =
                                                     , ignoreEvent "mouseup"
                                                     , ignoreEvent "mousedown"
                                                     , class "event-close"
+                                                    , ariaLabel "Delete event"
                                                     , type_ "button"
                                                     ]
                                                     [ Icon.view Icon.close ]
@@ -651,6 +674,7 @@ view model =
                                         [ button
                                             [ class "event-resize"
                                             , blockEvent <| stopPropagationOn "mousedown" (Decode.succeed ( ResizeEvent End event, True ))
+                                            , ariaLabel "Resize end of event"
                                             ]
                                             []
                                         ]

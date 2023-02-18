@@ -2162,6 +2162,11 @@
     chalk "^2.0.0"
     js-tokens "^4.0.0"
 
+"@creativebulma/bulma-tooltip@^1.2.0":
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/@creativebulma/bulma-tooltip/-/bulma-tooltip-1.2.0.tgz#84dcdd59d94c09c2975fadbec1d3d765ae29c471"
+  integrity sha512-ooImbeXEBxf77cttbzA7X5rC5aAWm9UsXIGViFOnsqB+6M944GkB28S5R4UWRqjFd2iW4zGEkEifAU+q43pt2w==
+
 "@dillonkearns/elm-graphql@^4.3.1":
   version "4.3.1"
   resolved "https://registry.yarnpkg.com/@dillonkearns/elm-graphql/-/elm-graphql-4.3.1.tgz#9793579cf714040a99bad441f571158fd60612e6"
@@ -2332,20 +2337,6 @@
   integrity sha512-FE7sY53D6n/+2Pgg6M9iuEC6F5fvmyBkRE4d9VdnOoxhTXtkEqpqYgX7RJ12FAQwNlxKq4suBJQMgQHMF2Kjeg==
   dependencies:
     chalk "^4.1.0"
-
-"@parcel/compressor-brotli@^2.8.3":
-  version "2.8.3"
-  resolved "https://registry.yarnpkg.com/@parcel/compressor-brotli/-/compressor-brotli-2.8.3.tgz#80ef9096d635c51775964b45d238cb58bc9fb12c"
-  integrity sha512-RavknrtGFagtlTdD5Km94bot6MViFRW/IUFH/bUHCTgl5WB1hD5qJaS8xbO0HJt1/jvuWzrGu5lqfo3MR+QFKQ==
-  dependencies:
-    "@parcel/plugin" "2.8.3"
-
-"@parcel/compressor-gzip@^2.8.3":
-  version "2.8.3"
-  resolved "https://registry.yarnpkg.com/@parcel/compressor-gzip/-/compressor-gzip-2.8.3.tgz#5f29d0d24246ff90395e7f1044a670e3c53eb1e4"
-  integrity sha512-WLYP0vDD4oTPjKBKgTdALAb2wWCYjRvs8cw5fHze4905BlO5Oqye+YnAk2Mvdj5ng2iucleQB/+IBxy7oYo+yQ==
-  dependencies:
-    "@parcel/plugin" "2.8.3"
 
 "@parcel/compressor-raw@2.8.3":
   version "2.8.3"
@@ -2621,7 +2612,7 @@
     "@parcel/utils" "2.8.3"
     posthtml "^0.16.4"
 
-"@parcel/plugin@2.8.3":
+"@parcel/plugin@*", "@parcel/plugin@2.8.3":
   version "2.8.3"
   resolved "https://registry.yarnpkg.com/@parcel/plugin/-/plugin-2.8.3.tgz#7bb30a5775eaa6473c27f002a0a3ee7308d6d669"
   integrity sha512-jZ6mnsS4D9X9GaNnvrixDQwlUQJCohDX2hGyM0U0bY2NWU8Km97SjtoCpWjq+XBCx/gpC4g58+fk9VQeZq2vlw==
@@ -4570,6 +4561,13 @@ pako@2.0.4:
   version "2.0.4"
   resolved "https://registry.yarnpkg.com/pako/-/pako-2.0.4.tgz#6cebc4bbb0b6c73b0d5b8d7e8476e2b2fbea576d"
   integrity sha512-v8tweI900AUkZN6heMU/4Uy4cXRc2AYNRggVmTR+dEncawDJgCdLMximOVA2p4qO57WMynangsfGRb5WD6L1Bg==
+
+parcel-transformer-meta-image@^1.0.4:
+  version "1.0.4"
+  resolved "https://registry.yarnpkg.com/parcel-transformer-meta-image/-/parcel-transformer-meta-image-1.0.4.tgz#c87f6da9f425714429614c0b52f16f0a6f0279b7"
+  integrity sha512-BmaTBVB78/cTfEPt/lt896JbbLGS/52fmzDXRLfiK8j6sTkZ6zTb4b9F8hzwfpOJdA0tej9yYoa912Wb/x1FQA==
+  dependencies:
+    "@parcel/plugin" "*"
 
 parcel@^2.8.3:
   version "2.8.3"

@@ -14,15 +14,12 @@
   },
   "license": "GPL-3.0-or-later",
   "scripts": {
-    "dev": "elm-spa watch & parcel public/index.html",
     "build": "elm-spa gen && parcel build public/index.html",
     "tauri": "tauri"
   },
   "devDependencies": {
     "@dillonkearns/elm-graphql": "^4.3.1",
     "@fullhuman/postcss-purgecss": "^5.0.0",
-    "@parcel/compressor-brotli": "^2.8.3",
-    "@parcel/compressor-gzip": "^2.8.3",
     "@parcel/reporter-bundle-analyzer": "^2.8.3",
     "@parcel/transformer-elm": "2.8.3",
     "@parcel/transformer-image": "2.8.3",
@@ -30,6 +27,7 @@
     "buffer": "^5.5.0",
     "elm": "^0.19.1-5",
     "parcel": "^2.8.3",
+    "parcel-transformer-meta-image": "^1.0.4",
     "postcss": "^8.4.21",
     "postcss-import": "^15.1.0",
     "postcss-purgecss": "^2.0.3",
@@ -39,6 +37,7 @@
     "sharp": "^0.31.3"
   },
   "dependencies": {
+    "@creativebulma/bulma-tooltip": "^1.2.0",
     "@fortawesome/fontawesome-free": "^6.2.1",
     "@stripe/stripe-js": "^1.46.0",
     "@tauri-apps/api": "^1.2.0",

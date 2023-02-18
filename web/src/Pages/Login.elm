@@ -3,9 +3,11 @@ module Pages.Login exposing (Model, Msg, State, page)
 import Decoders exposing (SignUpResult, authUserDecoder, signUpResultDecoder)
 import Effect exposing (Effect)
 import FontAwesome as Icon
-import FontAwesome.Solid exposing (spinner)
+import FontAwesome.Attributes exposing (fa10x, spin)
+import FontAwesome.Brands as Brands
+import FontAwesome.Solid as Solid exposing (spinner)
 import Gen.Params.Login exposing (Params)
-import Html exposing (Html, button, div, form, h1, header, input, label, p, section, text)
+import Html exposing (Html, button, div, form, h1, h2, header, input, label, p, section, span, text)
 import Html.Attributes exposing (class, classList, disabled, for, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode as Decode exposing (Decoder, string)
@@ -13,7 +15,7 @@ import Json.Encode as Encode
 import Page
 import Regex
 import Request
-import Shared exposing (AuthSignIn, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
+import Shared exposing (AuthSignIn, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signInWithGoogle, signInWithGoogleError, signInWithGoogleSuccess, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, footer, zeitplanNav)
 
@@ -163,6 +165,7 @@ type State
     = Login
     | SignUpStart
     | SignUpConfirm
+    | Redirecting
 
 
 type alias Model =
@@ -210,6 +213,9 @@ type Msg
     | DismissRequestError
     | SharedMsg Shared.Msg
     | SetInput TextInput String
+    | LoginWithGoogle
+    | LoginWithGoogleSuccess Encode.Value
+    | LoginWithGoogleError Encode.Value
     | ResendConfirmationCode
     | ResendConfirmationCodeOk Encode.Value
     | ResendConfirmationCodeErr Encode.Value
@@ -233,6 +239,15 @@ update req msg model =
 
                 _ ->
                     ( model, Effect.none )
+
+        LoginWithGoogle ->
+            ( { model | loading = True }, Effect.fromCmd <| signInWithGoogle () )
+
+        LoginWithGoogleSuccess _ ->
+            ( { model | loading = False, state = Redirecting }, Effect.none )
+
+        LoginWithGoogleError error ->
+            ( { model | loading = False, state = Login, requestError = Just "Could not login with Google!" }, Effect.none )
 
         LoginOk value ->
             case Decode.decodeValue authUserDecoder value of
@@ -434,6 +449,8 @@ subscriptions _ =
         , signUpOk SignUpOk
         , signUpErr SignUpErr
         , signUpConfirmOk SignUpConfirmOk
+        , signInWithGoogleSuccess LoginWithGoogleSuccess
+        , signInWithGoogleError LoginWithGoogleError
         , signUpConfirmErr SignUpConfirmErr
         , resendConfirmationCodeOk ResendConfirmationCodeOk
         , resendConfirmationCodeErr ResendConfirmationCodeErr
@@ -447,11 +464,27 @@ subscriptions _ =
 pageForm : Model -> Html Msg
 pageForm model =
     case model.state of
+        Redirecting ->
+            div [ class "card" ]
+                [ div [ class "card-header" ]
+                    [ h2 [ class "card-header-title" ] [ text "Please login to Google" ]
+                    ]
+                , div
+                    [ class "card-content" ]
+                    [ p [] [ text "Please wait while we attempt to contact Google" ]
+                    ]
+                ]
+
         Login ->
             form [ onSubmit LoginRequest ]
                 [ div [ class "card", style "width" "600px" ]
                     [ header [ class "card-header" ]
-                        [ h1 [ class "card-header-title is-size-4" ] [ text "Login" ]
+                        [ h2 [ class "card-header-title is-size-4" ] [ text "Login" ]
+                        , button
+                            [ class "card-header-icon", type_ "button", onClick <| LoginWithGoogle ]
+                            [ span [ class "icon" ] [ Icon.view Brands.google ]
+                            , span [] [ text "Google" ]
+                            ]
                         ]
                     , div [ class "card-content" ]
                         ((case model.requestError of
@@ -717,14 +750,16 @@ view shared model =
             , shared = shared
             }
             |> Html.map SharedMsg
-        , section [ class "hero is-fullheight-with-navbar" ]
-            [ div [ class "hero-body", style "justify-content" "center" ]
-                [ if model.loading then
-                    div [ class "loading" ]
-                        [ Icon.view spinner ]
+        , section [ class "section is-large" ]
+            [ div [ class "columns is-centered" ]
+                [ div [ class "column is-narrow" ]
+                    [ if model.loading then
+                        div [ class "loading" ]
+                            [ Icon.view spinner ]
 
-                  else
-                    pageForm model
+                      else
+                        pageForm model
+                    ]
                 ]
             ]
         , footer

@@ -1,4 +1,4 @@
-module View exposing (View, container, content, footer, map, none, placeholder, toBrowserDocument, zeitplanNav)
+module View exposing (View, container, content, footer, map, none, placeholder, toBrowserDocument, tooltip, zeitplanNav)
 
 import Browser
 import FontAwesome as Icon
@@ -6,7 +6,7 @@ import FontAwesome.Brands exposing (facebook, github)
 import FontAwesome.Solid exposing (heart, music)
 import Gen.Route as Route
 import Html exposing (Attribute, Html, a, div, img, nav, p, span, text)
-import Html.Attributes exposing (attribute, class, classList, height, href, src, target, width)
+import Html.Attributes exposing (alt, attribute, class, classList, height, href, src, style, target, width)
 import Html.Events exposing (onClick)
 import Shared
 import Url.Builder as Url
@@ -33,13 +33,7 @@ ariaHidden hide =
 
 logo : String -> Html msg
 logo source =
-    img
-        [ class "m-1"
-        , src source
-        , height 50
-        , width 30
-        ]
-        []
+    img [ width 28, height 28, alt "Zeitplan logo", src source ] []
 
 
 container : List (Attribute msg) -> List (Html msg) -> Html msg
@@ -50,6 +44,11 @@ container attrs children =
 content : List (Attribute msg) -> List (Html msg) -> Html msg
 content attrs children =
     div (class "content" :: attrs) children
+
+
+tooltip : String -> Attribute msg
+tooltip message =
+    attribute "data-tooltip" message
 
 
 footer : Html msg

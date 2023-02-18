@@ -1,10 +1,8 @@
 {
   "extends": ["@parcel/config-default"],
-  "compressors": {
-      "*.{html,js,css,svg,map}": [ "...", "@parcel/compressor-brotli" ]
-  },
   "transformers": {
-      "*.scss": ["@parcel/transformer-sass"]
+      "*.scss": ["@parcel/transformer-sass"],
+      "*.html": ["...", "parcel-transformer-meta-image"]
   }
 }
 

@@ -6,6 +6,7 @@
 @import "node_modules/bulma/sass/components/navbar";
 @import "node_modules/bulma/sass/components/tabs";
 @import "node_modules/bulma/sass/components/menu";
+@import "node_modules/bulma/sass/components/panel";
 @import "node_modules/bulma/sass/elements/box";
 @import "node_modules/bulma/sass/elements/button";
 @import "node_modules/bulma/sass/elements/container";
@@ -27,9 +28,17 @@
 @import "node_modules/bulma/sass/layout/footer";
 @import "node_modules/bulma/sass/layout/hero";
 @import "node_modules/bulma/sass/layout/section";
-@import "node_modules/bulma-pricingtable/src/sass";
 
+@import "node_modules/bulma-pricingtable/src/sass";
 @import "node_modules/bulma-steps-component/bulma-steps.sass";
+@import "@creativebulma/bulma-tooltip";
+
+// Fix bulma-tooltip setting this to look like a clickable element?
+[data-tooltip]{
+    cursor: unset !important;
+}
+
+
 @import "../../node_modules/@fortawesome/fontawesome-free/css/svg-with-js.min.css";
 
 @mixin no-spacing {
@@ -304,13 +313,24 @@ html {
             background-color: var(--calendar-overlay);
         }
     }
+
+    .all-day-row {
+        font-size: smaller;
+    }
+
 }
 
 .participants {
     display: flex;
     flex-direction: row;
     column-gap: $block-spacing;
-    height: 75vh;
+    height: 80vh;
+}
+
+.participant-name {
+    display: flex !important;
+    flex-direction: row;
+    justify-content: space-between;
 }
 
 .participant-list-item {
@@ -329,6 +349,19 @@ html {
 .participant-list {
     overflow-y: auto;
     max-height: 100%;
+}
+
+.meeting-configuration {
+    height: 80vh;
+
+    label.panel-block {
+        border-left-width: 3px;
+        border-left-style: solid;
+
+        &:not(.is-active) {
+            border-left-color: transparent;
+        }
+    }
 }
 
 .loading {
@@ -383,3 +416,8 @@ html {
     --calendar-time-legend-color: #{$text};
     --calendar-overlay: #{$primary-dark};
 }
+
+.ignore-pointer-events {
+    pointer-events: none;
+}
+

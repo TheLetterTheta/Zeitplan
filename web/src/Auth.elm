@@ -42,4 +42,4 @@ beforeProtectedInit shared req =
             ElmSpa.Provide user
 
         Nothing ->
-            ElmSpa.RedirectTo Gen.Route.Login
+            ElmSpa.RedirectTo Gen.Route.Home_

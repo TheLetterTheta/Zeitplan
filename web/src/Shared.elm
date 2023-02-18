@@ -15,6 +15,9 @@ port module Shared exposing
     , signIn
     , signInErr
     , signInOk
+    , signInWithGoogle
+    , signInWithGoogleError
+    , signInWithGoogleSuccess
     , signUp
     , signUpConfirm
     , signUpConfirmErr
@@ -26,6 +29,7 @@ port module Shared exposing
     )
 
 import Browser.Dom exposing (getElement, setViewport)
+import Browser.Events exposing (Visibility(..), onVisibilityChange)
 import Decoders exposing (AuthUser, RefreshTokenPayload, authUserDecoder, refreshTokenDecoder)
 import Gen.Route
 import Json.Decode as Decode exposing (Decoder, nullable, string)
@@ -90,18 +94,6 @@ type alias Model =
     }
 
 
-type Msg
-    = ToggleNavbarHamburger
-    | ScrollToElement String
-    | NoOp
-    | LogInUser AuthUser
-    | SignOutOk
-    | SignOutErr Encode.Value
-    | RequestRefreshToken
-    | RefreshToken Encode.Value
-    | Logout
-
-
 scrollToElement : msg -> String -> Cmd msg
 scrollToElement msg id =
     getElement id
@@ -138,6 +130,19 @@ init _ flags =
 
         Err _ ->
             ( Model "" False Nothing "", Cmd.none )
+
+
+type Msg
+    = ToggleNavbarHamburger
+    | ScrollToElement String
+    | NoOp
+    | LogInUser AuthUser
+    | SignOutOk
+    | SignOutErr Encode.Value
+    | RequestRefreshToken
+    | RefreshToken Encode.Value
+    | VisibilityChanged Visibility
+    | Logout
 
 
 update : Request -> Msg -> Model -> ( Model, Cmd Msg )
@@ -186,6 +191,19 @@ update req msg model =
                 Err _ ->
                     ( model, Cmd.none )
 
+        VisibilityChanged v ->
+            case v of
+                Visible ->
+                    case model.user of
+                        Just user ->
+                            ( model, delayUntilTimestamp user.expiration RequestRefreshToken )
+
+                        Nothing ->
+                            ( model, Cmd.none )
+
+                Hidden ->
+                    ( model, Cmd.none )
+
         Logout ->
             ( { model | user = Nothing }
             , case model.user of
@@ -203,6 +221,7 @@ subscriptions _ _ =
         [ signOutOk (\_ -> SignOutOk)
         , signOutErr SignOutErr
         , refreshToken RefreshToken
+        , onVisibilityChange VisibilityChanged
         ]
 
 
@@ -258,3 +277,12 @@ port refreshToken : (Encode.Value -> msg) -> Sub msg
 
 
 port requestRefreshToken : () -> Cmd msg
+
+
+port signInWithGoogle : () -> Cmd msg
+
+
+port signInWithGoogleSuccess : (Encode.Value -> msg) -> Sub msg
+
+
+port signInWithGoogleError : (Encode.Value -> msg) -> Sub msg

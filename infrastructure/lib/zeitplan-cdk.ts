@@ -7,6 +7,13 @@ import {
   StackProps,
   CfnOutput,
   aws_pinpoint,
+  aws_route53,
+  aws_cloudfront,
+  aws_s3,
+  aws_certificatemanager,
+  aws_cloudfront_origins,
+  aws_route53_targets,
+  aws_s3_deployment,
 } from "aws-cdk-lib";
 import * as path from "path";
 import * as fs from "fs";
@@ -17,6 +24,7 @@ import * as sm from "aws-cdk-lib/aws-secretsmanager";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
 import {
+  CanonicalUserPrincipal,
   Effect,
   Group,
   ManagedPolicy,
@@ -35,10 +43,19 @@ import {
   Runtime,
   StartingPosition,
 } from "aws-cdk-lib/aws-lambda";
-import { CfnIdentityPoolRoleAttachment, UserPoolOperation } from "aws-cdk-lib/aws-cognito";
+import {
+  CfnIdentityPoolRoleAttachment,
+  UserPoolIdentityProviderGoogle,
+  UserPoolOperation,
+} from "aws-cdk-lib/aws-cognito";
 import { env } from "process";
 import { AuthType } from "aws-cdk-lib/aws-stepfunctions-tasks";
 import { DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
+import { CloudFrontAllowedCachedMethods } from "aws-cdk-lib/aws-cloudfront";
+import { IamResource } from "aws-cdk-lib/aws-appsync";
+import { DnsValidatedCertificate } from "aws-cdk-lib/aws-certificatemanager";
+import { Certificate } from "crypto";
+import { S3 } from "aws-cdk-lib/aws-ses-actions";
 
 dotenv.config();
 
@@ -88,6 +105,16 @@ export class ZeitplanCdk extends Stack {
       accountRecovery: cognito.AccountRecovery.EMAIL_ONLY,
     });
 
+    const userPoolDomain = userPool.addDomain("zeitplan-hosted-ui", {
+      cognitoDomain: {
+        domainPrefix: "zeitplan",
+      },
+    });
+
+    new CfnOutput(this, "HostedUiDomain", {
+      value: userPoolDomain.baseUrl(),
+    });
+
     const defaultGroup = new cognito.CfnUserPoolGroup(
       this,
       "zeitplan-default-users",
@@ -97,22 +124,6 @@ export class ZeitplanCdk extends Stack {
         description: "Default group",
       }
     );
-    
-    const lambdaGroup = new cognito.CfnUserPoolGroup(
-      this,
-      "zeitplan-lambda-user",
-      {
-        userPoolId: userPool.userPoolId,
-        groupName: "zeitplan-lambda-user",
-        description: "API User for automated tasks"
-      }
-    );
-    const lambdaClient = userPool.addClient("lambda-client", {
-      generateSecret: true,
-      authFlows: {
-        adminUserPassword: true,
-      },
-    });
 
     const googleClientSecret = sm.Secret.fromSecretAttributes(
       this,
@@ -139,6 +150,21 @@ export class ZeitplanCdk extends Stack {
 
     const webClient = userPool.addClient("web-client", {
       userPoolClientName: "zeitplan-web-app",
+      oAuth: {
+        callbackUrls: [
+          "https://localhost:1234/schedule",
+          "https://www.zeitplan-app.com/schedule",
+        ],
+        logoutUrls: [
+          "https://localhost:1234/",
+          "https://www.zeitplan-app.com/",
+        ]
+      },
+      supportedIdentityProviders: [
+        {
+          name: "Google",
+        },
+      ],
       authFlows: {
         userSrp: true,
       },
@@ -159,10 +185,6 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
-    new CfnOutput(this, "identity-pool-id", {
-      exportName: "identity-pool-id",
-      value: identityPool.logicalId,
-    });
     new CfnOutput(this, "user-pool-id", {
       exportName: "user-pool-id",
       value: userPool.userPoolId,
@@ -236,21 +258,9 @@ export class ZeitplanCdk extends Stack {
       ],
     });
 
-    const graphQLApiKey = new appsync.CfnApiKey(this, "zeitplan-api-key", {
-      apiId: graphQL.attrApiId,
-      description: "Dev API Key",
-      expires: new Date(2023, 3, 1).valueOf() / 1000,
-    });
-    graphQLApiKey.addDependency(graphQL);
-
     new CfnOutput(this, "graphql-api-endpoint", {
       exportName: "graphql-api-endpoint",
       value: graphQL.attrGraphQlUrl,
-    });
-
-    new CfnOutput(this, "grapql-api-key", {
-      exportName: "graphql-api-key",
-      value: graphQLApiKey.attrApiKey,
     });
 
     const graphqlSchema = new appsync.CfnGraphQLSchema(
@@ -376,7 +386,7 @@ export class ZeitplanCdk extends Stack {
       }
     );
     calendarGetResolver.addDependency(graphqlSchema);
-    
+
     const calendarDeleteResolver = new appsync.CfnResolver(
       this,
       "calendar-delete-resolver",
@@ -393,7 +403,7 @@ export class ZeitplanCdk extends Stack {
             "name": $util.dynamodb.toDynamoDBJson($ctx.arguments.name)
           }
         }`,
-        responseMappingTemplate: `$util.toJson($ctx.result)`
+        responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     );
     calendarDeleteResolver.addDependency(graphqlSchema);
@@ -464,7 +474,7 @@ export class ZeitplanCdk extends Stack {
       }
     );
     meetingGetResolver.addDependency(graphqlSchema);
-    
+
     const meetingDeleteResolver = new appsync.CfnResolver(
       this,
       "meeting-delete-resolver",
@@ -481,7 +491,7 @@ export class ZeitplanCdk extends Stack {
             "created": $util.dynamodb.toDynamoDBJson($ctx.arguments.created)
           }
         }`,
-        responseMappingTemplate: `$util.toJson($ctx.result)`
+        responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     );
     meetingDeleteResolver.addDependency(graphqlSchema);
@@ -615,7 +625,7 @@ export class ZeitplanCdk extends Stack {
       }
     );
     createPaymentResolver.addDependency(graphqlSchema);
-    
+
     const creditsCreatedSubscriptionResolver = new appsync.CfnResolver(
       this,
       "credits-changed-subscription-resolver",
@@ -643,9 +653,9 @@ export class ZeitplanCdk extends Stack {
           ]
         })
         $util.toJson($context.result)
-        `
+        `,
       }
-    )
+    );
 
     const stripeWebhookLambda = new Function(this, "zeitplan-stripe-webhook", {
       functionName: "Zeitplan-Stripe-Webhook",
@@ -665,11 +675,6 @@ export class ZeitplanCdk extends Stack {
 
     const stripeLambdaUrl = stripeWebhookLambda.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,
-    });
-
-    new CfnOutput(this, "stripe-webhook-url", {
-      exportName: "stripe-webhook-url",
-      value: stripeLambdaUrl.url,
     });
 
     const userDbStreamLambda = new Function(
@@ -702,5 +707,124 @@ export class ZeitplanCdk extends Stack {
     );
     */
 
+    const route53Zone = aws_route53.HostedZone.fromLookup(
+      this,
+      "zeitplan-hosted-zone",
+      {
+        domainName: process.env.REGISTERED_DOMAIN_NAME ?? "",
+      }
+    );
+    const siteDomain = `${process.env.SUBDOMAIN}.${process.env.REGISTERED_DOMAIN_NAME}`;
+    const cloudfrontOAI = new aws_cloudfront.OriginAccessIdentity(
+      this,
+      "zeitplan-cloudfront-oai",
+      {
+        comment: "OAI for Zeitplan",
+      }
+    );
+
+    new CfnOutput(this, "HostedSiteUrl", { value: siteDomain });
+
+    const siteBucket = new aws_s3.Bucket(this, "ZeitplanWebBucket", {
+      bucketName: siteDomain,
+      publicReadAccess: false,
+      blockPublicAccess: aws_s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+    });
+
+    siteBucket.addToResourcePolicy(
+      new PolicyStatement({
+        actions: ["s3:GetObject"],
+        resources: [siteBucket.arnForObjects("*")],
+        principals: [
+          new CanonicalUserPrincipal(
+            cloudfrontOAI.cloudFrontOriginAccessIdentityS3CanonicalUserId
+          ),
+        ],
+      })
+    );
+
+    const certificate = new aws_certificatemanager.Certificate(
+      this,
+      "zeitplan-deploy-cert",
+      {
+        domainName: siteDomain,
+        validation: {
+          method: aws_certificatemanager.ValidationMethod.DNS,
+          props: {
+            hostedZone: route53Zone,
+          },
+        },
+      }
+    );
+
+    const stripeCspHeaders = new aws_cloudfront.ResponseHeadersPolicy(
+      this,
+      "zeitplan-stripe-header-policy",
+      {
+        securityHeadersBehavior: {
+          contentSecurityPolicy: {
+            contentSecurityPolicy:
+              "default-src 'self' www.zeitplan-app.com *.us-east-1.amazonaws.com; connect-src 'self' www.zeitplan-app.com https://api.stripe.com https://maps.googleapis.com *.us-east-1.amazonaws.com;frame-src https://js.stripe.com https://hooks.stripe.com; script-src 'self' www.zeitplan-app.com https://js.stripe.com https://maps.googleapis.com; object-src 'none';",
+            override: true,
+          },
+        },
+      }
+    );
+
+    const distribution = new aws_cloudfront.Distribution(
+      this,
+      "zeitplan-distribution",
+      {
+        certificate,
+        defaultRootObject: "index.html",
+        priceClass: aws_cloudfront.PriceClass.PRICE_CLASS_100,
+        domainNames: [siteDomain],
+        minimumProtocolVersion:
+          aws_cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
+        errorResponses: [
+          {
+            httpStatus: 404,
+            responseHttpStatus: 404,
+            responsePagePath: "/index.html",
+            ttl: Duration.minutes(20),
+          },
+          {
+            httpStatus: 403,
+            responseHttpStatus: 403,
+            responsePagePath: "/index.html",
+            ttl: Duration.minutes(20),
+          },
+        ],
+        defaultBehavior: {
+          origin: new aws_cloudfront_origins.S3Origin(siteBucket, {
+            originAccessIdentity: cloudfrontOAI,
+          }),
+          responseHeadersPolicy: stripeCspHeaders,
+          compress: true,
+          allowedMethods: aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
+          viewerProtocolPolicy:
+            aws_cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+        },
+      }
+    );
+
+    new aws_route53.ARecord(this, "zeitplan-a-record-registration", {
+      recordName: siteDomain,
+      target: aws_route53.RecordTarget.fromAlias(
+        new aws_route53_targets.CloudFrontTarget(distribution)
+      ),
+      zone: route53Zone,
+    });
+
+    new aws_s3_deployment.BucketDeployment(this, "zeitplan-bucket-deployment", {
+      sources: [
+        aws_s3_deployment.Source.asset(path.join("dist/dist-deploy.zip")),
+      ],
+      destinationBucket: siteBucket,
+      distribution,
+      distributionPaths: ["/*"],
+    });
   }
 }

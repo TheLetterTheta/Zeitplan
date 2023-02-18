@@ -2,7 +2,7 @@ module Pages.Home_ exposing (Model, Msg, TabView, page)
 
 import Effect exposing (Effect)
 import Gen.Params.Home_ exposing (Params)
-import Html exposing (Html, a, br, div, em, h1, h3, li, p, section, strong, text, ul)
+import Html exposing (Html, a, br, div, em, h1, h2, li, p, section, strong, text, ul)
 import Html.Attributes exposing (class, classList, href, id, target)
 import Html.Events exposing (onClick)
 import Page
@@ -107,7 +107,7 @@ overviewSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Who is this for?" ]
         , div [ class "box" ]
-            [ h3 [ class "subtitle is-3" ] [ text "Use cases" ]
+            [ h2 [ class "subtitle is-3" ] [ text "Use cases" ]
             , p [ class "content is-medium" ]
                 [ text """
         Zeitplan was originally created for this use case: A University's Music Instructor's
@@ -138,7 +138,7 @@ overviewSection =
             ]
         , h1 [ class "title is-1" ] [ text "Is this right for me?" ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Does your calendar already do this" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Does your calendar already do this" ]
             , p [ class "content is-medium" ]
                 [ text """
         Zeitplan is an excellent tool for what it does. Though there are many useful features for creating
@@ -170,7 +170,7 @@ overviewSection =
             ]
         , br [] []
         , div [ class "box" ]
-            [ h3 [ class "subtitle is-3" ] [ text "Sponsors" ]
+            [ h2 [ class "subtitle is-3" ] [ text "Sponsors" ]
             , p [ class "is-medium content" ]
                 [ text "These are the people who have made Zeitplan possible."
                 , ul []
@@ -200,7 +200,7 @@ participantSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Step 1" ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Who are the participants?" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Who are the participants?" ]
             , p [ class "content is-medium" ]
                 [ text """
             Anyone you need to meet with is considered a "participant". This does
@@ -213,7 +213,7 @@ participantSection =
                 ]
             ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Blocking times" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Blocking times" ]
             , p [ class "content is-medium" ]
                 [ text """
             Other people are busy too! They have things to do in their weeks - work, classes, other meetings. Zeitplan
@@ -223,7 +223,7 @@ participantSection =
                 ]
             ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "What about groups?" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "What about groups?" ]
             , p [ class "content is-medium" ]
                 [ text """
             Zeitplan can handle groups on its own. Do not worry about trying to find common times between the group members
@@ -240,7 +240,7 @@ meetingsSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Step 2" ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "What is a meeting?" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "What is a meeting?" ]
             , p [ class "content is-medium" ]
                 [ text """
             Zeitplan considers a "meeting" to be anything which you need scheduled. Meetings have a duration (30, 60, 90, 120
@@ -250,7 +250,7 @@ meetingsSection =
                 ]
             ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Limitations" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Limitations" ]
             , p [ class "content is-medium" ]
                 [ text """
             Currently, meetings can only be scheduled in 30 minute intervals up to 2 hours in length. There is also no way
@@ -275,7 +275,7 @@ scheduleSection =
     section [ class "section is-large" ]
         [ h1 [ class "title is-1" ] [ text "Zeitplan!" ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Your Schedule" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Your Schedule" ]
             , p [ class "content is-medium" ]
                 [ text """
                 Here, put the times you're available to have all of these meetings. This is what Zeitplan will look
@@ -291,7 +291,7 @@ scheduleSection =
             """ ]
             ]
         , div [ class "box" ]
-            [ h3 [ class "is-3 subtitle" ] [ text "Make it yours" ]
+            [ h2 [ class "is-3 subtitle" ] [ text "Make it yours" ]
             , p [ class "content is-medium" ]
                 [ text """
                 You're no longer spending hours trying to fit these meetings into your life. You no longer have to sacrifice
@@ -333,7 +333,7 @@ view shared model =
                 ]
             , div [ class "hero-body" ]
                 [ div [ class "container" ]
-                    [ h3 [ class "title" ]
+                    [ h2 [ class "title" ]
                         [ text "Does this describe you?" ]
                     , div [ class "content" ]
                         [ ul []
