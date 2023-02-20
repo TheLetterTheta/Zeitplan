@@ -766,7 +766,7 @@ export class ZeitplanCdk extends Stack {
         securityHeadersBehavior: {
           contentSecurityPolicy: {
             contentSecurityPolicy:
-              "default-src 'self' www.zeitplan-app.com *.us-east-1.amazonaws.com; connect-src 'self' www.zeitplan-app.com https://api.stripe.com https://maps.googleapis.com *.us-east-1.amazonaws.com;frame-src https://js.stripe.com https://hooks.stripe.com; script-src 'self' www.zeitplan-app.com https://js.stripe.com https://maps.googleapis.com; object-src 'none';",
+              "default-src 'self' www.zeitplan-app.com *.us-east-1.amazonaws.com; connect-src 'self' www.zeitplan-app.com https://zeitplan.auth.us-east-1.amazoncognito.com https://api.stripe.com https://maps.googleapis.com *.us-east-1.amazonaws.com;frame-src https://js.stripe.com https://hooks.stripe.com; script-src 'self' www.zeitplan-app.com https://js.stripe.com https://maps.googleapis.com; object-src 'none';",
             override: true,
           },
         },
@@ -785,14 +785,8 @@ export class ZeitplanCdk extends Stack {
           aws_cloudfront.SecurityPolicyProtocol.TLS_V1_2_2021,
         errorResponses: [
           {
-            httpStatus: 404,
-            responseHttpStatus: 404,
-            responsePagePath: "/index.html",
-            ttl: Duration.minutes(20),
-          },
-          {
             httpStatus: 403,
-            responseHttpStatus: 403,
+            responseHttpStatus: 200,
             responsePagePath: "/index.html",
             ttl: Duration.minutes(20),
           },

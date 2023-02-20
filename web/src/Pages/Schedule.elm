@@ -1,12 +1,13 @@
 module Pages.Schedule exposing (Model, Msg, Participant, page)
 
 import Browser.Dom as Dom exposing (setViewportOf)
-import Calendar exposing (Event, Weekday, dayString, dayToEvent, encodeEvent, isSaveMsg, stringToDay)
+import Calendar exposing (Event, Weekday, addEvent, dayString, dayToEvent, encodeEvent, isSaveMsg, stringToDay, timeRangeToDayString)
 import Decoders exposing (AuthUser)
 import Dict exposing (Dict)
 import Effect exposing (Effect, fromCmd)
 import FontAwesome as Icon
 import FontAwesome.Attributes exposing (fa10x, spin)
+import FontAwesome.Regular as Regular
 import FontAwesome.Solid as Solid
 import Gen.Params.Schedule exposing (Params)
 import GraphQLApi.Mutation as Mutation
@@ -20,8 +21,8 @@ import GraphQLApi.Scalar exposing (Id, Long)
 import Graphql.Http
 import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
-import Html exposing (Html, a, aside, button, datalist, div, form, h2, input, label, li, option, p, select, span, text, ul)
-import Html.Attributes exposing (checked, class, classList, disabled, for, href, id, list, placeholder, type_, value)
+import Html exposing (Html, a, aside, button, datalist, div, footer, form, h2, h3, header, input, label, li, option, p, section, select, span, text, ul)
+import Html.Attributes exposing (checked, class, classList, disabled, for, href, id, list, placeholder, selected, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -34,7 +35,7 @@ import Shared exposing (isError, saveKey)
 import Task
 import Time exposing (Posix)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
-import View exposing (View, footer, tooltip, zeitplanNav)
+import View exposing (View, tooltip, zeitplanNav)
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
@@ -42,7 +43,7 @@ page shared _ =
     Page.protected.advanced
         (\user ->
             { init = init shared user
-            , update = update
+            , update = update user
             , view = view shared
             , subscriptions = subscriptions
             }
@@ -63,7 +64,6 @@ type alias Meeting =
     { title : String
     , duration : Int
     , participants : Set String
-    , created : Int -- POSIX TIMESTAMP
     }
 
 
@@ -80,7 +80,6 @@ encodeMeeting m =
         [ ( "participants", Encode.set Encode.string m.participants )
         , ( "duration", Encode.int m.duration )
         , ( "title", Encode.string m.title )
-        , ( "created", Encode.int m.created )
         ]
 
 
@@ -276,7 +275,6 @@ type alias Model =
     , slider : SliderState
     , initialLoad : RemoteData (Graphql.Http.Error InitialQuery) InitialQuery
     , credits : Int
-    , jwt : String
     , endpoint : String
     , saveAvailableCalendarQueued : Bool
     , participantSaveQueue : Set String
@@ -285,7 +283,9 @@ type alias Model =
     , meetingTitle : String
     , meetingTitleError : Maybe String
     , meetingDuration : Int
-    , meetings : List Meeting
+    , meetings : Dict Int Meeting
+    , expandedMeetings : Set Int
+    , deleteParticipant : Maybe { key : String, removedMeetings : Dict Int Meeting, affectedMeetings : Dict Int Meeting }
     }
 
 
@@ -307,7 +307,6 @@ init shared user =
       , slider = AvailableCalendarSlider
       , initialLoad = RemoteData.NotAsked
       , credits = 0
-      , jwt = user.jwt
       , endpoint = shared.graphQlEndpoint
       , saveAvailableCalendarQueued = False
       , participantSaveQueue = Set.empty
@@ -316,7 +315,9 @@ init shared user =
       , meetingTitle = ""
       , meetingTitleError = Nothing
       , meetingDuration = 2
-      , meetings = []
+      , meetings = Dict.empty
+      , expandedMeetings = Set.empty
+      , deleteParticipant = Nothing
       }
     , Effect.batch
         [ Effect.map (\a -> CalendarMsg ParticipantCalendar a) participantEffects
@@ -327,6 +328,55 @@ init shared user =
     )
 
 
+mergeTimes : List Event -> List Event
+mergeTimes times =
+    times
+        |> List.foldl
+            (\event ->
+                \list ->
+                    let
+                        ( _, events ) =
+                            addEvent event list
+                    in
+                    events
+            )
+            []
+
+
+subtractTimes : List Event -> List Event -> List Event
+subtractTimes times subtract =
+    subtract
+        |> List.foldr
+            (\remove ->
+                \remaining ->
+                    let
+                        ( remainderEvents, conflictingEvents ) =
+                            List.partition (\ev -> ev.end < (remove.start - 1) || ev.start > (1 + remove.end)) remaining
+
+                        newConflictingEvents =
+                            conflictingEvents
+                                |> List.foldr
+                                    (\ev ->
+                                        \list ->
+                                            if ev.start >= remove.start && ev.end <= remove.end then
+                                                list
+
+                                            else if ev.start < remove.start then
+                                                { ev | end = remove.start - 1 } :: list
+
+                                            else if ev.end > remove.end then
+                                                { ev | start = remove.end + 1 } :: list
+
+                                            else
+                                                list
+                                    )
+                                    []
+                    in
+                    newConflictingEvents ++ remainderEvents
+            )
+            times
+
+
 
 -- UPDATE
 
@@ -335,6 +385,7 @@ type Msg
     = SelectParticipant String
     | ChangeParticipantName String
     | SubmitNewParticipant
+    | RequestDeleteParticipant String
     | DeleteParticipant String
     | SaveParticipantSuccess (RemoteData (Graphql.Http.Error SaveParticipantResponse) SaveParticipantResponse)
     | CalendarMsg Calendar Calendar.Msg
@@ -350,11 +401,14 @@ type Msg
     | SetMeetingTitle String
     | SetMeetingDuration String
     | CreateMeeting
+    | FinishCreateMeeting Time.Posix
+    | CloseDeleteModal
+    | ExpandMeeting Bool Int
     | NoOp
 
 
-update : Msg -> Model -> ( Model, Effect Msg )
-update msg model =
+update : AuthUser -> Msg -> Model -> ( Model, Effect Msg )
+update user msg model =
     case msg of
         InitialDataLoaded remote ->
             case remote of
@@ -452,6 +506,27 @@ update msg model =
             , Effect.none
             )
 
+        RequestDeleteParticipant key ->
+            let
+                ( removedMeetings, restMeetings ) =
+                    model.meetings
+                        |> Dict.partition (\id -> \meeting -> meeting.participants == Set.singleton key)
+
+                affectedMeetings =
+                    restMeetings
+                        |> Dict.filter (\id -> \meeting -> Set.member key meeting.participants)
+            in
+            ( { model
+                | deleteParticipant =
+                    Just
+                        { key = key
+                        , removedMeetings = removedMeetings
+                        , affectedMeetings = affectedMeetings
+                        }
+              }
+            , Effect.none
+            )
+
         DeleteParticipant key ->
             let
                 deleteParticipant =
@@ -463,6 +538,15 @@ update msg model =
                 nextDefault =
                     Dict.toList newDict
                         |> List.head
+
+                newMeetings =
+                    model.meetings
+                        |> Dict.filter (\id -> \meeting -> meeting.participants /= Set.singleton key)
+                        |> Dict.map
+                            (\id ->
+                                \meeting ->
+                                    { meeting | participants = Set.remove key meeting.participants }
+                            )
 
                 participantCalendar =
                     model.participantCalendar
@@ -487,8 +571,11 @@ update msg model =
                 , participants = newDict
                 , participantCalendar = updatedCalendar
                 , meetingParticipants = selectedParticipants
+                , meetings = newMeetings
+                , deleteParticipant = Nothing
               }
-            , Effect.fromCmd <| requestDeleteParticipant model.endpoint model.jwt key
+              {--TODO: Delete meetings, and relevant participants also --}
+            , Effect.fromCmd <| requestDeleteParticipant model.endpoint user.jwt key
             )
 
         SaveParticipantQueue ->
@@ -502,7 +589,7 @@ update msg model =
                                     |> Maybe.map
                                         (\participant ->
                                             Effect.fromCmd <|
-                                                requestSaveParticipant model.endpoint model.jwt key participant
+                                                requestSaveParticipant model.endpoint user.jwt key participant
                                         )
                                     |> Maybe.withDefault Effect.none
                             )
@@ -536,7 +623,7 @@ update msg model =
                         , participants = Dict.insert name newParticipant model.participants
                       }
                     , Effect.fromCmd <|
-                        requestSaveParticipant model.endpoint model.jwt name newParticipant
+                        requestSaveParticipant model.endpoint user.jwt name newParticipant
                     )
 
                 _ ->
@@ -548,7 +635,7 @@ update msg model =
         SaveAvailableCalendar ->
             ( { model | saveAvailableCalendarQueued = False }
             , Effect.fromCmd <|
-                requestSaveAvailableEvents model.endpoint model.jwt model.availableCalendar.events
+                requestSaveAvailableEvents model.endpoint user.jwt model.availableCalendar.events
             )
 
         SaveAvailableCalendarSuccess _ ->
@@ -647,30 +734,6 @@ update msg model =
 
                     else
                         Set.remove name model.meetingParticipants
-
-                blockedTimes =
-                    participants
-                        |> Set.toList
-                        |> List.map
-                            (\key ->
-                                Dict.get key model.participants
-                                    |> Maybe.map
-                                        (\participant ->
-                                            participant.events
-                                                ++ (participant.blockedDays |> List.map dayToEvent)
-                                        )
-                                    |> Maybe.withDefault []
-                                    |> List.foldr (\event -> \acc -> acc ++ List.range (event.start + 1) event.end) []
-                                    |> Set.fromList
-                            )
-                        |> (\events -> List.foldr Set.union Set.empty events)
-
-                availableTimes =
-                    model.availableCalendar.events
-                        ++ (model.availableCalendar.blockedDays |> List.map dayToEvent)
-                        |> List.foldr (\event -> \acc -> acc ++ List.range (event.start + 1) event.end) []
-                        |> Set.fromList
-                        |> (\keep -> Set.diff keep blockedTimes)
             in
             ( { model | meetingParticipants = participants }, Effect.none )
 
@@ -700,7 +763,26 @@ update msg model =
 
         CreateMeeting ->
             -- TODO: Add validation and api call here
-            ( model, Effect.none )
+            ( model, Effect.fromCmd <| Task.perform FinishCreateMeeting <| Time.now )
+
+        FinishCreateMeeting time ->
+            let
+                id =
+                    Time.posixToMillis time
+            in
+            case validate meetingTitleValidator model.meetingTitle of
+                Ok valid ->
+                    ( { model
+                        | meetings =
+                            Dict.insert id
+                                { title = Validate.fromValid valid, duration = model.meetingDuration, participants = model.meetingParticipants }
+                                model.meetings
+                      }
+                    , Effect.none
+                    )
+
+                Err _ ->
+                    ( model, Effect.none )
 
         SetMeetingTitle title ->
             case validate meetingTitleValidator title |> Result.mapError List.head of
@@ -712,6 +794,21 @@ update msg model =
 
         SetMeetingDuration duration ->
             ( { model | meetingDuration = String.toInt duration |> Maybe.withDefault 0 }, Effect.none )
+
+        CloseDeleteModal ->
+            ( { model | deleteParticipant = Nothing }, Effect.none )
+
+        ExpandMeeting expand id ->
+            ( { model
+                | expandedMeetings =
+                    if expand then
+                        Set.insert id model.expandedMeetings
+
+                    else
+                        Set.remove id model.expandedMeetings
+              }
+            , Effect.none
+            )
 
         NoOp ->
             ( model, Effect.none )
@@ -753,7 +850,7 @@ participantList model =
                             ]
                             [ text key
                             , if model.selectedParticipant == Just key then
-                                button [ class "delete", stopPropagationOn "click" <| Decode.succeed ( DeleteParticipant key, True ) ] []
+                                button [ class "delete", stopPropagationOn "click" <| Decode.succeed ( RequestDeleteParticipant key, True ) ] []
 
                               else
                                 text ""
@@ -803,8 +900,34 @@ sliderView model =
                 ]
 
         ParticipantCalendarSlider ->
-            div [ class "participants" ]
-                [ div [ class "participant-list-container" ]
+            div
+                [ class "participants"
+                , classList [ ( "is-clipped", model.deleteParticipant /= Nothing ) ]
+                ]
+                [ case model.deleteParticipant of
+                    Just { key, affectedMeetings, removedMeetings } ->
+                        div [ class "modal is-active" ]
+                            [ div [ class "modal-background" ] []
+                            , div [ class "modal-card" ]
+                                [ header [ class "modal-card-head" ]
+                                    [ h3 [ class "modal-card-title" ] [ text <| "Delete " ++ key ++ "?" ]
+                                    , button [ class "delete", onClick CloseDeleteModal ] []
+                                    ]
+                                , section [ class "modal-card-body" ]
+                                    [ div [ class "content" ]
+                                        [ p [] [ text <| "Are you sure you want to delete " ++ key ]
+                                        ]
+                                    ]
+                                , footer [ class "modal-card-foot" ]
+                                    [ button [ class "button is-success", onClick <| DeleteParticipant key ] [ text "Confirm" ]
+                                    , button [ class "button is-danger", onClick CloseDeleteModal ] [ text "Cancel" ]
+                                    ]
+                                ]
+                            ]
+
+                    Nothing ->
+                        text ""
+                , div [ class "participant-list-container" ]
                     [ aside [ class "participant-list menu" ]
                         [ p [ class "menu-label" ] [ text "Participants" ]
                         , participantList model
@@ -819,72 +942,101 @@ sliderView model =
                 ]
 
         MeetingConfigurationSlider ->
-            div [ class "columns meeting-configuration" ]
-                [ aside [ class "column is-one-third panel is-info" ] <|
-                    h2
-                        [ class "panel-heading" ]
-                        [ text "Select Participants"
-                        , span [ class "ml-2" ]
-                            [ text <|
-                                if Set.isEmpty model.meetingParticipants then
-                                    ""
+            let
+                canBeScheduled =
+                    model.meetingParticipants
+                        |> Set.toList
+                        |> List.map
+                            (\key ->
+                                Dict.get key model.participants
+                                    |> Maybe.map
+                                        (\participant ->
+                                            participant.events
+                                                ++ (participant.blockedDays |> List.map dayToEvent)
+                                        )
+                                    |> Maybe.withDefault []
+                            )
+                        |> List.concat
+                        |> mergeTimes
+                        |> subtractTimes (model.availableCalendar.events ++ List.map dayToEvent model.availableCalendar.blockedDays)
+                        |> List.filter (\event -> (event.end - event.start) + 1 >= model.meetingDuration)
+                        |> List.isEmpty
+                        |> not
+            in
+            div [ class "columns meeting-configuration" ] <|
+                [ aside [ class "column is-one-third aside-form" ]
+                    [ div [ class "panel is-info meeting-panel" ] <|
+                        h2
+                            [ class "panel-heading" ]
+                            [ text "Select Participants"
+                            , span [ class "ml-2" ]
+                                [ text <|
+                                    if Set.isEmpty model.meetingParticipants then
+                                        ""
 
-                                else
-                                    "(" ++ (String.fromInt <| Set.size model.meetingParticipants) ++ ")"
-                            ]
-                        ]
-                        :: div [ class "panel-block" ]
-                            [ p [ class "control has-icons-left" ]
-                                [ form [ onSubmit SelectFirstParticipant ]
-                                    [ input
-                                        [ class "input"
-                                        , type_ "search"
-                                        , value model.participantSearch
-                                        , placeholder "Search"
-                                        , onInput SetSearchParticipant
-                                        , list "participant-data-list"
-                                        ]
-                                        []
-                                    , span [ class "icon is-left" ] [ Icon.view Solid.search ]
-                                    ]
+                                    else
+                                        "(" ++ (String.fromInt <| Set.size model.meetingParticipants) ++ ")"
                                 ]
                             ]
-                        :: datalist [ id "participant-data-list" ]
-                            (Dict.keys model.participants
-                                |> List.map (\name -> option [ value name ] [])
-                            )
-                        :: (Dict.keys model.participants
-                                |> List.filter
-                                    (if String.isEmpty model.participantSearch then
-                                        always True
+                            :: div [ class "panel-block" ]
+                                [ p [ class "control has-icons-left" ]
+                                    [ form [ onSubmit SelectFirstParticipant ]
+                                        [ input
+                                            [ class "input"
+                                            , type_ "search"
+                                            , value model.participantSearch
+                                            , placeholder "Search"
+                                            , onInput SetSearchParticipant
 
-                                     else
-                                        String.toUpper >> String.contains (String.toUpper model.participantSearch)
-                                    )
-                                |> List.map
-                                    (\name ->
-                                        label
-                                            [ class "panel-block"
-                                            , classList [ ( "is-active", Set.member name model.meetingParticipants ) ]
+                                            -- , list "participant-data-list"
                                             ]
-                                            [ input
-                                                [ type_ "checkbox"
-                                                , checked <| Set.member name model.meetingParticipants
-                                                , onCheck <| SelectMeetingParticipant name
-                                                ]
-                                                []
-                                            , text name
-                                            ]
-                                    )
-                           )
-                , div [ class "column is-one-quarter" ]
-                    [ form [ onSubmit CreateMeeting ]
+                                            []
+                                        , span [ class "icon is-left" ] [ Icon.view Solid.search ]
+                                        ]
+                                    ]
+                                ]
+                            {--
+                            :: datalist [ id "participant-data-list" ]
+                                (Dict.keys model.participants
+                                    |> List.map (\name -> option [ value name ] [])
+                                )
+                            --}
+                            :: (Dict.keys model.participants
+                                    |> List.filter
+                                        (if String.isEmpty model.participantSearch then
+                                            always True
+
+                                         else
+                                            String.toUpper >> String.contains (String.toUpper model.participantSearch)
+                                        )
+                                    |> List.indexedMap
+                                        (\index ->
+                                            \name ->
+                                                label
+                                                    [ class "panel-block"
+                                                    , classList
+                                                        [ ( "is-active", Set.member name model.meetingParticipants )
+                                                        , ( "highlighted", index == 0 )
+                                                        ]
+                                                    ]
+                                                    [ input
+                                                        [ type_ "checkbox"
+                                                        , checked <| Set.member name model.meetingParticipants
+                                                        , onCheck <| SelectMeetingParticipant name
+                                                        ]
+                                                        []
+                                                    , text name
+                                                    ]
+                                        )
+                               )
+                    , form [ class "meeting-form", onSubmit CreateMeeting ]
                         [ div [ class "field" ]
                             [ label [ class "label" ] [ text "Title" ]
                             , input
                                 [ class "input"
                                 , classList [ ( "is-danger", model.meetingTitleError /= Nothing ) ]
                                 , type_ "text"
+                                , value model.meetingTitle
                                 , onInput SetMeetingTitle
                                 ]
                                 []
@@ -900,10 +1052,10 @@ sliderView model =
                             , div [ class "control has-icons-left" ]
                                 [ div [ class "select is-rounded is-medium" ]
                                     [ select [ onInput SetMeetingDuration ]
-                                        [ option [ value "1" ] [ text "30 min" ]
-                                        , option [ value "2" ] [ text "1 hour" ]
-                                        , option [ value "3" ] [ text "90 min" ]
-                                        , option [ value "4" ] [ text "2 hours" ]
+                                        [ option [ value "1", selected <| model.meetingDuration == 1 ] [ text "30 min" ]
+                                        , option [ value "2", selected <| model.meetingDuration == 2 ] [ text "1 hour" ]
+                                        , option [ value "3", selected <| model.meetingDuration == 3 ] [ text "90 min" ]
+                                        , option [ value "4", selected <| model.meetingDuration == 4 ] [ text "2 hours" ]
                                         ]
                                     ]
                                 , div [ class "icon is-small is-left" ]
@@ -916,10 +1068,144 @@ sliderView model =
                                     [ class "button is-success is-medium is-fullwidth"
                                     , disabled (Set.isEmpty model.meetingParticipants || String.isEmpty model.meetingTitle)
                                     ]
-                                    [ text "Create Meeting" ]
+                                    [ span [] [ text "Create Meeting" ]
+                                    , span
+                                        [ tooltip <|
+                                            "This meeting "
+                                                ++ (if canBeScheduled then
+                                                        "can"
+
+                                                    else
+                                                        "can not"
+                                                   )
+                                                ++ " be scheduled"
+                                        , class "icon has-tooltip-arrow has-tooltip-bottom"
+                                        , classList [ ( "is-danger", not canBeScheduled ) ]
+                                        ]
+                                        [ Icon.view <|
+                                            if canBeScheduled then
+                                                Solid.check
+
+                                            else
+                                                Regular.circleXmark
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
+                    ]
+                , div [ class "column meeting-list" ]
+                    [ div [ class "columns is-multiline" ]
+                        (model.meetings
+                            |> Dict.map
+                                (\id ->
+                                    \meeting ->
+                                        let
+                                            meetingTimes =
+                                                meeting.participants
+                                                    |> Set.toList
+                                                    |> List.map
+                                                        (\key ->
+                                                            Dict.get key model.participants
+                                                                |> Maybe.map
+                                                                    (\participant ->
+                                                                        participant.events
+                                                                            ++ (participant.blockedDays |> List.map dayToEvent)
+                                                                    )
+                                                                |> Maybe.withDefault []
+                                                        )
+                                                    |> List.concat
+                                                    |> mergeTimes
+                                                    |> subtractTimes (model.availableCalendar.events ++ List.map dayToEvent model.availableCalendar.blockedDays)
+                                                    |> List.filter (\event -> (event.end - event.start) + 1 >= model.meetingDuration)
+
+                                            meetingExpanded =
+                                                Set.member id model.expandedMeetings
+                                        in
+                                        div
+                                            [ class "column meeting-item is-4 panel is-primary"
+                                            , classList [ ( "is-danger", List.isEmpty meetingTimes ) ]
+                                            ]
+                                        <|
+                                            [ h2 [ class "panel-heading" ]
+                                                [ span [] [ text meeting.title ]
+                                                , span [ class "ml-3" ]
+                                                    [ text <|
+                                                        "("
+                                                            ++ (case meeting.duration of
+                                                                    1 ->
+                                                                        "30 min"
+
+                                                                    2 ->
+                                                                        "1 hour"
+
+                                                                    3 ->
+                                                                        "90 min"
+
+                                                                    4 ->
+                                                                        "2 hours"
+
+                                                                    other ->
+                                                                        String.fromInt (other * 30) ++ " min."
+                                                               )
+                                                            ++ ")"
+                                                    ]
+                                                ]
+                                            , div
+                                                [ class "panel-block" ]
+                                                [ div
+                                                    [ class "tags are-medium" ]
+                                                  <|
+                                                    List.map (\name -> span [ class "tag is-info" ] [ text name ]) <|
+                                                        Set.toList meeting.participants
+                                                ]
+                                            ]
+                                                ++ (meetingTimes
+                                                        |> List.sortBy .start
+                                                        |> (\list ->
+                                                                if meetingExpanded then
+                                                                    list
+
+                                                                else
+                                                                    List.take 3 list
+                                                           )
+                                                        |> List.map (\timeblock -> timeRangeToDayString timeblock.start timeblock.end)
+                                                        |> List.map
+                                                            (\timeblock ->
+                                                                a
+                                                                    [ class "panel-block ignore-pointer-events" ]
+                                                                    [ span [ class "panel-icon" ] [ Icon.view Solid.clock ]
+                                                                    , text timeblock
+                                                                    ]
+                                                            )
+                                                   )
+                                                ++ (if List.isEmpty meetingTimes then
+                                                        [ a [ class "panel-block ignore-pointer-events" ]
+                                                            [ text "This meeting can not be scheduled!" ]
+                                                        ]
+
+                                                    else if List.length meetingTimes > 3 then
+                                                        [ div [ class "panel-block" ]
+                                                            [ button
+                                                                [ onClick <| ExpandMeeting (not meetingExpanded) id
+                                                                , class "button is-small is-outlined is-fullwidth"
+                                                                ]
+                                                                [ text <|
+                                                                    if meetingExpanded then
+                                                                        "Show Less"
+
+                                                                    else
+                                                                        "Show More"
+                                                                ]
+                                                            ]
+                                                        ]
+
+                                                    else
+                                                        []
+                                                   )
+                                )
+                            |> Dict.values
+                        )
                     ]
                 ]
 
@@ -1002,11 +1288,11 @@ view shared model =
                                     [ text "Create Meetings"
                                     , span [ class "ml-2" ]
                                         [ text <|
-                                            if List.isEmpty model.meetings then
+                                            if Dict.isEmpty model.meetings then
                                                 ""
 
                                             else
-                                                "(" ++ (String.fromInt <| List.length model.meetings) ++ ")"
+                                                "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
                                         ]
                                     ]
                                 ]
@@ -1015,5 +1301,5 @@ view shared model =
                     , sliderView model
                     ]
                 ]
-        , footer
+        , View.footer
         ]

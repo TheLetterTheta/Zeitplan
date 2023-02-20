@@ -29,8 +29,8 @@ Amplify.configure({
     authenticationFlowType: "USER_SRP_AUTH",
     oauth: {
       domain: ZeitplanCdkStack.HostedUiDomain.replace("https://", ""),
-      redirectSignIn: 'https://localhost:1234/schedule', // 'https://www.zeitplan-app.com'
-      redirectSignOut: 'https://localhost:1234/', // 'https://www.zeitplan-app.com'
+      redirectSignIn: 'https://localhost:1234/schedule', // 'https://www.zeitplan-app.com/schedule'
+      redirectSignOut: 'https://localhost:1234/', // 'https://www.zeitplan-app.com/'
       responseType: 'code'
     }
   },

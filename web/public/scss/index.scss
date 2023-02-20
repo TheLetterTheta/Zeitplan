@@ -7,6 +7,7 @@
 @import "node_modules/bulma/sass/components/tabs";
 @import "node_modules/bulma/sass/components/menu";
 @import "node_modules/bulma/sass/components/panel";
+@import "node_modules/bulma/sass/components/modal";
 @import "node_modules/bulma/sass/elements/box";
 @import "node_modules/bulma/sass/elements/button";
 @import "node_modules/bulma/sass/elements/container";
@@ -89,7 +90,7 @@ html {
         top: 0;
         box-shadow: 0 1px 1px 0px var(--calendar-border-color);
         background-color: var(--calendar-background);
-        z-index: 100;
+        z-index: 10;
     }
 
     td,
@@ -362,6 +363,29 @@ html {
             border-left-color: transparent;
         }
     }
+
+    .meeting-list {
+        overflow-y: auto;
+    }
+
+    .meeting-item {
+        height: min-content;
+    }
+
+    .meeting-form {
+        flex-shrink: 1;
+    }
+
+    .aside-form {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .meeting-panel {
+        overflow-y: auto;
+        flex-grow: 1;
+    }
 }
 
 .loading {
@@ -421,3 +445,6 @@ html {
     pointer-events: none;
 }
 
+.highlighted {
+    background: #{$info-light};
+}

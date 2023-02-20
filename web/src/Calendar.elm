@@ -1,4 +1,4 @@
-module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, dayString, dayToEvent, encodeEvent, init, isSaveMsg, stringToDay, update, view)
+module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, addEvent, dayString, dayToEvent, encodeEvent, init, isSaveMsg, stringToDay, timeRangeToDayString, update, view)
 
 import Array
 import Effect exposing (Effect)
@@ -220,6 +220,34 @@ timeSlotToString timeSlot =
                 ( "AM", hour )
     in
     String.fromInt twelveHour ++ ":" ++ (String.padLeft 2 '0' <| String.fromInt time) ++ " " ++ meridian
+
+
+timeRangeToDayString : Int -> Int -> String
+timeRangeToDayString startTimeslot endTimeslot =
+    let
+        startDayOfWeek : String
+        startDayOfWeek =
+            Array.get (startTimeslot // slots) days
+                |> Maybe.map dayString
+                |> Maybe.withDefault ""
+
+        endDayOfWeek : String
+        endDayOfWeek =
+            Array.get (endTimeslot // slots) days
+                |> Maybe.map dayString
+                |> Maybe.withDefault ""
+
+        startTime =
+            timeSlotToString startTimeslot
+
+        endTime =
+            timeSlotToString (1 + endTimeslot)
+    in
+    if startDayOfWeek == endDayOfWeek then
+        startDayOfWeek ++ " " ++ startTime ++ " - " ++ endTime
+
+    else
+        startDayOfWeek ++ " " ++ startTime ++ " - " ++ endDayOfWeek ++ " " ++ endTime
 
 
 addEvent : Event -> List Event -> ( Event, List Event )
