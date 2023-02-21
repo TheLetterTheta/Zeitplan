@@ -289,6 +289,12 @@ export class ZeitplanCdk extends Stack {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
     calendarTable.grantReadWriteData(calendarTableRole);
+    
+    const transactionDeleteTableRole = new Role(this, "TransactionDeleteCalendarDBRole", {
+      assumedBy: new ServicePrincipal("appsync.amazonaws.com")
+    });
+    calendarTable.grantWriteData(transactionDeleteTableRole);
+    meetingTable.grantWriteData(transactionDeleteTableRole);
 
     const executePaymentRole = new Role(this, "ExecutePaymentRole", {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
@@ -335,6 +341,20 @@ export class ZeitplanCdk extends Stack {
         serviceRoleArn: calendarTableRole.roleArn,
       }
     );
+
+    const calendarTransactionDataSource = new appsync.CfnDataSource(this,
+      "calendar-transaction-datasource",
+    {
+      apiId: graphQL.attrApiId,
+      name: "CalendarTransactionDataSource",
+      type: "AMAZON_DYNAMODB",
+      dynamoDbConfig: {
+        tableName: "_empty_",
+        awsRegion: this.region,
+      },
+      serviceRoleArn: transactionDeleteTableRole.roleArn
+    });
+    
 
     const calendarInsertResolver = new appsync.CfnResolver(
       this,
@@ -387,6 +407,7 @@ export class ZeitplanCdk extends Stack {
     );
     calendarGetResolver.addDependency(graphqlSchema);
 
+    
     const calendarDeleteResolver = new appsync.CfnResolver(
       this,
       "calendar-delete-resolver",
@@ -394,16 +415,60 @@ export class ZeitplanCdk extends Stack {
         apiId: graphQL.attrApiId,
         typeName: "Mutation",
         fieldName: "deleteCalendar",
-        dataSourceName: calendarTableDataSource.name,
-        requestMappingTemplate: `{
-          "version": "2018-05-29",
-          "operation": "DeleteItem",
-          "key": {
-            "userId": $util.dynamodb.toDynamoDBJson($context.identity.username),
-            "name": $util.dynamodb.toDynamoDBJson($ctx.arguments.name)
+        dataSourceName: calendarTransactionDataSource.name,
+        requestMappingTemplate: `
+        #set($transactItems = [
+          {
+            "table": "${calendarTable.tableName}",
+            "operation": "DeleteItem",
+            "key": {
+              "userId": $util.dynamodb.toString($context.identity.username),
+              "name": $util.dynamodb.toString($ctx.arguments.name)
+            }
           }
+        ])
+
+        #foreach($deleteMeeting in \${ctx.args.removedMeetings})
+          #set($deleteMap = { 
+            "table": "${meetingTable.tableName}",
+            "operation": "DeleteItem",
+            "key": {
+              "userId": $util.dynamodb.toString($ctx.identity.username),
+              "created": $util.dynamodb.toNumber($deleteMeeting)
+            }
+          })
+          $util.qr($transactItems.add($deleteMap))
+        #end
+        
+        #foreach($updateMeeting in \${ctx.args.updatedMeetings})
+          #set($updateMap = {
+             "table": "${meetingTable.tableName}",
+             "operation": "UpdateItem",
+             "key": {
+               "userId": $util.dynamodb.toString($ctx.identity.username),
+               "created": $util.dynamodb.toNumber($updateMeeting)
+             },
+             "update": {
+               "expression": "DELETE participants :participantName",
+               "expressionValues": {
+                 ":participantName": $util.dynamodb.toStringSet([$ctx.arguments.name])
+               }
+             }
+          })
+          $util.qr($transactItems.add($updateMap))
+        #end
+
+        {
+          "version": "2018-05-29",
+          "operation": "TransactWriteItems",
+          "transactItems": $util.toJson($transactItems)
         }`,
-        responseMappingTemplate: `$util.toJson($ctx.result)`,
+        responseMappingTemplate: `
+        #if ($ctx.error)
+          $util.appendError($ctx.error.message, $ctx.error.type, null, $ctx.result.cancellationReasons)
+        #end
+
+        $util.toJson($ctx.result.keys[0])`,
       }
     );
     calendarDeleteResolver.addDependency(graphqlSchema);
@@ -439,7 +504,7 @@ export class ZeitplanCdk extends Stack {
             "created": $util.dynamodb.toNumberJson($util.defaultIfNull($context.arguments.created, $util.time.nowEpochMilliSeconds()))
           },
           "attributeValues": {
-            "participants": $util.dynamodb.toListJson($context.arguments.participants),
+            "participants": $util.dynamodb.toStringSetJson($context.arguments.participants),
             "title": $util.dynamodb.toStringJson($context.arguments.title),
             "duration": $util.dynamodb.toNumberJson($context.arguments.duration),
           }
