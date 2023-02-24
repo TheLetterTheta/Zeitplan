@@ -2,14 +2,8 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Mutation exposing (..)
+module ZeitplanApi.Mutation exposing (..)
 
-import GraphQLApi.InputObject
-import GraphQLApi.Interface
-import GraphQLApi.Object
-import GraphQLApi.Scalar
-import GraphQLApi.ScalarCodecs
-import GraphQLApi.Union
 import Graphql.Internal.Builder.Argument as Argument exposing (Argument)
 import Graphql.Internal.Builder.Object as Object
 import Graphql.Internal.Encode as Encode exposing (Value)
@@ -17,21 +11,27 @@ import Graphql.Operation exposing (RootMutation, RootQuery, RootSubscription)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet exposing (SelectionSet)
 import Json.Decode as Decode exposing (Decoder)
+import ZeitplanApi.InputObject
+import ZeitplanApi.Interface
+import ZeitplanApi.Object
+import ZeitplanApi.Scalar
+import ZeitplanApi.ScalarCodecs
+import ZeitplanApi.Union
 
 
 type alias SaveCalendarRequiredArguments =
     { name : String
-    , events : List GraphQLApi.InputObject.EventInput
+    , events : List ZeitplanApi.InputObject.EventInput
     , blockedDays : List String
     }
 
 
 saveCalendar :
     SaveCalendarRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.Calendar
+    -> SelectionSet decodesTo ZeitplanApi.Object.Calendar
     -> SelectionSet decodesTo RootMutation
 saveCalendar requiredArgs____ object____ =
-    Object.selectionForCompositeField "saveCalendar" [ Argument.required "name" requiredArgs____.name Encode.string, Argument.required "events" requiredArgs____.events (GraphQLApi.InputObject.encodeEventInput |> Encode.list), Argument.required "blockedDays" requiredArgs____.blockedDays (Encode.string |> Encode.list) ] object____ Basics.identity
+    Object.selectionForCompositeField "saveCalendar" [ Argument.required "name" requiredArgs____.name Encode.string, Argument.required "events" requiredArgs____.events (ZeitplanApi.InputObject.encodeEventInput |> Encode.list), Argument.required "blockedDays" requiredArgs____.blockedDays (Encode.string |> Encode.list) ] object____ Basics.identity
 
 
 type alias DeleteCalendarRequiredArguments =
@@ -40,14 +40,14 @@ type alias DeleteCalendarRequiredArguments =
 
 deleteCalendar :
     DeleteCalendarRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.Calendar
+    -> SelectionSet decodesTo ZeitplanApi.Object.Calendar
     -> SelectionSet (Maybe decodesTo) RootMutation
 deleteCalendar requiredArgs____ object____ =
     Object.selectionForCompositeField "deleteCalendar" [ Argument.required "name" requiredArgs____.name Encode.string ] object____ (Basics.identity >> Decode.nullable)
 
 
 type alias SaveMeetingOptionalArguments =
-    { created : OptionalArgument GraphQLApi.ScalarCodecs.Long }
+    { created : OptionalArgument ZeitplanApi.ScalarCodecs.Long }
 
 
 type alias SaveMeetingRequiredArguments =
@@ -60,7 +60,7 @@ type alias SaveMeetingRequiredArguments =
 saveMeeting :
     (SaveMeetingOptionalArguments -> SaveMeetingOptionalArguments)
     -> SaveMeetingRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.Meeting
+    -> SelectionSet decodesTo ZeitplanApi.Object.Meeting
     -> SelectionSet decodesTo RootMutation
 saveMeeting fillInOptionals____ requiredArgs____ object____ =
     let
@@ -68,34 +68,34 @@ saveMeeting fillInOptionals____ requiredArgs____ object____ =
             fillInOptionals____ { created = Absent }
 
         optionalArgs____ =
-            [ Argument.optional "created" filledInOptionals____.created (GraphQLApi.ScalarCodecs.codecs |> GraphQLApi.Scalar.unwrapEncoder .codecLong) ]
+            [ Argument.optional "created" filledInOptionals____.created (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapEncoder .codecLong) ]
                 |> List.filterMap Basics.identity
     in
     Object.selectionForCompositeField "saveMeeting" (optionalArgs____ ++ [ Argument.required "participants" requiredArgs____.participants (Encode.string |> Encode.list), Argument.required "title" requiredArgs____.title Encode.string, Argument.required "duration" requiredArgs____.duration Encode.int ]) object____ Basics.identity
 
 
 type alias DeleteMeetingRequiredArguments =
-    { created : GraphQLApi.ScalarCodecs.Long }
+    { created : ZeitplanApi.ScalarCodecs.Long }
 
 
 deleteMeeting :
     DeleteMeetingRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.Meeting
+    -> SelectionSet decodesTo ZeitplanApi.Object.Meeting
     -> SelectionSet (Maybe decodesTo) RootMutation
 deleteMeeting requiredArgs____ object____ =
-    Object.selectionForCompositeField "deleteMeeting" [ Argument.required "created" requiredArgs____.created (GraphQLApi.ScalarCodecs.codecs |> GraphQLApi.Scalar.unwrapEncoder .codecLong) ] object____ (Basics.identity >> Decode.nullable)
+    Object.selectionForCompositeField "deleteMeeting" [ Argument.required "created" requiredArgs____.created (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapEncoder .codecLong) ] object____ (Basics.identity >> Decode.nullable)
 
 
 type alias SaveEventsRequiredArguments =
-    { events : List GraphQLApi.InputObject.EventInput }
+    { events : List ZeitplanApi.InputObject.EventInput }
 
 
 saveEvents :
     SaveEventsRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.Event
+    -> SelectionSet decodesTo ZeitplanApi.Object.Event
     -> SelectionSet (List decodesTo) RootMutation
 saveEvents requiredArgs____ object____ =
-    Object.selectionForCompositeField "saveEvents" [ Argument.required "events" requiredArgs____.events (GraphQLApi.InputObject.encodeEventInput |> Encode.list) ] object____ (Basics.identity >> Decode.list)
+    Object.selectionForCompositeField "saveEvents" [ Argument.required "events" requiredArgs____.events (ZeitplanApi.InputObject.encodeEventInput |> Encode.list) ] object____ (Basics.identity >> Decode.list)
 
 
 type alias BeginCheckoutRequiredArguments =
@@ -104,14 +104,14 @@ type alias BeginCheckoutRequiredArguments =
 
 beginCheckout :
     BeginCheckoutRequiredArguments
-    -> SelectionSet decodesTo GraphQLApi.Object.PaymentIntent
+    -> SelectionSet decodesTo ZeitplanApi.Object.PaymentIntent
     -> SelectionSet (Maybe decodesTo) RootMutation
 beginCheckout requiredArgs____ object____ =
     Object.selectionForCompositeField "beginCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int ] object____ (Basics.identity >> Decode.nullable)
 
 
 type alias CreditsChangedRequiredArguments =
-    { userId : GraphQLApi.ScalarCodecs.Id
+    { userId : ZeitplanApi.ScalarCodecs.Id
     , credits : Int
     }
 
@@ -120,4 +120,4 @@ creditsChanged :
     CreditsChangedRequiredArguments
     -> SelectionSet Int RootMutation
 creditsChanged requiredArgs____ =
-    Object.selectionForField "Int" "creditsChanged" [ Argument.required "userId" requiredArgs____.userId (GraphQLApi.ScalarCodecs.codecs |> GraphQLApi.Scalar.unwrapEncoder .codecId), Argument.required "credits" requiredArgs____.credits Encode.int ] Decode.int
+    Object.selectionForField "Int" "creditsChanged" [ Argument.required "userId" requiredArgs____.userId (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapEncoder .codecId), Argument.required "credits" requiredArgs____.credits Encode.int ] Decode.int

@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Interface exposing (..)
+module ZeitplanApi.VerifyScalarCodecs exposing (..)
 
 
 placeholder : String

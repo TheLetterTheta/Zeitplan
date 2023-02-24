@@ -1,12 +1,9 @@
 import {
-  aws_dynamodb,
   Duration,
-  lambda_layer_awscli,
   RemovalPolicy,
   Stack,
   StackProps,
   CfnOutput,
-  aws_pinpoint,
   aws_route53,
   aws_cloudfront,
   aws_s3,
@@ -18,44 +15,26 @@ import {
 import * as path from "path";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
-import { Construct, Node } from "constructs";
+import { Construct } from "constructs";
 import * as cognito from "aws-cdk-lib/aws-cognito";
 import * as sm from "aws-cdk-lib/aws-secretsmanager";
 import * as appsync from "aws-cdk-lib/aws-appsync";
 import { AttributeType, Table } from "aws-cdk-lib/aws-dynamodb";
 import {
   CanonicalUserPrincipal,
-  Effect,
-  Group,
-  ManagedPolicy,
-  Policy,
   PolicyStatement,
   Role,
   ServicePrincipal,
 } from "aws-cdk-lib/aws-iam";
-import { LambdaFunction } from "aws-cdk-lib/aws-events-targets";
 import {
   Code,
-  FilterCriteria,
-  FilterRule,
   Function,
   FunctionUrlAuthType,
   Runtime,
-  StartingPosition,
 } from "aws-cdk-lib/aws-lambda";
 import {
-  CfnIdentityPoolRoleAttachment,
-  UserPoolIdentityProviderGoogle,
   UserPoolOperation,
 } from "aws-cdk-lib/aws-cognito";
-import { env } from "process";
-import { AuthType } from "aws-cdk-lib/aws-stepfunctions-tasks";
-import { DynamoEventSource } from "aws-cdk-lib/aws-lambda-event-sources";
-import { CloudFrontAllowedCachedMethods } from "aws-cdk-lib/aws-cloudfront";
-import { IamResource } from "aws-cdk-lib/aws-appsync";
-import { DnsValidatedCertificate } from "aws-cdk-lib/aws-certificatemanager";
-import { Certificate } from "crypto";
-import { S3 } from "aws-cdk-lib/aws-ses-actions";
 
 dotenv.config();
 
@@ -158,7 +137,7 @@ export class ZeitplanCdk extends Stack {
         logoutUrls: [
           "https://localhost:1234/",
           "https://www.zeitplan-app.com/",
-        ]
+        ],
       },
       supportedIdentityProviders: [
         {
@@ -289,10 +268,14 @@ export class ZeitplanCdk extends Stack {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
     calendarTable.grantReadWriteData(calendarTableRole);
-    
-    const transactionDeleteTableRole = new Role(this, "TransactionDeleteCalendarDBRole", {
-      assumedBy: new ServicePrincipal("appsync.amazonaws.com")
-    });
+
+    const transactionDeleteTableRole = new Role(
+      this,
+      "TransactionDeleteCalendarDBRole",
+      {
+        assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
+      }
+    );
     calendarTable.grantWriteData(transactionDeleteTableRole);
     meetingTable.grantWriteData(transactionDeleteTableRole);
 
@@ -342,19 +325,20 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
-    const calendarTransactionDataSource = new appsync.CfnDataSource(this,
+    const calendarTransactionDataSource = new appsync.CfnDataSource(
+      this,
       "calendar-transaction-datasource",
-    {
-      apiId: graphQL.attrApiId,
-      name: "CalendarTransactionDataSource",
-      type: "AMAZON_DYNAMODB",
-      dynamoDbConfig: {
-        tableName: "_empty_",
-        awsRegion: this.region,
-      },
-      serviceRoleArn: transactionDeleteTableRole.roleArn
-    });
-    
+      {
+        apiId: graphQL.attrApiId,
+        name: "CalendarTransactionDataSource",
+        type: "AMAZON_DYNAMODB",
+        dynamoDbConfig: {
+          tableName: "_empty_",
+          awsRegion: this.region,
+        },
+        serviceRoleArn: transactionDeleteTableRole.roleArn,
+      }
+    );
 
     const calendarInsertResolver = new appsync.CfnResolver(
       this,
@@ -381,6 +365,22 @@ export class ZeitplanCdk extends Stack {
     );
     calendarInsertResolver.addDependency(graphqlSchema);
 
+    const meetingTableDataSource = new appsync.CfnDataSource(
+      this,
+      "MeetingDataSource",
+      {
+        apiId: graphQL.attrApiId,
+        name: "MeetingDataSource",
+        type: "AMAZON_DYNAMODB",
+        dynamoDbConfig: {
+          tableName: meetingTable.tableName,
+          awsRegion: this.region,
+        },
+        serviceRoleArn: meetingTableRole.roleArn,
+      }
+    );
+
+
     const calendarGetResolver = new appsync.CfnResolver(
       this,
       "calendar-get-all-user-resolver",
@@ -406,8 +406,123 @@ export class ZeitplanCdk extends Stack {
       }
     );
     calendarGetResolver.addDependency(graphqlSchema);
-
     
+    const getAffectedMeetingsFunction = new appsync.CfnFunctionConfiguration(
+      this,
+      "calendar-get-affected-meetings",
+      {
+        apiId: graphQL.attrApiId,
+        dataSourceName: meetingTableDataSource.name,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0"
+        },
+        name: "GetCalendarAffectedMeetings",
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { name } = context.arguments;
+          const { username } = context.identity;
+
+
+          const query = JSON.parse(
+            util.transform.toDynamoDBConditionExpression({ userId: { eq: username } })
+          );
+
+          const filter = JSON.parse(
+            util.transform.toDynamoDBFilterExpression({ participants: { contains: name } })
+          );
+
+          return {
+            operation: 'Query',
+            query,
+            filter
+          }
+        }
+
+        export function response(context) {
+          const deleted = [];
+          const affected = [];
+
+          for(let result of context.result.items) {
+            if (result.participants.length === 1) {
+              deleted.push(result);
+            } else {
+              affected.push(result);
+            }
+          }
+          
+          return {
+            deleted,
+            affected
+          }
+        }
+        `
+      }
+    );
+
+    const deleteMeetingFunction = new appsync.CfnFunctionConfiguration(
+      this,
+      "calendar-delete-affected",
+      {
+        apiId: graphQL.attrApiId,
+        name: "DeleteCalendarAndAffectedMeetings",
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0"
+        },
+        dataSourceName: calendarTransactionDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { affected, deleted } = context.prev.result;
+          const { name } = context.arguments; 
+          const { username } = context.identity;
+        
+          const transactions = [{
+            table: "${calendarTable.tableName}",
+            operation: "DeleteItem",
+            key: util.dynamodb.toMapValues({ userId: username, name })
+          }];
+
+          for (let deleteItem of deleted) {
+            transactions.push({
+              table: "${meetingTable.tableName}",
+              operation: "DeleteItem",
+              key: util.dynamodb.toMapValues({ created: deleteItem.created, userId: username })
+            });
+          }
+
+
+          for (let updateItem of affected) {
+            transactions.push({
+              table: "${meetingTable.tableName}",
+              operation: "UpdateItem",
+              key: util.dynamodb.toMapValues({ created: updateItem.created, userId: username }),
+              update: {
+                expression: "DELETE participants :participantName",
+                expressionValues: { 
+                  ':participantName': util.dynamodb.toStringSet([name])
+                }
+              }
+            });
+          }
+
+          return {
+            operation: "TransactWriteItems",
+            transactItems: transactions
+          };
+        }
+
+        export function response(context) {
+          return context.result;
+        }
+        `
+      }
+    )
+
     const calendarDeleteResolver = new appsync.CfnResolver(
       this,
       "calendar-delete-resolver",
@@ -415,78 +530,34 @@ export class ZeitplanCdk extends Stack {
         apiId: graphQL.attrApiId,
         typeName: "Mutation",
         fieldName: "deleteCalendar",
-        dataSourceName: calendarTransactionDataSource.name,
-        requestMappingTemplate: `
-        #set($transactItems = [
-          {
-            "table": "${calendarTable.tableName}",
-            "operation": "DeleteItem",
-            "key": {
-              "userId": $util.dynamodb.toString($context.identity.username),
-              "name": $util.dynamodb.toString($ctx.arguments.name)
-            }
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0"
+       },
+        kind: "PIPELINE",
+        pipelineConfig: {
+          functions: [getAffectedMeetingsFunction.attrFunctionId, deleteMeetingFunction.attrFunctionId]
+        },
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          return {};
+        }
+
+        export function response(context) {
+          if (context.prev.error) {
+            util.appendError(context.prev.error.message, context.prev.error.type, null, context.prev.result.cancellationReasons);
           }
-        ])
 
-        #foreach($deleteMeeting in \${ctx.args.removedMeetings})
-          #set($deleteMap = { 
-            "table": "${meetingTable.tableName}",
-            "operation": "DeleteItem",
-            "key": {
-              "userId": $util.dynamodb.toString($ctx.identity.username),
-              "created": $util.dynamodb.toNumber($deleteMeeting)
-            }
-          })
-          $util.qr($transactItems.add($deleteMap))
-        #end
-        
-        #foreach($updateMeeting in \${ctx.args.updatedMeetings})
-          #set($updateMap = {
-             "table": "${meetingTable.tableName}",
-             "operation": "UpdateItem",
-             "key": {
-               "userId": $util.dynamodb.toString($ctx.identity.username),
-               "created": $util.dynamodb.toNumber($updateMeeting)
-             },
-             "update": {
-               "expression": "DELETE participants :participantName",
-               "expressionValues": {
-                 ":participantName": $util.dynamodb.toStringSet([$ctx.arguments.name])
-               }
-             }
-          })
-          $util.qr($transactItems.add($updateMap))
-        #end
-
-        {
-          "version": "2018-05-29",
-          "operation": "TransactWriteItems",
-          "transactItems": $util.toJson($transactItems)
-        }`,
-        responseMappingTemplate: `
-        #if ($ctx.error)
-          $util.appendError($ctx.error.message, $ctx.error.type, null, $ctx.result.cancellationReasons)
-        #end
-
-        $util.toJson($ctx.result.keys[0])`,
+          return context.prev.result.keys[0];
+        }
+        `,
       }
     );
     calendarDeleteResolver.addDependency(graphqlSchema);
-
-    const meetingTableDataSource = new appsync.CfnDataSource(
-      this,
-      "MeetingDataSource",
-      {
-        apiId: graphQL.attrApiId,
-        name: "MeetingDataSource",
-        type: "AMAZON_DYNAMODB",
-        dynamoDbConfig: {
-          tableName: meetingTable.tableName,
-          awsRegion: this.region,
-        },
-        serviceRoleArn: meetingTableRole.roleArn,
-      }
-    );
+    calendarDeleteResolver.addDependency(deleteMeetingFunction);
+    calendarDeleteResolver.addDependency(getAffectedMeetingsFunction);
 
     const meetingInsertResolver = new appsync.CfnResolver(
       this,
@@ -513,6 +584,41 @@ export class ZeitplanCdk extends Stack {
       }
     );
     meetingInsertResolver.addDependency(graphqlSchema);
+    
+
+    const queryMeetingsByUserFunction = new appsync.CfnFunctionConfiguration(
+      this,
+      "meeting-query-by-user-function",
+      {
+        apiId: graphQL.attrApiId,
+        name: "QueryMeetingsByUserId",
+        dataSourceName: meetingTableDataSource.name,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        code: `
+        import { util } from '@aws-appsync/utils'
+
+        export function request(context) {
+          const { username } = context.identity;
+          
+          const query = JSON.parse(
+            util.transform.toDynamoDBConditionExpression({ userId: { eq: username } })
+          );
+
+          return {
+            operation: 'Query',
+            query
+          }
+        }
+
+        export function response(context) {
+          return context.result.items;
+        }
+        `
+      }
+    )
 
     const meetingGetResolver = new appsync.CfnResolver(
       this,
@@ -521,24 +627,29 @@ export class ZeitplanCdk extends Stack {
         apiId: graphQL.attrApiId,
         typeName: "Query",
         fieldName: "meetings",
-        dataSourceName: meetingTableDataSource.name,
-        requestMappingTemplate: `{
-          "version": "2018-05-29",
-          "operation": "Query",
-          "query": {
-            "expression" : "#userId = :userId",
-            "expressionNames": {
-              "#userId": "userId",
-            },
-            "expressionValues": {
-              ":userId": $util.dynamodb.toStringJson($context.identity.username)
-            }
-          }
-        }`,
-        responseMappingTemplate: `$util.toJson($util.list.sortList($ctx.result.items, false, "created"))`,
+        kind: "PIPELINE",
+        pipelineConfig: {
+          functions: [queryMeetingsByUserFunction.attrFunctionId]
+        },
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0"
+        },
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          return {}
+        }
+
+        export function response(context) {
+          return context.prev.result;
+        }
+        `
       }
     );
     meetingGetResolver.addDependency(graphqlSchema);
+    meetingGetResolver.addDependency(queryMeetingsByUserFunction);
 
     const meetingDeleteResolver = new appsync.CfnResolver(
       this,
@@ -824,7 +935,10 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
-    const stripeCspHeaders = new aws_cloudfront.ResponseHeadersPolicy(
+    const cacheContentDays = 7;
+    const cacheContentMinutes = cacheContentDays * 24 * 60;
+
+    const cloudfrontHeaders = new aws_cloudfront.ResponseHeadersPolicy(
       this,
       "zeitplan-stripe-header-policy",
       {
@@ -834,6 +948,15 @@ export class ZeitplanCdk extends Stack {
               "default-src 'self' www.zeitplan-app.com *.us-east-1.amazonaws.com; connect-src 'self' www.zeitplan-app.com https://zeitplan.auth.us-east-1.amazoncognito.com https://api.stripe.com https://maps.googleapis.com *.us-east-1.amazonaws.com;frame-src https://js.stripe.com https://hooks.stripe.com; script-src 'self' www.zeitplan-app.com https://js.stripe.com https://maps.googleapis.com; object-src 'none';",
             override: true,
           },
+        },
+        customHeadersBehavior: {
+          customHeaders: [
+            {
+              header: "Cache-Control",
+              override: true,
+              value: `public, max-age=${cacheContentMinutes}`,
+            },
+          ],
         },
       }
     );
@@ -860,7 +983,7 @@ export class ZeitplanCdk extends Stack {
           origin: new aws_cloudfront_origins.S3Origin(siteBucket, {
             originAccessIdentity: cloudfrontOAI,
           }),
-          responseHeadersPolicy: stripeCspHeaders,
+          responseHeadersPolicy: cloudfrontHeaders,
           compress: true,
           allowedMethods: aws_cloudfront.AllowedMethods.ALLOW_GET_HEAD_OPTIONS,
           viewerProtocolPolicy:

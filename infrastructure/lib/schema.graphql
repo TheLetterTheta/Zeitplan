@@ -15,7 +15,7 @@ type Event {
 }
 
 type Meeting {
-  participants: [ID!]!
+  participants: [String!]!
   title: String!
   duration: Int!
   created: Long!

@@ -5,7 +5,7 @@ import FontAwesome as Icon
 import FontAwesome.Brands exposing (facebook, github)
 import FontAwesome.Solid exposing (heart, music)
 import Gen.Route as Route
-import Html exposing (Attribute, Html, a, div, img, nav, p, span, text)
+import Html exposing (Attribute, Html, a, div, h2, img, nav, p, section, span, text)
 import Html.Attributes exposing (alt, attribute, class, classList, height, href, src, style, target, width)
 import Html.Events exposing (onClick)
 import Shared
@@ -53,60 +53,52 @@ tooltip message =
 
 footer : Html msg
 footer =
-    Html.footer [ class "footer" ]
-        [ content [ class "has-text-centered has-text-weight-bold" ]
+    Html.footer [ class "footer hero is-dark" ]
+        [ content [ class "mt-3 is-flex is-flex-direction-column has-text-weight-bold" ]
             [ p [] [ text "This project was made possible thanks to Professor Victor Drescher at Southeastern Louisiana University." ]
             , div [ class "columns" ]
-                [ div [ class "column" ]
-                    [ p [ class "subtitle" ]
+                [ div [ class "column is-4 is-flex is-flex-direction-column" ]
+                    [ h2 [ class "is-5 title" ]
                         [ text "If you found Zeitplan useful" ]
-                    , div [ class "mt-3 is-flex is-justify-content-space-around" ]
-                        [ a
-                            [ class "button"
-                            , href <| Url.crossOrigin "https://github.com" [ "sponsors", "TheLetterTheta" ] []
-                            , target "_blank"
+                    , a
+                        [ href <| Url.crossOrigin "https://github.com" [ "sponsors", "TheLetterTheta" ] []
+                        , target "_blank"
+                        ]
+                        [ span [ class "icon" ]
+                            [ Icon.view heart
                             ]
-                            [ span [ class "icon" ]
-                                [ Icon.view heart
-                                ]
-                            , span [] [ text "Sponsor the project" ]
+                        , span [] [ text "Sponsor the project" ]
+                        ]
+                    , a
+                        [ href <| Url.crossOrigin "https://github.com" [ "TheLetterTheta", "Zeitplan" ] []
+                        , target "_blank"
+                        ]
+                        [ span [ class "icon" ]
+                            [ Icon.view github
                             ]
-                        , a
-                            [ class "button"
-                            , href <| Url.crossOrigin "https://github.com" [ "TheLetterTheta", "Zeitplan" ] []
-                            , target "_blank"
-                            ]
-                            [ span [ class "icon" ]
-                                [ Icon.view github
-                                ]
-                            , span [] [ text "Suggest an edit" ]
-                            ]
+                        , span [] [ text "Suggest an edit" ]
                         ]
                     ]
-                , div [ class "column" ]
-                    [ p [ class "subtitle" ]
-                        [ text "You can also support Drescher Music by visiting" ]
-                    , div [ class "mt-3 is-flex is-justify-content-space-around" ]
-                        [ a
-                            [ class "button"
-                            , href <| Url.crossOrigin "https://www.facebook.com" [ "DrescherMusic" ] []
-                            , target "_blank"
+                , div [ class "column is-narrow p-0 divider is-vertical" ] [ text "Also" ]
+                , div [ class "column is-4 is-flex is-flex-direction-column" ]
+                    [ h2 [ class "is-5 subtitle" ] [ text "Support Mr. Drescher by checking out" ]
+                    , a
+                        [ href <| Url.crossOrigin "https://www.facebook.com" [ "DrescherMusic" ] []
+                        , target "_blank"
+                        ]
+                        [ span [ class "icon" ]
+                            [ Icon.view facebook
                             ]
-                            [ span [ class "icon" ]
-                                [ Icon.view facebook
-                                ]
-                            , span [] [ text "Facebook" ]
+                        , span [] [ text "Facebook" ]
+                        ]
+                    , a
+                        [ href <| Url.crossOrigin "https://dreschermusic.com" [] []
+                        , target "_blank"
+                        ]
+                        [ span [ class "icon" ]
+                            [ Icon.view music
                             ]
-                        , a
-                            [ class "button"
-                            , href <| Url.crossOrigin "https://dreschermusic.com" [] []
-                            , target "_blank"
-                            ]
-                            [ span [ class "icon" ]
-                                [ Icon.view music
-                                ]
-                            , span [] [ text "DrescherMusic.com" ]
-                            ]
+                        , span [] [ text "DrescherMusic.com" ]
                         ]
                     ]
                 ]
@@ -158,13 +150,13 @@ zeitplanNav settings =
             ]
             [ div [ class "navbar-start" ]
                 ([ a
-                    [ class "navbar-item is-size-4", href (Route.toHref Route.Home_) ]
+                    [ class "navbar-item", href (Route.toHref Route.Home_) ]
                     [ text "Home" ]
                  , a
-                    [ class "navbar-item is-size-4", href (Route.toHref Route.About) ]
+                    [ class "navbar-item", href (Route.toHref Route.About) ]
                     [ text "About" ]
                  , a
-                    [ class "navbar-item is-size-4", href (Route.toHref Route.Pricing) ]
+                    [ class "navbar-item", href (Route.toHref Route.Pricing) ]
                     [ text "Pricing" ]
                  ]
                     ++ (if isNothing settings.shared.user then
@@ -172,7 +164,7 @@ zeitplanNav settings =
 
                         else
                             [ a
-                                [ class "navbar-item is-size-4"
+                                [ class "navbar-item"
                                 , href (Route.toHref Route.Schedule)
                                 ]
                                 [ text "Schedule" ]

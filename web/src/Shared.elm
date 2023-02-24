@@ -123,7 +123,7 @@ init _ flags =
             let
                 maybeCommand =
                     decodedFlags.user
-                        |> Maybe.map (\user -> delayUntilTimestamp user.expiration RequestRefreshToken)
+                        |> Maybe.map (\user -> delayUntilTimestamp (user.expiration - 60000) RequestRefreshToken)
                         |> Maybe.withDefault Cmd.none
             in
             ( Model decodedFlags.logo False decodedFlags.user decodedFlags.graphQlEndpoint, maybeCommand )
@@ -161,7 +161,7 @@ update req msg model =
             ( { model | user = Just user }
             , Cmd.batch
                 [ Request.pushRoute Gen.Route.Schedule req
-                , delayUntilTimestamp user.expiration RequestRefreshToken
+                , delayUntilTimestamp (user.expiration - 60000) RequestRefreshToken
                 ]
             )
 
@@ -183,7 +183,7 @@ update req msg model =
                                 updatedUserToken =
                                     { user | jwt = tokenValue.jwt, expiration = tokenValue.expiration }
                             in
-                            ( { model | user = Just updatedUserToken }, delayUntilTimestamp tokenValue.expiration RequestRefreshToken )
+                            ( { model | user = Just updatedUserToken }, delayUntilTimestamp (tokenValue.expiration - 60000) RequestRefreshToken )
 
                         Nothing ->
                             ( model, Cmd.none )
@@ -196,7 +196,7 @@ update req msg model =
                 Visible ->
                     case model.user of
                         Just user ->
-                            ( model, delayUntilTimestamp user.expiration RequestRefreshToken )
+                            ( model, delayUntilTimestamp (user.expiration - 60000) RequestRefreshToken )
 
                         Nothing ->
                             ( model, Cmd.none )

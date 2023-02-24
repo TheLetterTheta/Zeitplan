@@ -2162,6 +2162,11 @@
     chalk "^2.0.0"
     js-tokens "^4.0.0"
 
+"@creativebulma/bulma-divider@^1.1.0":
+  version "1.1.0"
+  resolved "https://registry.yarnpkg.com/@creativebulma/bulma-divider/-/bulma-divider-1.1.0.tgz#fb0c3527efc5b8d7b1ac52cd065e9f8c57b5a8bc"
+  integrity sha512-Lx5MlUhgAnTF+wNZ5LXcaE1K0F2m0Pkwte1p08FBsIyRV6Oq7BuKPk/O9XJPcF+vR6BjCxNy/hjYFXtNmoXbNg==
+
 "@creativebulma/bulma-tooltip@^1.2.0":
   version "1.2.0"
   resolved "https://registry.yarnpkg.com/@creativebulma/bulma-tooltip/-/bulma-tooltip-1.2.0.tgz#84dcdd59d94c09c2975fadbec1d3d765ae29c471"
@@ -2595,6 +2600,14 @@
     globals "^13.2.0"
     nullthrows "^1.1.1"
 
+"@parcel/packager-raw-url@2.8.3":
+  version "2.8.3"
+  resolved "https://registry.yarnpkg.com/@parcel/packager-raw-url/-/packager-raw-url-2.8.3.tgz#5994dca47f37a395deb0fd5b574a9d4656617f47"
+  integrity sha512-v8k/x2pnR3DDiIJrPTUcBd+MjH9ocpac0dsdJ02yeyGIQTecqL6nuCtu6W4m75CC7vFjjh/aCK9TJsOHOFnCFQ==
+  dependencies:
+    "@parcel/plugin" "2.8.3"
+    "@parcel/utils" "2.8.3"
+
 "@parcel/packager-raw@2.8.3":
   version "2.8.3"
   resolved "https://registry.yarnpkg.com/@parcel/packager-raw/-/packager-raw-2.8.3.tgz#bdec826df991e186cb58691cc45d12ad5c06676e"
@@ -2854,6 +2867,16 @@
     posthtml-parser "^0.10.1"
     posthtml-render "^3.0.0"
     semver "^5.7.1"
+
+"@parcel/transformer-webmanifest@2.8.3":
+  version "2.8.3"
+  resolved "https://registry.yarnpkg.com/@parcel/transformer-webmanifest/-/transformer-webmanifest-2.8.3.tgz#5858079bf5abaedcf42dc5e856248a596277dc71"
+  integrity sha512-v3NuQc1K1AMfD1+hvh/YYpxBEin52CvEX94MnjwYK6bDmJ35rNuttIs7T6DZxAOopRbGwoTchCShIbv15gTcvg==
+  dependencies:
+    "@mischnic/json-sourcemap" "^0.1.0"
+    "@parcel/diagnostic" "2.8.3"
+    "@parcel/plugin" "2.8.3"
+    "@parcel/utils" "2.8.3"
 
 "@parcel/types@2.8.3":
   version "2.8.3"
@@ -3222,6 +3245,11 @@ buffer@^5.5.0:
   dependencies:
     base64-js "^1.3.1"
     ieee754 "^1.1.13"
+
+bulma-pageloader@^0.3.0:
+  version "0.3.0"
+  resolved "https://registry.yarnpkg.com/bulma-pageloader/-/bulma-pageloader-0.3.0.tgz#94a4ff7d9129cbe01dbc5cae4e64508e13563cf1"
+  integrity sha512-lbahiqhBCov5AYdziHFnC5/JOhCrJWFTpdRiAkwW49IM/mf0whCWHVe8MuejZFu2PEs1mtH8Gnz8exEks4Q+7g==
 
 bulma-pricingtable@^0.2.0:
   version "0.2.0"

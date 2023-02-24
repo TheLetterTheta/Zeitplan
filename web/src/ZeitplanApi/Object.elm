@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Object exposing (..)
+module ZeitplanApi.Object exposing (..)
 
 
 type Calendar

@@ -2,23 +2,23 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.ScalarCodecs exposing (..)
+module ZeitplanApi.ScalarCodecs exposing (..)
 
-import GraphQLApi.Scalar exposing (defaultCodecs)
 import Json.Decode as Decode exposing (Decoder)
+import ZeitplanApi.Scalar exposing (defaultCodecs)
 
 
 type alias Id =
-    GraphQLApi.Scalar.Id
+    ZeitplanApi.Scalar.Id
 
 
 type alias Long =
-    GraphQLApi.Scalar.Long
+    ZeitplanApi.Scalar.Long
 
 
-codecs : GraphQLApi.Scalar.Codecs Id Long
+codecs : ZeitplanApi.Scalar.Codecs Id Long
 codecs =
-    GraphQLApi.Scalar.defineCodecs
+    ZeitplanApi.Scalar.defineCodecs
         { codecId = defaultCodecs.codecId
         , codecLong = defaultCodecs.codecLong
         }

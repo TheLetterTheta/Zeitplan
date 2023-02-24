@@ -2,14 +2,8 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Object.PaymentIntent exposing (..)
+module ZeitplanApi.Object.PaymentIntent exposing (..)
 
-import GraphQLApi.InputObject
-import GraphQLApi.Interface
-import GraphQLApi.Object
-import GraphQLApi.Scalar
-import GraphQLApi.ScalarCodecs
-import GraphQLApi.Union
 import Graphql.Internal.Builder.Argument as Argument exposing (Argument)
 import Graphql.Internal.Builder.Object as Object
 import Graphql.Internal.Encode as Encode exposing (Value)
@@ -17,13 +11,19 @@ import Graphql.Operation exposing (RootMutation, RootQuery, RootSubscription)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet exposing (SelectionSet)
 import Json.Decode as Decode
+import ZeitplanApi.InputObject
+import ZeitplanApi.Interface
+import ZeitplanApi.Object
+import ZeitplanApi.Scalar
+import ZeitplanApi.ScalarCodecs
+import ZeitplanApi.Union
 
 
-clientSecret : SelectionSet String GraphQLApi.Object.PaymentIntent
+clientSecret : SelectionSet String ZeitplanApi.Object.PaymentIntent
 clientSecret =
     Object.selectionForField "String" "clientSecret" [] Decode.string
 
 
-amount : SelectionSet (Maybe Int) GraphQLApi.Object.PaymentIntent
+amount : SelectionSet (Maybe Int) ZeitplanApi.Object.PaymentIntent
 amount =
     Object.selectionForField "(Maybe Int)" "amount" [] (Decode.int |> Decode.nullable)

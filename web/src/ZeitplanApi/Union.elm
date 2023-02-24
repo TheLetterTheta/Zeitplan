@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Union exposing (..)
+module ZeitplanApi.Union exposing (..)
 
 
 placeholder : String

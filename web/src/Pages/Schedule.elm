@@ -10,19 +10,12 @@ import FontAwesome.Attributes exposing (fa10x, spin)
 import FontAwesome.Regular as Regular
 import FontAwesome.Solid as Solid
 import Gen.Params.Schedule exposing (Params)
-import GraphQLApi.Mutation as Mutation
-import GraphQLApi.Object
-import GraphQLApi.Object.Calendar as ApiCalendar
-import GraphQLApi.Object.Event as ApiEvent
-import GraphQLApi.Object.Meeting as ApiMeeting
-import GraphQLApi.Object.User as ApiUser
-import GraphQLApi.Query as Query
-import GraphQLApi.Scalar exposing (Id, Long)
 import Graphql.Http
 import Graphql.Operation exposing (RootMutation, RootQuery)
+import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
-import Html exposing (Html, a, aside, button, datalist, div, footer, form, h2, h3, header, input, label, li, option, p, section, select, span, text, ul)
-import Html.Attributes exposing (checked, class, classList, disabled, for, href, id, list, placeholder, selected, type_, value)
+import Html exposing (Html, a, aside, button, code, datalist, div, footer, form, h2, h3, h4, header, input, label, li, option, p, section, select, span, text, ul)
+import Html.Attributes exposing (checked, class, classList, disabled, for, href, id, list, placeholder, selected, style, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -36,6 +29,14 @@ import Task
 import Time exposing (Posix)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, tooltip, zeitplanNav)
+import ZeitplanApi.Mutation as Mutation
+import ZeitplanApi.Object
+import ZeitplanApi.Object.Calendar as ApiCalendar
+import ZeitplanApi.Object.Event as ApiEvent
+import ZeitplanApi.Object.Meeting as ApiMeeting
+import ZeitplanApi.Object.User as ApiUser
+import ZeitplanApi.Query as Query
+import ZeitplanApi.Scalar exposing (Id, Long(..))
 
 
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
@@ -99,7 +100,7 @@ type alias GraphqlEvent =
     }
 
 
-eventQuery : SelectionSet GraphqlEvent GraphQLApi.Object.Event
+eventQuery : SelectionSet GraphqlEvent ZeitplanApi.Object.Event
 eventQuery =
     SelectionSet.succeed GraphqlEvent
         |> with ApiEvent.start
@@ -112,7 +113,7 @@ type alias GraphqlUser =
     }
 
 
-userQuery : SelectionSet GraphqlUser GraphQLApi.Object.User
+userQuery : SelectionSet GraphqlUser ZeitplanApi.Object.User
 userQuery =
     SelectionSet.succeed GraphqlUser
         |> with ApiUser.credits
@@ -122,12 +123,12 @@ userQuery =
 type alias GraphqlMeeting =
     { created : Long
     , duration : Int
-    , participants : List Id
+    , participants : List String
     , title : String
     }
 
 
-meetingsQuery : SelectionSet GraphqlMeeting GraphQLApi.Object.Meeting
+meetingsQuery : SelectionSet GraphqlMeeting ZeitplanApi.Object.Meeting
 meetingsQuery =
     SelectionSet.succeed GraphqlMeeting
         |> with ApiMeeting.created
@@ -143,7 +144,7 @@ type alias GraphqlCalendar =
     }
 
 
-calendarsQuery : SelectionSet GraphqlCalendar GraphQLApi.Object.Calendar
+calendarsQuery : SelectionSet GraphqlCalendar ZeitplanApi.Object.Calendar
 calendarsQuery =
     SelectionSet.succeed GraphqlCalendar
         |> with ApiCalendar.name
@@ -243,6 +244,47 @@ requestDeleteParticipant url auth key =
         |> Graphql.Http.withHeader "Authorization" auth
         |> Graphql.Http.send (\_ -> NoOp)
 
+
+type alias SaveMeetingResponse =
+    { created : Long }
+
+
+createMeeting : Int -> Meeting -> SelectionSet SaveMeetingResponse RootMutation
+createMeeting created meeting =
+    Mutation.saveMeeting
+        (\_ -> Mutation.SaveMeetingOptionalArguments (Present <| ZeitplanApi.Scalar.Long <| String.fromInt created))
+        (Mutation.SaveMeetingRequiredArguments
+            (Set.toList meeting.participants)
+            meeting.title
+            meeting.duration
+        )
+        (SelectionSet.succeed SaveMeetingResponse
+            |> with ApiMeeting.created
+        )
+
+
+requestCreateMeeting : String -> String -> Int -> Meeting -> Cmd Msg
+requestCreateMeeting url auth created meeting =
+    createMeeting created meeting
+        |> Graphql.Http.mutationRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (\_ -> NoOp)
+
+
+deleteMeeting : Int -> SelectionSet (Maybe SaveMeetingResponse) RootMutation
+deleteMeeting created =
+    Mutation.deleteMeeting
+        { created = Long (String.fromInt created) }
+        (SelectionSet.succeed SaveMeetingResponse
+            |> with ApiMeeting.created
+        )
+
+requestDeleteMeeting : String -> String -> Int -> Cmd Msg
+requestDeleteMeeting url auth created =
+    deleteMeeting created
+        |> Graphql.Http.mutationRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (\_ -> NoOp)
 
 
 -- VALIDATOR
@@ -404,6 +446,7 @@ type Msg
     | FinishCreateMeeting Time.Posix
     | CloseDeleteModal
     | ExpandMeeting Bool Int
+    | DeleteMeeting Int
     | NoOp
 
 
@@ -466,6 +509,21 @@ update user msg model =
 
                                 Nothing ->
                                     calendar
+
+                        meetings : Dict Int Meeting
+                        meetings =
+                            data.meetings
+                                |> List.map
+                                    (\meeting ->
+                                        let
+                                            created =
+                                                case meeting.created of
+                                                    Long val ->
+                                                        String.toInt val |> Maybe.withDefault 0
+                                        in
+                                        ( created, Meeting meeting.title meeting.duration (Set.fromList meeting.participants) )
+                                    )
+                                |> Dict.fromList
                     in
                     ( { model
                         | availableCalendar = updatedAvailableCalendar
@@ -473,6 +531,7 @@ update user msg model =
                         , credits = credits
                         , selectedParticipant = selectedParticipant
                         , participantCalendar = updatedCalendar
+                        , meetings = meetings
                         , initialLoad = remote
                       }
                     , Effect.none
@@ -772,13 +831,17 @@ update user msg model =
             in
             case validate meetingTitleValidator model.meetingTitle of
                 Ok valid ->
+                    let
+                        newMeeting =
+                            { title = Validate.fromValid valid, duration = model.meetingDuration, participants = model.meetingParticipants }
+                    in
                     ( { model
                         | meetings =
                             Dict.insert id
-                                { title = Validate.fromValid valid, duration = model.meetingDuration, participants = model.meetingParticipants }
+                                newMeeting
                                 model.meetings
                       }
-                    , Effect.none
+                    , Effect.fromCmd <| requestCreateMeeting model.endpoint user.jwt id newMeeting
                     )
 
                 Err _ ->
@@ -794,6 +857,11 @@ update user msg model =
 
         SetMeetingDuration duration ->
             ( { model | meetingDuration = String.toInt duration |> Maybe.withDefault 0 }, Effect.none )
+
+        DeleteMeeting id ->
+            ( { model | meetings = Dict.remove id model.meetings }
+            , Effect.fromCmd <| requestDeleteMeeting model.endpoint user.jwt id
+            )
 
         CloseDeleteModal ->
             ( { model | deleteParticipant = Nothing }, Effect.none )
@@ -834,7 +902,7 @@ type Calendar
 
 participantList : Model -> Html Msg
 participantList model =
-    ul [ class "menu-list" ]
+    ul [ class "menu-list participant-list" ]
         (model.participants
             |> Dict.toList
             |> List.map
@@ -862,10 +930,10 @@ participantList model =
 
 createParticipantForm : Model -> Html Msg
 createParticipantForm model =
-    form [ class "form participant-form", onSubmit SubmitNewParticipant ]
+    form [ class "form", onSubmit SubmitNewParticipant ]
         [ label [ class "label", for "participant-name-input" ] [ text "Add Participant" ]
         , div [ class "field has-addons" ]
-            [ div [ class "control" ]
+            [ div [ class "control", style "width" "100%" ]
                 [ input
                     [ class "input"
                     , id "participant-name-input"
@@ -894,49 +962,111 @@ sliderView : Model -> Html Msg
 sliderView model =
     case model.slider of
         AvailableCalendarSlider ->
-            div [ class "availability" ]
-                [ div [ id "available-calendar" ]
-                    [ Calendar.view model.availableCalendar |> Html.map (CalendarMsg AvailableCalendar) ]
+            div [ class "columns p-2" ]
+                [ div [ class "column is-full" ]
+                    [ div [ id "available-calendar" ]
+                        [ Calendar.view model.availableCalendar |> Html.map (CalendarMsg AvailableCalendar) ]
+                    ]
                 ]
 
         ParticipantCalendarSlider ->
             div
-                [ class "participants"
+                [ class "columns"
                 , classList [ ( "is-clipped", model.deleteParticipant /= Nothing ) ]
                 ]
                 [ case model.deleteParticipant of
                     Just { key, affectedMeetings, removedMeetings } ->
+                        let
+                            totalAffected =
+                                Dict.size removedMeetings + Dict.size affectedMeetings
+
+                            ableToDelete =
+                                totalAffected < 25
+                        in
                         div [ class "modal is-active" ]
                             [ div [ class "modal-background" ] []
-                            , div [ class "modal-card" ]
-                                [ header [ class "modal-card-head" ]
-                                    [ h3 [ class "modal-card-title" ] [ text <| "Delete " ++ key ++ "?" ]
-                                    , button [ class "delete", onClick CloseDeleteModal ] []
-                                    ]
-                                , section [ class "modal-card-body" ]
-                                    [ div [ class "content" ]
-                                        [ p [] [ text <| "Are you sure you want to delete " ++ key ]
+                            , if not ableToDelete then
+                                div [ class "modal-content" ]
+                                    [ section [ class "message is-danger" ]
+                                        [ div
+                                            [ class "message-header" ]
+                                            [ p [] [ text "Unable to delete this participant" ]
+                                            , button [ class "delete", onClick CloseDeleteModal ] []
+                                            ]
+                                        , div [ class "message-body" ]
+                                            [ p []
+                                                [ text
+                                                    """
+                                            This participant is a member of too many meetings. Please delete this participant's
+                                            meetings manually until there are 24 meetings or less.
+                                            """
+                                                ]
+                                            , p []
+                                                [ text <| "Currently, there are " ++ String.fromInt totalAffected ++ " meetings with this participant" ]
+                                            ]
                                         ]
                                     ]
-                                , footer [ class "modal-card-foot" ]
-                                    [ button [ class "button is-success", onClick <| DeleteParticipant key ] [ text "Confirm" ]
-                                    , button [ class "button is-danger", onClick CloseDeleteModal ] [ text "Cancel" ]
+
+                              else
+                                div [ class "modal-card" ]
+                                    [ header [ class "modal-card-head" ]
+                                        [ h3 [ class "modal-card-title" ] [ text "Are you sure you want to delete ", code [] [ text key ], text "?" ]
+                                        , button [ class "delete", onClick CloseDeleteModal ] []
+                                        ]
+                                    , if Dict.isEmpty removedMeetings && Dict.isEmpty affectedMeetings then
+                                        section [ class "modal-card-body" ]
+                                            [ div
+                                                [ class "content" ]
+                                                [ p [] [ text "This participant has not been added to any meetings." ]
+                                                ]
+                                            ]
+
+                                      else
+                                        section [ class "modal-card-body" ]
+                                            [ div [ class "columns" ]
+                                                [ if Dict.isEmpty removedMeetings then
+                                                    text ""
+
+                                                  else
+                                                    div [ class "content column" ]
+                                                        [ h4 [ class "subtitle is-6" ] [ text "These meetings will be deleted:" ]
+                                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values removedMeetings)
+                                                        ]
+                                                , if Dict.isEmpty affectedMeetings then
+                                                    text ""
+
+                                                  else
+                                                    div [ class "content column" ]
+                                                        [ h4 [ class "subtitle is-6" ] [ code [] [ text key ], text " will be removed from these meetings" ]
+                                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values affectedMeetings)
+                                                        ]
+                                                ]
+                                            ]
+                                    , footer [ class "modal-card-foot" ]
+                                        [ button [ class "button is-success", onClick <| DeleteParticipant key ] [ text "Confirm" ]
+                                        , button [ class "button is-danger", onClick CloseDeleteModal ] [ text "Cancel" ]
+                                        ]
                                     ]
-                                ]
                             ]
 
                     Nothing ->
                         text ""
-                , div [ class "participant-list-container" ]
-                    [ aside [ class "participant-list menu" ]
-                        [ p [ class "menu-label" ] [ text "Participants" ]
-                        , participantList model
+                , div [ class "column is-one-fifth" ]
+                    [ div [ class "columns is-multiline" ]
+                        [ div [ class "column is-full" ] [ createParticipantForm model ]
+                        , div [ class "column is-full" ]
+                            [ aside [ class "menu" ]
+                                [ p [ class "menu-label" ] [ text "Participants" ]
+                                , participantList model
+                                ]
+                            ]
                         ]
-                    , createParticipantForm model
                     ]
-                , div [ id "participant-calendar" ]
+                , div [ class "column" ]
                     [ div
-                        [ classList [ ( "loading ignore-pointer-events", model.selectedParticipant == Nothing ) ] ]
+                        [ id "participant-calendar"
+                        , classList [ ( "loading ignore-pointer-events", model.selectedParticipant == Nothing ) ]
+                        ]
                         [ Calendar.view model.participantCalendar |> Html.map (CalendarMsg ParticipantCalendar) ]
                     ]
                 ]
@@ -963,131 +1093,136 @@ sliderView model =
                         |> List.isEmpty
                         |> not
             in
-            div [ class "columns meeting-configuration" ] <|
-                [ aside [ class "column is-one-third aside-form" ]
-                    [ div [ class "panel is-info meeting-panel" ] <|
-                        h2
-                            [ class "panel-heading" ]
-                            [ text "Select Participants"
-                            , span [ class "ml-2" ]
-                                [ text <|
-                                    if Set.isEmpty model.meetingParticipants then
-                                        ""
+            div [ class "meeting-configuration container columns" ] <|
+                [ aside [ class "column is-one-quarter" ]
+                    [ div [ class "columns is-multiline" ]
+                        [ form [ class "column is-full", onSubmit CreateMeeting ]
+                            [ div [ class "field" ]
+                                [ label [ class "label" ] [ text "Title" ]
+                                , input
+                                    [ class "input"
+                                    , classList [ ( "is-danger", model.meetingTitleError /= Nothing ) ]
+                                    , type_ "text"
+                                    , value model.meetingTitle
+                                    , onInput SetMeetingTitle
+                                    ]
+                                    []
+                                , case model.meetingTitleError of
+                                    Just error ->
+                                        p [ class "help is-danger" ] [ text error ]
 
-                                    else
-                                        "(" ++ (String.fromInt <| Set.size model.meetingParticipants) ++ ")"
+                                    _ ->
+                                        text ""
                                 ]
-                            ]
-                            :: div [ class "panel-block" ]
-                                [ p [ class "control has-icons-left" ]
-                                    [ form [ onSubmit SelectFirstParticipant ]
-                                        [ input
-                                            [ class "input"
-                                            , type_ "search"
-                                            , value model.participantSearch
-                                            , placeholder "Search"
-                                            , onInput SetSearchParticipant
-
-                                            -- , list "participant-data-list"
+                            , div [ class "field" ]
+                                [ label [ class "label" ] [ text "Duration" ]
+                                , div [ class "control has-icons-left" ]
+                                    [ div [ class "select is-fullwidth is-rounded is-medium" ]
+                                        [ select [ onInput SetMeetingDuration ]
+                                            [ option [ value "1", selected <| model.meetingDuration == 1 ] [ text "30 min" ]
+                                            , option [ value "2", selected <| model.meetingDuration == 2 ] [ text "1 hour" ]
+                                            , option [ value "3", selected <| model.meetingDuration == 3 ] [ text "90 min" ]
+                                            , option [ value "4", selected <| model.meetingDuration == 4 ] [ text "2 hours" ]
                                             ]
-                                            []
-                                        , span [ class "icon is-left" ] [ Icon.view Solid.search ]
                                         ]
+                                    , div [ class "icon is-small is-left" ]
+                                        [ Icon.view Solid.clock ]
                                     ]
                                 ]
-                            {--
-                            :: datalist [ id "participant-data-list" ]
-                                (Dict.keys model.participants
-                                    |> List.map (\name -> option [ value name ] [])
-                                )
-                            --}
-                            :: (Dict.keys model.participants
-                                    |> List.filter
-                                        (if String.isEmpty model.participantSearch then
-                                            always True
-
-                                         else
-                                            String.toUpper >> String.contains (String.toUpper model.participantSearch)
-                                        )
-                                    |> List.indexedMap
-                                        (\index ->
-                                            \name ->
-                                                label
-                                                    [ class "panel-block"
-                                                    , classList
-                                                        [ ( "is-active", Set.member name model.meetingParticipants )
-                                                        , ( "highlighted", index == 0 )
-                                                        ]
-                                                    ]
-                                                    [ input
-                                                        [ type_ "checkbox"
-                                                        , checked <| Set.member name model.meetingParticipants
-                                                        , onCheck <| SelectMeetingParticipant name
-                                                        ]
-                                                        []
-                                                    , text name
-                                                    ]
-                                        )
-                               )
-                    , form [ class "meeting-form", onSubmit CreateMeeting ]
-                        [ div [ class "field" ]
-                            [ label [ class "label" ] [ text "Title" ]
-                            , input
-                                [ class "input"
-                                , classList [ ( "is-danger", model.meetingTitleError /= Nothing ) ]
-                                , type_ "text"
-                                , value model.meetingTitle
-                                , onInput SetMeetingTitle
-                                ]
-                                []
-                            , case model.meetingTitleError of
-                                Just error ->
-                                    p [ class "help is-danger" ] [ text error ]
-
-                                _ ->
-                                    text ""
-                            ]
-                        , div [ class "field" ]
-                            [ label [ class "label" ] [ text "Duration" ]
-                            , div [ class "control has-icons-left" ]
-                                [ div [ class "select is-rounded is-medium" ]
-                                    [ select [ onInput SetMeetingDuration ]
-                                        [ option [ value "1", selected <| model.meetingDuration == 1 ] [ text "30 min" ]
-                                        , option [ value "2", selected <| model.meetingDuration == 2 ] [ text "1 hour" ]
-                                        , option [ value "3", selected <| model.meetingDuration == 3 ] [ text "90 min" ]
-                                        , option [ value "4", selected <| model.meetingDuration == 4 ] [ text "2 hours" ]
-                                        ]
-                                    ]
-                                , div [ class "icon is-small is-left" ]
-                                    [ Icon.view Solid.clock ]
-                                ]
-                            ]
-                        , div [ class "field" ]
-                            [ div [ class "control" ]
-                                [ button
-                                    [ class "button is-success is-medium is-fullwidth"
-                                    , disabled (Set.isEmpty model.meetingParticipants || String.isEmpty model.meetingTitle)
-                                    ]
-                                    [ span [] [ text "Create Meeting" ]
-                                    , span
-                                        [ tooltip <|
-                                            "This meeting "
-                                                ++ (if canBeScheduled then
-                                                        "can"
-
-                                                    else
-                                                        "can not"
-                                                   )
-                                                ++ " be scheduled"
-                                        , class "icon has-tooltip-arrow has-tooltip-bottom"
-                                        , classList [ ( "is-danger", not canBeScheduled ) ]
-                                        ]
-                                        [ Icon.view <|
-                                            if canBeScheduled then
-                                                Solid.check
+                            , div [ class "panel is-info meeting-panel" ]
+                                [ h2
+                                    [ class "panel-heading" ]
+                                    [ text "Select Participants"
+                                    , span [ class "ml-2" ]
+                                        [ text <|
+                                            if Set.isEmpty model.meetingParticipants then
+                                                ""
 
                                             else
-                                                Regular.circleXmark
+                                                "(" ++ (String.fromInt <| Set.size model.meetingParticipants) ++ ")"
+                                        ]
+                                    ]
+                                , div [ class "panel-block" ]
+                                    [ p [ class "control has-icons-left" ]
+                                        [ form [ onSubmit SelectFirstParticipant ]
+                                            [ input
+                                                [ class "input"
+                                                , type_ "search"
+                                                , value model.participantSearch
+                                                , placeholder "Search"
+                                                , onInput SetSearchParticipant
+
+                                                -- , list "participant-data-list"
+                                                ]
+                                                []
+                                            , span [ class "icon is-left" ] [ Icon.view Solid.search ]
+                                            ]
+                                        ]
+                                    ]
+
+                                {--
+                                :: datalist [ id "participant-data-list" ]
+                                    (Dict.keys model.participants
+                                        |> List.map (\name -> option [ value name ] [])
+                                    )
+                                --}
+                                , div [ class "meeting-participant-list" ]
+                                    (Dict.keys model.participants
+                                        |> List.filter
+                                            (if String.isEmpty model.participantSearch then
+                                                always True
+
+                                             else
+                                                String.toUpper >> String.contains (String.toUpper model.participantSearch)
+                                            )
+                                        |> List.indexedMap
+                                            (\index ->
+                                                \name ->
+                                                    label
+                                                        [ class "panel-block"
+                                                        , classList
+                                                            [ ( "is-active", Set.member name model.meetingParticipants )
+                                                            , ( "highlighted", index == 0 )
+                                                            ]
+                                                        ]
+                                                        [ input
+                                                            [ type_ "checkbox"
+                                                            , checked <| Set.member name model.meetingParticipants
+                                                            , onCheck <| SelectMeetingParticipant name
+                                                            ]
+                                                            []
+                                                        , text name
+                                                        ]
+                                            )
+                                    )
+                                ]
+                            , div [ class "field" ]
+                                [ div [ class "control", style "width" "100%" ]
+                                    [ button
+                                        [ class "button is-success is-medium is-fullwidth"
+                                        , disabled (Set.isEmpty model.meetingParticipants || String.isEmpty model.meetingTitle)
+                                        ]
+                                        [ span [] [ text "Create Meeting" ]
+                                        , span
+                                            [ tooltip <|
+                                                "This meeting "
+                                                    ++ (if canBeScheduled then
+                                                            "can"
+
+                                                        else
+                                                            "can not"
+                                                       )
+                                                    ++ " be scheduled"
+                                            , class "icon has-tooltip-arrow has-tooltip-bottom"
+                                            , classList [ ( "is-danger", not canBeScheduled ) ]
+                                            ]
+                                            [ Icon.view <|
+                                                if canBeScheduled then
+                                                    Solid.check
+
+                                                else
+                                                    Regular.circleXmark
+                                            ]
                                         ]
                                     ]
                                 ]
@@ -1123,15 +1258,15 @@ sliderView model =
                                                 Set.member id model.expandedMeetings
                                         in
                                         div
-                                            [ class "column meeting-item is-4 panel is-primary"
+                                            [ class "column meeting-item is-4 panel is-info"
                                             , classList [ ( "is-danger", List.isEmpty meetingTimes ) ]
                                             ]
                                         <|
-                                            [ h2 [ class "panel-heading" ]
-                                                [ span [] [ text meeting.title ]
-                                                , span [ class "ml-3" ]
+                                            [ div [ class "panel-heading is-flex is-justify-content-space-between" ]
+                                                [ span []
                                                     [ text <|
-                                                        "("
+                                                        meeting.title
+                                                            ++ " ("
                                                             ++ (case meeting.duration of
                                                                     1 ->
                                                                         "30 min"
@@ -1150,13 +1285,14 @@ sliderView model =
                                                                )
                                                             ++ ")"
                                                     ]
+                                                , button [ class "delete", onClick <| DeleteMeeting id ] []
                                                 ]
                                             , div
                                                 [ class "panel-block" ]
                                                 [ div
                                                     [ class "tags are-medium" ]
                                                   <|
-                                                    List.map (\name -> span [ class "tag is-info" ] [ text name ]) <|
+                                                    List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
                                                         Set.toList meeting.participants
                                                 ]
                                             ]
@@ -1218,88 +1354,86 @@ view shared model =
             , shared = shared
             }
             |> Html.map SharedMsg
-        , if model.initialLoad == RemoteData.NotAsked || model.initialLoad == RemoteData.Loading then
-            div
-                [ class "loading-container" ]
-                [ Icon.view <| Icon.styled [ spin, fa10x ] Solid.spinner
-                , p [] [ text "Please wait while we fetch your information" ]
-                ]
+        , div
+            [ class "pageloader"
+            , classList [ ( "is-active", model.initialLoad == RemoteData.NotAsked || model.initialLoad == RemoteData.Loading ) ]
+            ]
+            [ span [ class "title" ] [ text "Please wait while we fetch your information" ]
+            ]
+        , div [ class "container is-fullhd" ]
+            [ div [ class "box mt-2" ]
+                [ ul [ class "steps is-centered has-content-centered" ]
+                    [ li
+                        [ tooltip "Add times for your meetings"
+                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                        , classList [ ( "is-active", model.slider == AvailableCalendarSlider ) ]
+                        ]
+                        [ a
+                            [ href "#"
+                            , class "has-text-dark"
+                            , onClick <| SetSliderState AvailableCalendarSlider
+                            ]
+                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarWeek ]
+                            , div [ class "steps-content" ] [ text "Set Available Times" ]
+                            ]
+                        ]
+                    , li
+                        [ tooltip "Add people to meet with - and when they can't meet"
+                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                        , classList
+                            [ ( "is-active", model.slider == ParticipantCalendarSlider )
+                            , ( "ignore-pointer-events", List.isEmpty model.availableCalendar.events )
+                            ]
+                        ]
+                        [ a
+                            [ href "#"
+                            , class "has-text-dark"
+                            , onClick <| SetSliderState ParticipantCalendarSlider
+                            ]
+                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.user ]
+                            , div [ class "steps-content" ]
+                                [ text "Add Participants"
+                                , span [ class "ml-2" ]
+                                    [ text <|
+                                        if Dict.isEmpty model.participants then
+                                            ""
 
-          else
-            div [ class "container is-fullhd" ]
-                [ div [ class "box mt-2" ]
-                    [ ul [ class "steps is-centered has-content-centered" ]
-                        [ li
-                            [ tooltip "Add times for your meetings"
-                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                            , classList [ ( "is-active", model.slider == AvailableCalendarSlider ) ]
-                            ]
-                            [ a
-                                [ href "#"
-                                , class "has-text-dark"
-                                , onClick <| SetSliderState AvailableCalendarSlider
-                                ]
-                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarWeek ]
-                                , div [ class "steps-content" ] [ text "Set Available Times" ]
-                                ]
-                            ]
-                        , li
-                            [ tooltip "Add people to meet with - and when they can't meet"
-                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                            , classList
-                                [ ( "is-active", model.slider == ParticipantCalendarSlider )
-                                , ( "ignore-pointer-events", List.isEmpty model.availableCalendar.events )
-                                ]
-                            ]
-                            [ a
-                                [ href "#"
-                                , class "has-text-dark"
-                                , onClick <| SetSliderState ParticipantCalendarSlider
-                                ]
-                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.user ]
-                                , div [ class "steps-content" ]
-                                    [ text "Add Participants"
-                                    , span [ class "ml-2" ]
-                                        [ text <|
-                                            if Dict.isEmpty model.participants then
-                                                ""
-
-                                            else
-                                                "(" ++ (String.fromInt <| Dict.size model.participants) ++ ")"
-                                        ]
-                                    ]
-                                ]
-                            ]
-                        , li
-                            [ tooltip "Setup meetings with your participants"
-                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                            , classList
-                                [ ( "is-active", model.slider == MeetingConfigurationSlider )
-                                , ( "ignore-pointer-events", Dict.isEmpty model.participants )
-                                ]
-                            ]
-                            [ a
-                                [ href "#"
-                                , class "has-text-dark"
-                                , onClick <| SetSliderState MeetingConfigurationSlider
-                                ]
-                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarPlus ]
-                                , div [ class "steps-content" ]
-                                    [ text "Create Meetings"
-                                    , span [ class "ml-2" ]
-                                        [ text <|
-                                            if Dict.isEmpty model.meetings then
-                                                ""
-
-                                            else
-                                                "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
-                                        ]
+                                        else
+                                            "(" ++ (String.fromInt <| Dict.size model.participants) ++ ")"
                                     ]
                                 ]
                             ]
                         ]
-                    , sliderView model
+                    , li
+                        [ tooltip "Setup meetings with your participants"
+                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                        , classList
+                            [ ( "is-active", model.slider == MeetingConfigurationSlider )
+                            , ( "ignore-pointer-events", Dict.isEmpty model.participants )
+                            ]
+                        ]
+                        [ a
+                            [ href "#"
+                            , class "has-text-dark"
+                            , onClick <| SetSliderState MeetingConfigurationSlider
+                            ]
+                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarPlus ]
+                            , div [ class "steps-content" ]
+                                [ text "Create Meetings"
+                                , span [ class "ml-2" ]
+                                    [ text <|
+                                        if Dict.isEmpty model.meetings then
+                                            ""
+
+                                        else
+                                            "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
+                                    ]
+                                ]
+                            ]
+                        ]
                     ]
+                , sliderView model
                 ]
+            ]
         , View.footer
         ]

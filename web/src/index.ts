@@ -1,4 +1,4 @@
-import zeitplanLogo from "../public/Zeitplan.png?as=webp&width:28";
+import zeitplanLogo from "../public/favicon_x32.png?as=webp&width:28";
 import * as process from "process";
 import { Elm } from "./Main.elm";
 import {
@@ -20,7 +20,7 @@ Amplify.configure({
     userPoolWebClientId: ZeitplanCdkStack.webclientid,
     signUpVerificationMethod: "code",
     cookieStorage: {
-      domain: 'localhost', // .zeitplan-app.com
+      domain: '.zeitplan-app.com', // .zeitplan-app.com
       path: "/",
       expires: 7,
       sameSite: "strict",
@@ -29,8 +29,8 @@ Amplify.configure({
     authenticationFlowType: "USER_SRP_AUTH",
     oauth: {
       domain: ZeitplanCdkStack.HostedUiDomain.replace("https://", ""),
-      redirectSignIn: 'https://localhost:1234/schedule', // 'https://www.zeitplan-app.com/schedule'
-      redirectSignOut: 'https://localhost:1234/', // 'https://www.zeitplan-app.com/'
+      redirectSignIn: 'https://www.zeitplan-app.com/schedule', // https://www.zeitplan-app.com/schedule
+      redirectSignOut: 'https://www.zeitplan-app.com/', // https://www.zeitplan-app.com/
       responseType: 'code'
     }
   },

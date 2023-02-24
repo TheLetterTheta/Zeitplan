@@ -2,7 +2,7 @@ module Pages.About exposing (Model, Msg, page)
 
 import Effect exposing (Effect)
 import Gen.Params.Home_ exposing (Params)
-import Html exposing (a, blockquote, code, div, h1, h2, h5, i, p, strong, text)
+import Html exposing (a, blockquote, code, div, h1, h2, i, p, strong, text)
 import Html.Attributes exposing (class, href, id, style)
 import Html.Events exposing (onClick)
 import Page
@@ -73,7 +73,7 @@ view shared _ =
             }
             |> Html.map SharedMsg
         , div [ class "is-small section" ]
-            [ div [ class "hero is-info" ]
+            [ div [ class "hero is-dark" ]
                 [ div [ class "hero-body" ]
                     [ h1 [ class "is-1 title" ] [ text "About Zeitplan" ]
                     , h2 [ class "subtitle" ] [ text "A place for questions and (hopefully) answers" ]
@@ -87,7 +87,7 @@ view shared _ =
                         [ onClick (SharedMsg <| Shared.ScrollToElement "whats-a-zeitplan")
                         , href <| custom Relative [] [] (Just "whats-a-zeitplan")
                         ]
-                        [ h5 [ id "whats-a-zeitplan", class "is-size-3" ] [ text "What's a \"Zeitplan\"? " ]
+                        [ h2 [ id "whats-a-zeitplan", class "is-size-3" ] [ text "What's a \"Zeitplan\"? " ]
                         ]
                     , p []
                         [ text """
@@ -109,7 +109,7 @@ view shared _ =
                         [ onClick (SharedMsg <| Shared.ScrollToElement "what-does-it-do")
                         , href <| custom Relative [] [] (Just "what-does-it-do")
                         ]
-                        [ h5 [ id "what-does-it-do", class "is-size-3" ] [ text "What does it do?" ] ]
+                        [ h2 [ id "what-does-it-do", class "is-size-3" ] [ text "What does it do?" ] ]
                     , p []
                         [ text "Mr. Drescher's original dilema was this:"
                         ]
@@ -164,7 +164,7 @@ view shared _ =
                         [ onClick (SharedMsg <| Shared.ScrollToElement "faq")
                         , href <| custom Relative [] [] (Just "faq")
                         ]
-                        [ h5 [ id "faq", class "is-size-3" ] [ text "Frequently Asked Questions" ] ]
+                        [ h2 [ id "faq", class "is-size-3" ] [ text "Frequently Asked Questions" ] ]
                     , p []
                         [ strong [] [ text "How many meetings can I schedule?" ] ]
                     , p []

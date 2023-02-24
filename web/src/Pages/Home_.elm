@@ -326,7 +326,7 @@ view shared model =
             |> Html.map SharedMsg
         , section [ class "hero is-fullheight-with-navbar is-dark" ]
             [ div [ class "hero-head" ]
-                [ div [ class "section" ]
+                [ div [ class "section is-medium" ]
                     [ h1 [ class "is-1 title" ] [ text "Zeitplan" ]
                     , p [ class "subtitle" ] [ text "A different kind of scheduler" ]
                     ]

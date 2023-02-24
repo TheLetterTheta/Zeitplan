@@ -4,7 +4,7 @@ import Effect exposing (Effect)
 import FontAwesome as Icon
 import FontAwesome.Solid exposing (check, times)
 import Gen.Params.Pricing exposing (Params)
-import Html exposing (Html, br, button, div, em, h1, li, p, section, span, text, ul)
+import Html exposing (Html, br, button, div, em, h1, h2, li, p, section, span, text, ul)
 import Html.Attributes exposing (class)
 import Page
 import Request
@@ -131,36 +131,53 @@ view shared _ =
             , shared = shared
             }
             |> Html.map SharedMsg
+        , div [ class "is-small section" ]
+            [ div [ class "hero is-dark" ]
+                [ div [ class "hero-body" ]
+                    [ h1 [ class "is-1 title" ] [ text "Pricing" ]
+                    , h2 [ class "subtitle" ] [ text "Because nothing in life is free" ]
+                    ]
+                ]
+            ]
         , section [ class "section" ]
             [ div [ class "container" ]
-                [ h1 [ class "is-1 title" ] [ text "Costs" ]
+                [ h2 [ class "is-1 title" ] [ text "Costs" ]
                 , div [ class "content is-medium" ]
                     [ p []
                         [ text """
                     Countless hours have gone into the devlopment of Zeitplan to make it a
                     high quality product. At least until version 1.1.0, the entire development
-                    of Zeitplan has been entirely funded by the developers. We ask that you download
-                    the project, or sign up for a subscription below to help support projects like
+                    of Zeitplan has been entirely funded by a single developer. We ask that you download
+                    the project, or sign up for an account and purchase credits to help support projects like
                     this, and provide a positive community for this kind of work. If you found the
                     project useful, consider sharing it with your friends!
                     """ ]
                     ]
-                , h1 [ class "is-1 title" ] [ text "Early Adoption Period" ]
+                , h2 [ class "is-1 title" ] [ text "Early Adoption Period" ]
                 , div [ class "content is-medium" ]
                     [ p []
                         [ text """
-                    Currently, there are no associated costs to using Zeitplan. The following is a
-                    future pricing model that will be used when Zeitplan has enough of a userbase to
-                    warrant a pricing system.
-                    """ ]
-                    , p []
-                        [ text """
-                    Accounts in the future will begin with a free trial period of 1 week, followed by a
-                    promotional new member discount on any of the following pricing models. In the future
-                    there may also be incentives for inviting other users.
+                    Currently, there are no associated costs to using Zeitplan. Each user when signing up
+                    will receive 20 credits to use to schedule their meetings with. Scheduling meetings may
+                    cost multiple credits based on the complexity of the schedule. This is due to the fact
+                    that these computations are expensive to run.
                     """ ]
                     ]
-                , h1 [ class "is-1 title" ] [ text "Desktop Download" ]
+                , h2 [ class "is-1 title" ] [ text "Cloud Access" ]
+                , div [ class "content is-medium" ]
+                    [ p []
+                        [ text """
+                        Zeitplan can also be run from this website. Simply Sign Up for an account,
+                        and schedule meetings to your hearts content!
+                    """
+                        ]
+                    , ul []
+                        [ li [] [ text "Access anywhere" ]
+                        , li [] [ text "Access anytime" ]
+                        , li [] [ text "Search for your perfect schedule on powerful Cloud computers" ]
+                        ]
+                    ]
+                , h2 [ class "is-1 title" ] [ text "Desktop Download" ]
                 , div [ class "content is-medium" ]
                     [ p []
                         [ text """
@@ -189,79 +206,6 @@ view shared _ =
                     , text """
                         Downloading Zeitplan Desktop is a one time fee of $50.
                         """
-                    ]
-                , h1 [ class "is-1 title" ] [ text "Cloud Access" ]
-                , div [ class "content is-medium" ]
-                    [ p []
-                        [ text """
-                Zeitplan Cloud is a fully web-based application. After logging into your account,
-                you will be provided with a variety of features that include
-                """
-                        ]
-                    , ul []
-                        [ li []
-                            [ text "Participant upload rooms"
-                            , br [] []
-                            , p [ class "subtitle" ] [ text "Grants access to a custom URL for a participant to block out their own times" ]
-                            ]
-                        , li [] [ text "Access anywhere" ]
-                        , li [] [ text "Access anytime" ]
-                        , li [] [ text "Search for your perfect schedule on powerful Cloud computers" ]
-                        ]
-                    ]
-                , div [ class "pricing-table is-comparative" ]
-                    [ features
-                        [ "Community Support"
-                        , "Unlimited Participants"
-                        , "Developer Support"
-                        , "Search Time (Total)"
-                        , "Meetings"
-                        ]
-                    , pricingPlan
-                        { header = "Basic"
-                        , price = 15
-                        , frequency = "/ week"
-                        , items =
-                            [ Icon.view check
-                            , Icon.view times
-                            , Icon.view times
-                            , text "1s (10,000)"
-                            , text "20"
-                            ]
-                        , buttonText = "Choose"
-                        , color = Nothing
-                        , afterText = "Low commitment"
-                        }
-                    , pricingPlan
-                        { header = "Advanced"
-                        , price = 25
-                        , frequency = "/ month"
-                        , items =
-                            [ Icon.view check
-                            , Icon.view check
-                            , Icon.view times
-                            , text "5s (50,000)"
-                            , text "50"
-                            ]
-                        , buttonText = "Choose"
-                        , color = Just Light
-                        , afterText = "Most popular"
-                        }
-                    , pricingPlan
-                        { header = "Pro"
-                        , price = 100
-                        , frequency = "/ year"
-                        , items =
-                            [ Icon.view check
-                            , Icon.view check
-                            , text "1 hour"
-                            , text "15s (150,000)"
-                            , text "250"
-                            ]
-                        , buttonText = "Choose"
-                        , color = Just Primary
-                        , afterText = "Most features, Best Value"
-                        }
                     ]
                 ]
             ]

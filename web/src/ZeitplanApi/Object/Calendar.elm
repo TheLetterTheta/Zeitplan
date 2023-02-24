@@ -2,14 +2,8 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module GraphQLApi.Object.User exposing (..)
+module ZeitplanApi.Object.Calendar exposing (..)
 
-import GraphQLApi.InputObject
-import GraphQLApi.Interface
-import GraphQLApi.Object
-import GraphQLApi.Scalar
-import GraphQLApi.ScalarCodecs
-import GraphQLApi.Union
 import Graphql.Internal.Builder.Argument as Argument exposing (Argument)
 import Graphql.Internal.Builder.Object as Object
 import Graphql.Internal.Encode as Encode exposing (Value)
@@ -17,15 +11,26 @@ import Graphql.Operation exposing (RootMutation, RootQuery, RootSubscription)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet exposing (SelectionSet)
 import Json.Decode as Decode
+import ZeitplanApi.InputObject
+import ZeitplanApi.Interface
+import ZeitplanApi.Object
+import ZeitplanApi.Scalar
+import ZeitplanApi.ScalarCodecs
+import ZeitplanApi.Union
 
 
-credits : SelectionSet Int GraphQLApi.Object.User
-credits =
-    Object.selectionForField "Int" "credits" [] Decode.int
+name : SelectionSet String ZeitplanApi.Object.Calendar
+name =
+    Object.selectionForField "String" "name" [] Decode.string
 
 
 events :
-    SelectionSet decodesTo GraphQLApi.Object.Event
-    -> SelectionSet (List decodesTo) GraphQLApi.Object.User
+    SelectionSet decodesTo ZeitplanApi.Object.Event
+    -> SelectionSet (List decodesTo) ZeitplanApi.Object.Calendar
 events object____ =
     Object.selectionForCompositeField "events" [] object____ (Basics.identity >> Decode.list)
+
+
+blockedDays : SelectionSet (List String) ZeitplanApi.Object.Calendar
+blockedDays =
+    Object.selectionForField "(List String)" "blockedDays" [] (Decode.string |> Decode.list)
