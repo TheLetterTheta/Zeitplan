@@ -38,3 +38,28 @@ user :
     -> SelectionSet decodesTo RootQuery
 user object____ =
     Object.selectionForCompositeField "user" [] object____ Basics.identity
+
+
+type alias SchedulesOptionalArguments =
+    { nextToken : OptionalArgument String }
+
+
+type alias SchedulesRequiredArguments =
+    { limit : Int }
+
+
+schedules :
+    (SchedulesOptionalArguments -> SchedulesOptionalArguments)
+    -> SchedulesRequiredArguments
+    -> SelectionSet decodesTo ZeitplanApi.Object.Schedules
+    -> SelectionSet (Maybe decodesTo) RootQuery
+schedules fillInOptionals____ requiredArgs____ object____ =
+    let
+        filledInOptionals____ =
+            fillInOptionals____ { nextToken = Absent }
+
+        optionalArgs____ =
+            [ Argument.optional "nextToken" filledInOptionals____.nextToken Encode.string ]
+                |> List.filterMap Basics.identity
+    in
+    Object.selectionForCompositeField "schedules" (optionalArgs____ ++ [ Argument.required "limit" requiredArgs____.limit Encode.int ]) object____ (Basics.identity >> Decode.nullable)

@@ -105,9 +105,35 @@ type alias BeginCheckoutRequiredArguments =
 beginCheckout :
     BeginCheckoutRequiredArguments
     -> SelectionSet decodesTo ZeitplanApi.Object.PaymentIntent
-    -> SelectionSet (Maybe decodesTo) RootMutation
+    -> SelectionSet decodesTo RootMutation
 beginCheckout requiredArgs____ object____ =
-    Object.selectionForCompositeField "beginCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int ] object____ (Basics.identity >> Decode.nullable)
+    Object.selectionForCompositeField "beginCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int ] object____ Basics.identity
+
+
+type alias UpdateCheckoutRequiredArguments =
+    { credits : Int
+    , orderId : String
+    }
+
+
+updateCheckout :
+    UpdateCheckoutRequiredArguments
+    -> SelectionSet decodesTo ZeitplanApi.Object.PaymentUpdate
+    -> SelectionSet decodesTo RootMutation
+updateCheckout requiredArgs____ object____ =
+    Object.selectionForCompositeField "updateCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int, Argument.required "orderId" requiredArgs____.orderId Encode.string ] object____ Basics.identity
+
+
+type alias ComputeScheduleRequiredArguments =
+    { credits : Int }
+
+
+computeSchedule :
+    ComputeScheduleRequiredArguments
+    -> SelectionSet decodesTo ZeitplanApi.Object.ScheduleResponse
+    -> SelectionSet decodesTo RootMutation
+computeSchedule requiredArgs____ object____ =
+    Object.selectionForCompositeField "computeSchedule" [ Argument.required "credits" requiredArgs____.credits Encode.int ] object____ Basics.identity
 
 
 type alias CreditsChangedRequiredArguments =

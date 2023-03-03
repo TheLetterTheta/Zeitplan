@@ -2,7 +2,7 @@
 -- https://github.com/dillonkearns/elm-graphql
 
 
-module ZeitplanApi.Object.PaymentIntent exposing (..)
+module ZeitplanApi.Object.Schedules exposing (..)
 
 import Graphql.Internal.Builder.Argument as Argument exposing (Argument)
 import Graphql.Internal.Builder.Object as Object
@@ -19,16 +19,13 @@ import ZeitplanApi.ScalarCodecs
 import ZeitplanApi.Union
 
 
-clientSecret : SelectionSet String ZeitplanApi.Object.PaymentIntent
-clientSecret =
-    Object.selectionForField "String" "clientSecret" [] Decode.string
+data :
+    SelectionSet decodesTo ZeitplanApi.Object.ScheduleResponse
+    -> SelectionSet (List decodesTo) ZeitplanApi.Object.Schedules
+data object____ =
+    Object.selectionForCompositeField "data" [] object____ (Basics.identity >> Decode.list)
 
 
-amount : SelectionSet (Maybe Int) ZeitplanApi.Object.PaymentIntent
-amount =
-    Object.selectionForField "(Maybe Int)" "amount" [] (Decode.int |> Decode.nullable)
-
-
-orderId : SelectionSet ZeitplanApi.ScalarCodecs.Id ZeitplanApi.Object.PaymentIntent
-orderId =
-    Object.selectionForField "ScalarCodecs.Id" "orderId" [] (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapCodecs |> .codecId |> .decoder)
+nextToken : SelectionSet (Maybe String) ZeitplanApi.Object.Schedules
+nextToken =
+    Object.selectionForField "(Maybe String)" "nextToken" [] (Decode.string |> Decode.nullable)

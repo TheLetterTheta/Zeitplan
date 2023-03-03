@@ -24,7 +24,7 @@ pub fn schedule(schedule: JsValue) -> Result<JsValue, JsValue> {
 
     let schedule: Schedule<u16> = serde_wasm_bindgen::from_value(schedule)?;
     Ok(serde_wasm_bindgen::to_value(
-        &schedule.schedule_meetings(None),
+        &schedule.schedule_meetings(None, None, None),
     )?)
 }
 
@@ -257,7 +257,7 @@ mod tests {
             available_time.clone(),
         );
 
-        assert!(schedule.schedule_meetings(None).is_ok());
+        assert!(schedule.schedule_meetings(None, None, None).is_ok());
 
         let meeting_6 = Meeting::new("6", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)], 1);
 
@@ -267,7 +267,7 @@ mod tests {
             ],
             available_time,
         );
-        assert!(schedule.schedule_meetings(None).is_err());
+        assert!(schedule.schedule_meetings(None, None, None).is_err());
 
         let schedule: Schedule<u16> = Schedule::new(
             vec![
@@ -282,6 +282,6 @@ mod tests {
             vec![TimeRange::new(0, 1000)],
         );
 
-        assert!(schedule.schedule_meetings(None).is_err());
+        assert!(schedule.schedule_meetings(None, None, None).is_err());
     }
 }

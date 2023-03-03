@@ -10,28 +10,28 @@ import (
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/attributevalue"
+	"github.com/aws/aws-sdk-go-v2/feature/dynamodb/expression"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	stripe "github.com/stripe/stripe-go/v74"
 	"github.com/stripe/stripe-go/v74/paymentintent"
 )
 
 type Request struct {
-	UserName *string `json:"userId"`
-	Credits  *int    `json:"credits"`
+	Credits *int    `json:"credits"`
+	OrderId *string `json:"orderId"`
 }
 
 type Response struct {
-	ClientSecret string `json:"clientSecret"`
-	Amount       int64  `json:"amount"`
-	OrderId      string `json:"orderId"`
+	Amount int64 `json:"amount"`
 }
 
-type NewPurchase struct {
-	OrderId  string `dynamodbav:"orderId"`
-	Complete bool   `dynamodbav:"complete"`
-	UserId   string `dynamodbav:"userId"`
-	Amount   int    `dynamodbav:"amount"`
-	Credits  int    `dynamodbav:"credits"`
+type UpdateKey struct {
+	OrderId string `dynamodbav:"orderId"`
+}
+
+type UpdateRequest struct {
+	Amount  int `dynamodbav:":amount"`
+	Credits int `dynamodbav:":credits"`
 }
 
 var (
@@ -48,8 +48,8 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		return Response{}, errors.New("CreditsOutOfBounds")
 	}
 
-	if req.UserName == nil {
-		return Response{}, errors.New("UsernameRequired")
+	if req.OrderId == nil {
+		return Response{}, errors.New("PaymentIntentRequired")
 	}
 
 	paymentAmount := ComputeCreditAmount(credits)
@@ -63,7 +63,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		},
 	}
 
-	pi, err := paymentintent.New(stripePayment)
+	pi, err := paymentintent.Update(*req.OrderId, stripePayment)
 	if err != nil {
 		log.Println("Could not create Stripe Payment Intent")
 		return Response{}, err
@@ -71,7 +71,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 
 	tableName := os.Getenv("PAYMENT_TABLE_NAME")
 	if tableName == "" {
-		log.Println("No payments table found in environment")
+		log.Println("No payment table found in environment")
 		return Response{}, errors.New("InvalidEnvironment")
 	}
 
@@ -84,24 +84,44 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 
 	client := dynamodb.NewFromConfig(cfg)
 
-	insertItem, err := attributevalue.MarshalMap(NewPurchase{
-		Amount:   int(paymentAmount),
-		OrderId:  pi.ID,
-		Complete: false,
-		Credits:  *req.Credits,
-		UserId:   *req.UserName,
+	updateKey, err := attributevalue.MarshalMap(UpdateKey{
+		OrderId: *req.OrderId,
 	})
+
+	if err != nil {
+		log.Println("Could not marshall update keys")
+		return Response{}, err
+	}
+
+	updateValues, err := attributevalue.MarshalMap(UpdateRequest{
+		Amount:  int(paymentAmount),
+		Credits: *req.Credits,
+	})
+
 	if err != nil {
 		log.Println("Could not marshall update values")
 		return Response{}, err
 	}
 
-	putItemInput := dynamodb.PutItemInput{
-		Item:      insertItem,
-		TableName: &tableName,
+	update := expression.Set(expression.Name("amount"), expression.Value(updateValues[":amount"]))
+	update.Set(expression.Name("credits"), expression.Value(updateValues[":credits"]))
+
+	updateExpression, err := expression.NewBuilder().WithUpdate(update).Build()
+
+	if err != nil {
+		log.Println("Could not build update expression")
+		return Response{}, err
 	}
 
-	_, err = client.PutItem(ctx, &putItemInput)
+	updateItemInput := dynamodb.UpdateItemInput{
+		Key:                       updateKey,
+		UpdateExpression:          updateExpression.Update(),
+		ExpressionAttributeNames:  updateExpression.Names(),
+		ExpressionAttributeValues: updateExpression.Values(),
+		TableName:                 &tableName,
+	}
+
+	_, err = client.UpdateItem(ctx, &updateItemInput)
 
 	if err != nil {
 		log.Print("Could not save order info")
@@ -109,9 +129,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 	}
 
 	return Response{
-		ClientSecret: pi.ClientSecret,
-		Amount:       pi.Amount,
-		OrderId:      pi.ID,
+		Amount: pi.Amount,
 	}, nil
 }
 

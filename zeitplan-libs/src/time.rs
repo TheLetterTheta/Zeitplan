@@ -447,7 +447,7 @@ where
     fn count_pigeons(&mut self) -> Option<N>;
 }
 
-impl<'a, T, N> Pigeons<N> for T
+impl<T, N> Pigeons<N> for T
 where
     T: Iterator<Item = TimeRange<N>>,
     N: Integer + One + Zero + Copy + std::iter::Sum + Display + Debug + CheckedAdd,

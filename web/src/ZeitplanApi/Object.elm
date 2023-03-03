@@ -21,5 +21,21 @@ type PaymentIntent
     = PaymentIntent
 
 
+type PaymentUpdate
+    = PaymentUpdate
+
+
+type ScheduleMeetingResult
+    = ScheduleMeetingResult
+
+
+type ScheduleResponse
+    = ScheduleResponse
+
+
+type Schedules
+    = Schedules
+
+
 type User
     = User

@@ -22,6 +22,7 @@ $background: #fafcfb;
 @import "node_modules/bulma/sass/elements/content";
 @import "node_modules/bulma/sass/elements/icon";
 @import "node_modules/bulma/sass/elements/image";
+@import "node_modules/bulma/sass/components/media";
 @import "node_modules/bulma/sass/elements/tag";
 @import "node_modules/bulma/sass/elements/notification";
 @import "node_modules/bulma/sass/elements/other";
@@ -38,13 +39,13 @@ $background: #fafcfb;
 @import "node_modules/bulma/sass/layout/hero";
 @import "node_modules/bulma/sass/layout/section";
 
-@import "node_modules/bulma-pricingtable/src/sass";
 @import "node_modules/bulma-pageloader/src/sass";
 @import "node_modules/bulma-steps-component/bulma-steps.sass";
 @import "@creativebulma/bulma-tooltip";
 @import "@creativebulma/bulma-divider";
 
 // Fix bulma-tooltip setting this to look like a clickable element?
+
 [data-tooltip]{
     cursor: unset !important;
 }

@@ -8,6 +8,7 @@ import {
   StripeError,
   StripeLinkAuthenticationElement,
   StripePaymentElement,
+  StripePaymentRequestButtonElement,
 } from "@stripe/stripe-js";
 import { Amplify, Auth } from "aws-amplify";
 import { CognitoHostedUIIdentityProvider } from '@aws-amplify/auth';
@@ -20,7 +21,7 @@ Amplify.configure({
     userPoolWebClientId: ZeitplanCdkStack.webclientid,
     signUpVerificationMethod: "code",
     cookieStorage: {
-      domain: '.zeitplan-app.com', // .zeitplan-app.com
+      domain: 'localhost', // .zeitplan-app.com
       path: "/",
       expires: 7,
       sameSite: "strict",
@@ -29,85 +30,75 @@ Amplify.configure({
     authenticationFlowType: "USER_SRP_AUTH",
     oauth: {
       domain: ZeitplanCdkStack.HostedUiDomain.replace("https://", ""),
-      redirectSignIn: 'https://www.zeitplan-app.com/schedule', // https://www.zeitplan-app.com/schedule
-      redirectSignOut: 'https://www.zeitplan-app.com/', // https://www.zeitplan-app.com/
+      redirectSignIn: 'https://localhost:1234/schedule', // https://www.zeitplan-app.com/schedule
+      redirectSignOut: 'https://localhost:1234/', // https://www.zeitplan-app.com/
       responseType: 'code'
     }
   },
 });
 
-const { STRIPE_PUBLIC_API_KEY } = process.env;
 
 function mapError<T>(promise: Promise<T>, map: (error: any) => T): Promise<T> {
   return promise.catch(map);
 }
 
-function ignoreException<T>(
-  promise: Promise<T>,
-  doFinally: (result: any) => void
-): Promise<void> {
-  return promise
-    .then((v) => doFinally({ ...v, succeeded: true }))
-    .catch((v) => doFinally({ ...v, succeeded: false }));
-}
-
 customElements.define(
   "stripe-web-component",
   class extends HTMLElement {
+
     private _clientSecret: string | null = null;
     private _stripe: Stripe | null = null;
     private _elements: StripeElements | null = null;
+    private _submitButton: HTMLButtonElement;
     private _form: HTMLFormElement;
     private _linkAuthenticationEL: HTMLDivElement;
     private _paymentEL: HTMLDivElement;
+    private _paymentButtonEL: HTMLDivElement;
     private _stripeLinkAuthenticationEL: StripeLinkAuthenticationElement;
     private _stripePaymentEL: StripePaymentElement;
+    private _stripePaymentRequest: StripePaymentRequestButtonElement;
     private _email: string | null;
     private _error: StripeError;
 
-    get email() {
-      return this._email;
-    }
-
-    get error() {
-      return this._error;
-    }
-
-    set clientSecret(value) {
-      if (value === this._clientSecret) return;
-
-      this._clientSecret = value;
-      if (this._stripe === null || this._clientSecret === null) return;
-
-      this._elements = this._stripe.elements({
-        clientSecret: this._clientSecret,
-        appearance: {
-          theme: "night",
-        },
-      });
-    }
-
     constructor() {
       super();
-      loadStripe(STRIPE_PUBLIC_API_KEY).then((stripe) => {
+      loadStripe(process.env.STRIPE_PUBLIC_API_KEY).then((stripe) => {
         this._stripe = stripe;
+        this.connectedCallback()
       });
     }
 
     connectedCallback() {
-      if (this._stripe === null || this._elements === null) return;
+      if (this._stripe === null || !this.hasAttribute("client-secret")) return;
+
+      this._elements = this._stripe.elements({
+        clientSecret: this.getAttribute("client-secret"),
+        amount: Number(this.getAttribute("amount")),
+        appearance: {
+          theme: "flat"
+        }
+      });
 
       this._form = document.createElement("form");
       this._paymentEL = document.createElement("div");
       this._linkAuthenticationEL = document.createElement("div");
-      this._form.append(this._linkAuthenticationEL);
-      this._form.append(this._paymentEL);
+      this._submitButton = document.createElement("button");
+      this._submitButton.type = "submit";
+      this._submitButton.classList.add("button");
+      this._submitButton.classList.add("is-success");
+      this._submitButton.classList.add("mt-2");
+      this._submitButton.textContent = "Submit Payment";
+
+      this._form.appendChild(this._linkAuthenticationEL);
+      this._form.appendChild(this._paymentEL);
+      this._form.appendChild(this._submitButton);
 
       this.append(this._form);
 
       this._stripePaymentEL = this._elements.create("payment");
       this._stripeLinkAuthenticationEL =
         this._elements.create("linkAuthentication");
+
       this._stripeLinkAuthenticationEL.on("change", (event) => {
         this._email = event.value.email;
         this.dispatchEvent(
@@ -127,11 +118,9 @@ customElements.define(
         const { error } = await this._stripe?.confirmPayment({
           elements: this._elements,
           confirmParams: {
-            return_url: `${window.location.protocol}//${
-              window.location.hostname
-            }${
-              window.location.port ? ":" + window.location.port : ""
-            }/payment-confirmation`,
+            return_url: `${window.location.protocol}//${window.location.hostname
+              }${window.location.port ? ":" + window.location.port : ""
+              }/payment-confirmation`,
             receipt_email: this._email ?? undefined,
           },
         });
@@ -207,13 +196,11 @@ async function run() {
       .then(async (user) => {
         return Auth.currentSession()
           .then((token) => token.getAccessToken())
-          .then((token) => {
-            return {
-              ...user,
-              jwt: token.getJwtToken(),
-              expires: token.getExpiration() * 1000,
-            };
-          });
+          .then((token) => ({
+            ...user,
+            jwt: token.getJwtToken(),
+            expires: token.getExpiration() * 1000,
+          }));
       })
       .then(app.ports.signUpConfirmOk.send)
       .catch(app.ports.signUpConfirmErr.send);

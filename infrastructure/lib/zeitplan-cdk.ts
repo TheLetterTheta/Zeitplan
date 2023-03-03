@@ -11,7 +11,9 @@ import {
   aws_cloudfront_origins,
   aws_route53_targets,
   aws_s3_deployment,
+  aws_appsync,
 } from "aws-cdk-lib";
+import { RustFunction } from "cargo-lambda-cdk";
 import * as path from "path";
 import * as fs from "fs";
 import * as dotenv from "dotenv";
@@ -32,9 +34,7 @@ import {
   FunctionUrlAuthType,
   Runtime,
 } from "aws-cdk-lib/aws-lambda";
-import {
-  UserPoolOperation,
-} from "aws-cdk-lib/aws-cognito";
+import { UserPoolOperation } from "aws-cdk-lib/aws-cognito";
 
 dotenv.config();
 
@@ -45,6 +45,16 @@ export class ZeitplanCdk extends Stack {
     new CfnOutput(this, "region", {
       exportName: "region",
       value: this.region,
+    });
+
+    const time_interval = 30;
+    const minutes_in_day = 60 * 24;
+    const slots = minutes_in_day / time_interval;
+    const creditCount = 10000;
+
+    new CfnOutput(this, "interval", {
+      exportName: "interval",
+      value: `${time_interval}`,
     });
 
     // AWS Cognito setup:
@@ -219,6 +229,19 @@ export class ZeitplanCdk extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
     });
 
+    const scheduleTable = new Table(this, "schedule-table", {
+      partitionKey: {
+        name: "userId",
+        type: AttributeType.STRING,
+      },
+      sortKey: {
+        name: "created",
+        type: AttributeType.NUMBER,
+      },
+      tableName: "zeitplan-schedules",
+      removalPolicy: RemovalPolicy.DESTROY,
+    });
+
     // GraphQL API
     // App Sync
 
@@ -269,6 +292,11 @@ export class ZeitplanCdk extends Stack {
     });
     calendarTable.grantReadWriteData(calendarTableRole);
 
+    const scheduleTableRole = new Role(this, "ScheduleDBRole", {
+      assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
+    });
+    scheduleTable.grantReadWriteData(scheduleTableRole);
+
     const transactionDeleteTableRole = new Role(
       this,
       "TransactionDeleteCalendarDBRole",
@@ -282,6 +310,14 @@ export class ZeitplanCdk extends Stack {
     const executePaymentRole = new Role(this, "ExecutePaymentRole", {
       assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
     });
+
+    const executeScheduleFunctionRole = new Role(
+      this,
+      "ExecuteScheduleFunctionRole",
+      {
+        assumedBy: new ServicePrincipal("appsync.amazonaws.com"),
+      }
+    );
 
     // GQL RESOLVERS
     //
@@ -380,7 +416,6 @@ export class ZeitplanCdk extends Stack {
       }
     );
 
-
     const calendarGetResolver = new appsync.CfnResolver(
       this,
       "calendar-get-all-user-resolver",
@@ -406,7 +441,7 @@ export class ZeitplanCdk extends Stack {
       }
     );
     calendarGetResolver.addDependency(graphqlSchema);
-    
+
     const getAffectedMeetingsFunction = new appsync.CfnFunctionConfiguration(
       this,
       "calendar-get-affected-meetings",
@@ -415,7 +450,7 @@ export class ZeitplanCdk extends Stack {
         dataSourceName: meetingTableDataSource.name,
         runtime: {
           name: "APPSYNC_JS",
-          runtimeVersion: "1.0.0"
+          runtimeVersion: "1.0.0",
         },
         name: "GetCalendarAffectedMeetings",
         code: `
@@ -458,7 +493,7 @@ export class ZeitplanCdk extends Stack {
             affected
           }
         }
-        `
+        `,
       }
     );
 
@@ -470,7 +505,7 @@ export class ZeitplanCdk extends Stack {
         name: "DeleteCalendarAndAffectedMeetings",
         runtime: {
           name: "APPSYNC_JS",
-          runtimeVersion: "1.0.0"
+          runtimeVersion: "1.0.0",
         },
         dataSourceName: calendarTransactionDataSource.name,
         code: `
@@ -519,9 +554,9 @@ export class ZeitplanCdk extends Stack {
         export function response(context) {
           return context.result;
         }
-        `
+        `,
       }
-    )
+    );
 
     const calendarDeleteResolver = new appsync.CfnResolver(
       this,
@@ -532,11 +567,14 @@ export class ZeitplanCdk extends Stack {
         fieldName: "deleteCalendar",
         runtime: {
           name: "APPSYNC_JS",
-          runtimeVersion: "1.0.0"
-       },
+          runtimeVersion: "1.0.0",
+        },
         kind: "PIPELINE",
         pipelineConfig: {
-          functions: [getAffectedMeetingsFunction.attrFunctionId, deleteMeetingFunction.attrFunctionId]
+          functions: [
+            getAffectedMeetingsFunction.attrFunctionId,
+            deleteMeetingFunction.attrFunctionId,
+          ],
         },
         code: `
         import { util } from '@aws-appsync/utils';
@@ -584,7 +622,6 @@ export class ZeitplanCdk extends Stack {
       }
     );
     meetingInsertResolver.addDependency(graphqlSchema);
-    
 
     const queryMeetingsByUserFunction = new appsync.CfnFunctionConfiguration(
       this,
@@ -616,9 +653,9 @@ export class ZeitplanCdk extends Stack {
         export function response(context) {
           return context.result.items;
         }
-        `
+        `,
       }
-    )
+    );
 
     const meetingGetResolver = new appsync.CfnResolver(
       this,
@@ -629,11 +666,11 @@ export class ZeitplanCdk extends Stack {
         fieldName: "meetings",
         kind: "PIPELINE",
         pipelineConfig: {
-          functions: [queryMeetingsByUserFunction.attrFunctionId]
+          functions: [queryMeetingsByUserFunction.attrFunctionId],
         },
         runtime: {
           name: "APPSYNC_JS",
-          runtimeVersion: "1.0.0"
+          runtimeVersion: "1.0.0",
         },
         code: `
         import { util } from '@aws-appsync/utils';
@@ -645,7 +682,7 @@ export class ZeitplanCdk extends Stack {
         export function response(context) {
           return context.prev.result;
         }
-        `
+        `,
       }
     );
     meetingGetResolver.addDependency(graphqlSchema);
@@ -767,6 +804,26 @@ export class ZeitplanCdk extends Stack {
     createPaymentIntentLambda.grantInvoke(executePaymentRole);
     paymentsTable.grantWriteData(createPaymentIntentLambda);
 
+    const updatePaymentIntentLambda = new Function(
+      this,
+      "zeitplan-update-payment-intent",
+      {
+        functionName: "Zeitplan-Update-Payment-Intent",
+        description:
+          "Update a payment intent with a different credit amount",
+        handler: "main",
+        runtime: Runtime.GO_1_X,
+        code: Code.fromAsset(
+          path.join(__dirname, "../lambdas/update_payment_intent/main.zip")
+        ),
+        environment: {
+          PAYMENT_TABLE_NAME: paymentsTable.tableName
+        }
+      }
+    );
+    updatePaymentIntentLambda.grantInvoke(executePaymentRole);
+    paymentsTable.grantWriteData(updatePaymentIntentLambda);
+
     const createPaymentDataSource = new appsync.CfnDataSource(
       this,
       "zeitplan-create-payment-data-source",
@@ -776,6 +833,20 @@ export class ZeitplanCdk extends Stack {
         type: "AWS_LAMBDA",
         lambdaConfig: {
           lambdaFunctionArn: createPaymentIntentLambda.functionArn,
+        },
+        serviceRoleArn: executePaymentRole.roleArn,
+      }
+    );
+
+    const updatePaymentDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-update-payment-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "updatePaymentLambdaSource",
+        type: "AWS_LAMBDA",
+        lambdaConfig: {
+          lambdaFunctionArn: updatePaymentIntentLambda.functionArn,
         },
         serviceRoleArn: executePaymentRole.roleArn,
       }
@@ -801,6 +872,27 @@ export class ZeitplanCdk extends Stack {
       }
     );
     createPaymentResolver.addDependency(graphqlSchema);
+
+    const updatePaymentResolver = new appsync.CfnResolver(
+      this,
+      "update-payment-intent-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "updateCheckout",
+        dataSourceName: updatePaymentDataSource.name,
+        requestMappingTemplate: `{
+          "version": "2018-05-29",
+          "operation": "Invoke",
+          "payload": {
+            "credits": $context.arguments.credits,
+            "paymentIntent": "$context.arguments.paymentIntent"
+          }
+        }`,
+        responseMappingTemplate: `$util.toJson($ctx.result)`,
+      }
+    )
+    updatePaymentResolver.addDependency(graphqlSchema);
 
     const creditsCreatedSubscriptionResolver = new appsync.CfnResolver(
       this,
@@ -848,6 +940,497 @@ export class ZeitplanCdk extends Stack {
     });
     paymentsTable.grantReadWriteData(stripeWebhookLambda);
     userTable.grantWriteData(stripeWebhookLambda);
+
+    const getScheduleAvailabilityFunction =
+      new appsync.CfnFunctionConfiguration(
+        this,
+        "zeitplan-get-schedule-availability-function",
+        {
+          apiId: graphQL.attrApiId,
+          runtime: {
+            name: "APPSYNC_JS",
+            runtimeVersion: "1.0.0",
+          },
+          name: "GetAvailabilityInformation",
+          dataSourceName: userTableDataSource.name,
+          code: `
+        import { util } from '@aws-appsync/utils';
+        
+        export function request(context) {
+          if (context.arguments.credits < 1) {
+            return util.error("Credits must be > 0", "BadRequest");
+          }
+          const { username } = context.identity;
+
+          return {
+            operation: "GetItem",
+            key: util.dynamodb.toMapValues({ userId: username }),
+            projection: {
+              expression: "credits, events"
+            }
+          }
+        }
+        
+        export function response(context) {
+          const { events, credits } = context.result;
+
+          if (credits === null || credits < context.arguments.credits) {
+            return util.error("Not enough credits to schedule", "InsufficientCredits");
+          }
+
+          if (events === null) {
+            return util.error("No availability to schedule against", "NoAvailability");
+          }
+
+          return { availability: events }
+        }
+        `,
+        }
+      );
+
+    const getMeetingsForScheduleFunction = new appsync.CfnFunctionConfiguration(
+      this,
+      "zeitplan-schedule-get-meetings-function",
+      {
+        apiId: graphQL.attrApiId,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        name: "GetMeetingsForSchedule",
+        dataSourceName: meetingTableDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { username } = context.identity;
+
+          const query = JSON.parse(
+            util.transform.toDynamoDBConditionExpression({ userId: { eq: username } })
+          );
+
+          return {
+            operation: 'Query',
+            query
+          }
+        }
+
+        export function response(context) {
+          const { items } = context.result;
+
+          if (items === null || items.length === 0) {
+            return util.error("No meetings to schedule", "NoMeetings");
+          }
+
+          const { availability } = context.prev.result;
+
+          const meetings = items.map((result) => ({
+            id: result.created,
+            participants: result.participants,
+            duration: result.duration
+          }));
+
+          return { availability, meetings };
+        }
+        `,
+      }
+    );
+
+    const getMeetingParticipants = new appsync.CfnFunctionConfiguration(
+      this,
+      "zeitplan-get-meeting-participants-function",
+      {
+        apiId: graphQL.attrApiId,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        name: "GetParticipantsBlockedTimes",
+        dataSourceName: calendarTableDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { username } = context.identity;
+          const { meetings } = context.prev.result;
+
+          const unique_participants = [];
+          const getItems = [];
+
+          for (let meeting of meetings ) {
+            for (let id of meeting.participants) {
+              if (unique_participants.every((i) => i !== id)) {
+                unique_participants.push(id);
+                getItems.push(util.dynamodb.toMapValues({ userId: username, name: id }))
+              } 
+            }
+          }
+
+          return {
+            operation: 'BatchGetItem',
+            tables: {
+              "${calendarTable.tableName}": {
+                keys: getItems
+              }
+            }
+          }
+        }
+
+        export function response(context) {
+          const items = context.result.data["${calendarTable.tableName}"];
+
+          if (items === null) {
+            return util.error("No participants for meetings", "NoParticipants");
+          }
+
+          const cleaned = items.filter((participant) => participant !== null);
+
+          if (cleaned.length === 0) {
+            return util.error("Could not find participants", "ParticipantsNotFound");
+          }
+
+          const participants = cleaned.map((participant) => {
+            const events = participant.events.map((time) => [time.start, time.end]);
+
+            const blockedEvents = participant.blockedDays.map((day) => {
+              switch (day) {
+                case 'Sunday':
+                  return [1, ${slots * 1}];
+                case 'Monday':
+                  return [${slots * 1 + 1}, ${slots * 2}];
+                case 'Tuesday':
+                  return [${slots * 2 + 1}, ${slots * 3}];
+                case 'Wednesday':
+                  return [${slots * 3 + 1}, ${slots * 4}];
+                case 'Thursday':
+                  return [${slots * 4 + 1}, ${slots * 5}];
+                case 'Friday':
+                  return [${slots * 5 + 1}, ${slots * 6}];
+                case 'Saturday':
+                  return [${slots * 6 + 1}, ${slots * 7}];
+              }
+            });
+
+            for (let event of blockedEvents) {
+              events.push(event)
+            }
+
+            return { id: participant.name, events };
+          })
+
+          const { availability, meetings } = context.prev.result;
+
+          const timeRangeAvailability = availability.map((time) => {
+            return [ time.start, time.end ];
+          });
+
+          const meetingConfiguration = meetings.map((meeting) => ({
+            id: \`\${meeting.id}\`,
+            blockedTimes: meeting.participants.flatMap((id) => {
+              return participants.find((participant) => participant.id == id).events;
+            }),
+            duration: meeting.duration
+          }));
+
+          return { availability: timeRangeAvailability, meetings: meetingConfiguration };
+        }
+        `,
+      }
+    );
+
+    const scheduleFunction = new RustFunction(
+      this,
+      "zeitplan-schedule-meetings-function",
+      {
+        functionName: "Zeitplan-Schedule-Meetings",
+        manifestPath: path.join(
+          __dirname,
+          "../lambdas/schedule_meetings"
+        ),
+        environment: {
+          NUM_SHUFFLES: "10000",
+          PER_THREAD: "45",
+        },
+        timeout: Duration.seconds(30),
+        description: "Search for a way to fit the schedule"
+      }
+    );
+
+    scheduleFunction.grantInvoke(executeScheduleFunctionRole);
+
+    const scheduleFunctionDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-schedule-meetings-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "scheduleFunctionLambda",
+        type: "AWS_LAMBDA",
+        lambdaConfig: {
+          lambdaFunctionArn: scheduleFunction.functionArn,
+        },
+        serviceRoleArn: executeScheduleFunctionRole.roleArn,
+      }
+    );
+
+    const scheduleFunctionResolverFunction =
+      new appsync.CfnFunctionConfiguration(
+        this,
+        "zeitplan-schedule-meetings-resolver-function",
+        {
+          apiId: graphQL.attrApiId,
+          runtime: {
+            name: "APPSYNC_JS",
+            runtimeVersion: "1.0.0",
+          },
+          name: "ScheduleMeetingLambda",
+          dataSourceName: scheduleFunctionDataSource.name,
+          code: `import { util } from '@aws-appsync/utils';
+
+          export function request(context) {
+            const schedule = context.prev.result;
+            const { credits } = context.arguments;
+  
+            return {
+              operation: 'Invoke',
+              payload: { schedule, count: credits * 800 }
+            }
+          }
+  
+          export function response(context) {
+            const { schedule, failed } = context.result;
+            const error = context.error;
+
+            if (error) {
+              util.appendError(error.message, error.type, context.result);
+
+              return { error, solution: schedule, failed }
+            } else {
+
+              const solution = [];
+              for (let [id, val] of Object.entries(schedule)) {
+                const time = { start: val[0], end: val[1] };
+                solution.push({ id, time });
+              }
+    
+              return { solution, failed };
+            }
+          }
+        `,
+        }
+      );
+    scheduleFunctionResolverFunction.addDependency(scheduleFunctionDataSource);
+
+    const scheduleTableDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-schedule-table-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "scheduleTabledataSource",
+        type: "AMAZON_DYNAMODB",
+        dynamoDbConfig: {
+          tableName: scheduleTable.tableName,
+          awsRegion: this.region,
+        },
+        serviceRoleArn: scheduleTableRole.roleArn,
+      }
+    );
+
+    const saveScheduleFunction = new aws_appsync.CfnFunctionConfiguration(
+      this,
+      "zeitplan-save-schedule-function",
+      {
+        apiId: graphQL.attrApiId,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        name: "SaveScheduleFunction",
+        dataSourceName: scheduleTableDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const schedule = context.prev.result;
+          const { username } = context.identity;
+
+          Object.assign({ error: context.error }, schedule);
+
+          return {
+            operation: 'PutItem',
+            key: util.dynamodb.toMapValues({ userId: username, created: util.time.nowEpochMilliSeconds() }),
+            attributeValues: util.dynamodb.toMapValues(schedule)
+          }
+        }
+
+        export function response(context) {
+          let item = context.result;
+          item.error = item.error?.message;
+
+          return context.result;
+        }
+        `,
+      }
+    );
+    saveScheduleFunction.addDependency(scheduleTableDataSource);
+
+    const getSchedulesFunction = new aws_appsync.CfnFunctionConfiguration(
+      this,
+      "zeitplan-get-schedules-function",
+      {
+        apiId: graphQL.attrApiId,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        name: "GetSchedulesFunction",
+        dataSourceName: scheduleTableDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { limit = 10, nextToken } = context.arguments;
+          const { username } = context.identity;
+
+          const query = JSON.parse(
+            util.transform.toDynamoDBConditionExpression({ userId: { eq: username } })
+          );
+
+          return {
+            operation: 'Query',
+            query,
+            limit,
+            nextToken,
+            scanIndexForward: false
+          }
+        }
+
+        export function response(context) {
+          const { items = [], nextToken } = context.result;
+
+          const data = items.map((item) => ({ ...item, error: item.error?.message, schedule: item.solution }));
+
+          return { data, nextToken };
+        }
+        `,
+      }
+    );
+    getSchedulesFunction.addDependency(scheduleTableDataSource);
+
+    const getSchedulesResolver = new aws_appsync.CfnResolver(
+      this,
+      "zeitplan-get-schedules-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Query",
+        fieldName: "schedules",
+        kind: "PIPELINE",
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        pipelineConfig: {
+          functions: [
+            getSchedulesFunction.attrFunctionId,
+          ],
+        },
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          return {};
+        }
+
+        export function response(context) {
+          const { data, nextToken } = context.prev.result;
+
+          return { data, nextToken };
+        }
+        `,
+      }
+    );
+    getSchedulesResolver.addDependency(graphqlSchema);
+    getSchedulesResolver.addDependency(getSchedulesFunction);
+
+    const deductCreditsFunction = new aws_appsync.CfnFunctionConfiguration(
+      this,
+      "zeitplan-deduct-credits-function",
+      {
+        apiId: graphQL.attrApiId,
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        name: "DeductCreditsFunction",
+        dataSourceName: userTableDataSource.name,
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          const { username } = context.identity;
+          const { credits } = context.arguments;
+
+          return {
+            operation: 'UpdateItem',
+            key: util.dynamodb.toMapValues({ userId: username }),
+            update: {
+              expression: "SET credits = credits - :deduct",
+              expressionValues: { ":deduct": util.dynamodb.toNumber(credits) }
+            }
+          }
+        }
+
+        export function response(context) {
+          return context.prev.result;
+        }
+        `,
+      }
+    );
+    deductCreditsFunction.addDependency(userTableDataSource);
+
+    const computeScheduleResolver = new appsync.CfnResolver(
+      this,
+      "zeitplan-compute-schedule-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "computeSchedule",
+        kind: "PIPELINE",
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        pipelineConfig: {
+          functions: [
+            getScheduleAvailabilityFunction.attrFunctionId,
+            getMeetingsForScheduleFunction.attrFunctionId,
+            getMeetingParticipants.attrFunctionId,
+            scheduleFunctionResolverFunction.attrFunctionId,
+            saveScheduleFunction.attrFunctionId,
+            deductCreditsFunction.attrFunctionId,
+          ],
+        },
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          return {};
+        }
+
+        export function response(context) {
+          const { failed, solution } = context.prev.result;
+
+          return { failed, schedule: solution };
+        }
+        `,
+      }
+    );
+    computeScheduleResolver.addDependency(graphqlSchema);
+    computeScheduleResolver.addDependency(getScheduleAvailabilityFunction);
+    computeScheduleResolver.addDependency(getMeetingsForScheduleFunction);
+    computeScheduleResolver.addDependency(getMeetingParticipants);
+    computeScheduleResolver.addDependency(scheduleFunctionResolverFunction);
+    computeScheduleResolver.addDependency(saveScheduleFunction);
+    computeScheduleResolver.addDependency(deductCreditsFunction);
 
     const stripeLambdaUrl = stripeWebhookLambda.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,

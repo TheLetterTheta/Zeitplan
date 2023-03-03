@@ -120,7 +120,7 @@ fn schedules(c: &mut Criterion) {
     );
 
     c.bench_function("schedules_simple", |b| {
-        b.iter(|| black_box(schedule.schedule_meetings(None)));
+        b.iter(|| black_box(schedule.schedule_meetings(None, None, None)));
     });
 
     let meeting_6 = Meeting::new("6", vec![TimeRange::new(0, 3), TimeRange::new(5, 5)], 1);
@@ -133,7 +133,7 @@ fn schedules(c: &mut Criterion) {
     );
 
     c.bench_function("schedules_impossible", |b| {
-        b.iter(|| black_box(schedule.schedule_meetings(None)));
+        b.iter(|| black_box(schedule.schedule_meetings(None, None, None)));
     });
 
     // this will run for a long time since it's impossible, but not detected
@@ -165,7 +165,7 @@ fn schedules(c: &mut Criterion) {
     );
 
     c.bench_function("schedules_impossible_hard", |b| {
-        b.iter(|| black_box(schedule.schedule_meetings(None)));
+        b.iter(|| black_box(schedule.schedule_meetings(None, None, None)));
     });
 
     let schedule = Schedule::new(
@@ -195,7 +195,7 @@ fn schedules(c: &mut Criterion) {
     );
 
     c.bench_function("schedules_possible_hard", |b| {
-        b.iter(|| black_box(schedule.schedule_meetings(None)));
+        b.iter(|| black_box(schedule.schedule_meetings(None, None, None)));
     });
 }
 

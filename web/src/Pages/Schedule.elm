@@ -14,8 +14,8 @@ import Graphql.Http
 import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
-import Html exposing (Html, a, aside, button, code, datalist, div, footer, form, h2, h3, h4, header, input, label, li, option, p, section, select, span, text, ul)
-import Html.Attributes exposing (checked, class, classList, disabled, for, href, id, list, placeholder, selected, style, type_, value)
+import Html exposing (Html, a, aside, button, code, datalist, div, figure, footer, form, h2, h3, h4, header, img, input, label, li, option, p, section, select, span, text, ul)
+import Html.Attributes exposing (attribute, checked, class, classList, disabled, for, href, id, list, name, placeholder, selected, style, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -34,6 +34,7 @@ import ZeitplanApi.Object
 import ZeitplanApi.Object.Calendar as ApiCalendar
 import ZeitplanApi.Object.Event as ApiEvent
 import ZeitplanApi.Object.Meeting as ApiMeeting
+import ZeitplanApi.Object.PaymentIntent as ApiCheckout
 import ZeitplanApi.Object.User as ApiUser
 import ZeitplanApi.Query as Query
 import ZeitplanApi.Scalar exposing (Id, Long(..))
@@ -88,6 +89,12 @@ type SliderState
     = AvailableCalendarSlider
     | ParticipantCalendarSlider
     | MeetingConfigurationSlider
+    | ScheduleMeetingsSlider
+
+
+type PurchaseModalTab
+    = SelectCredits
+    | Checkout
 
 
 
@@ -279,12 +286,39 @@ deleteMeeting created =
             |> with ApiMeeting.created
         )
 
+
 requestDeleteMeeting : String -> String -> Int -> Cmd Msg
 requestDeleteMeeting url auth created =
     deleteMeeting created
         |> Graphql.Http.mutationRequest url
         |> Graphql.Http.withHeader "Authorization" auth
         |> Graphql.Http.send (\_ -> NoOp)
+
+
+type alias BeginCheckoutResponse =
+    { amount : Maybe Int
+    , clientSecret : String
+    , orderId : Id
+    }
+
+
+beginCheckout : Int -> SelectionSet BeginCheckoutResponse RootMutation
+beginCheckout credits =
+    Mutation.beginCheckout { credits = credits }
+        (SelectionSet.succeed BeginCheckoutResponse
+            |> with ApiCheckout.amount
+            |> with ApiCheckout.clientSecret
+            |> with ApiCheckout.orderId
+        )
+
+
+requestBeginCheckout : String -> String -> Int -> Cmd Msg
+requestBeginCheckout url auth credits =
+    beginCheckout credits
+        |> Graphql.Http.mutationRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (RemoteData.fromResult >> CheckoutIntentResponse)
+
 
 
 -- VALIDATOR
@@ -328,6 +362,10 @@ type alias Model =
     , meetings : Dict Int Meeting
     , expandedMeetings : Set Int
     , deleteParticipant : Maybe { key : String, removedMeetings : Dict Int Meeting, affectedMeetings : Dict Int Meeting }
+    , purchaseModalActive : Bool
+    , purchaseModalTab : PurchaseModalTab
+    , checkoutIntent : Maybe String
+    , checkoutCredits : Int
     }
 
 
@@ -360,6 +398,10 @@ init shared user =
       , meetings = Dict.empty
       , expandedMeetings = Set.empty
       , deleteParticipant = Nothing
+      , purchaseModalActive = False
+      , purchaseModalTab = SelectCredits
+      , checkoutIntent = Nothing
+      , checkoutCredits = 5
       }
     , Effect.batch
         [ Effect.map (\a -> CalendarMsg ParticipantCalendar a) participantEffects
@@ -447,6 +489,10 @@ type Msg
     | CloseDeleteModal
     | ExpandMeeting Bool Int
     | DeleteMeeting Int
+    | TogglePurchaseModal
+    | SetPurchaseTab PurchaseModalTab
+    | CheckoutIntentResponse (RemoteData (Graphql.Http.Error BeginCheckoutResponse) BeginCheckoutResponse)
+    | SetPurchaseCreditsAmount String
     | NoOp
 
 
@@ -788,7 +834,7 @@ update user msg model =
         SelectMeetingParticipant name isAdd ->
             let
                 participants =
-                    if isAdd then
+                    if isAdd && Set.size model.meetingParticipants <= 100 then
                         Set.insert name model.meetingParticipants
 
                     else
@@ -813,8 +859,11 @@ update user msg model =
                                 if Set.member key model.meetingParticipants then
                                     Set.remove key model.meetingParticipants
 
-                                else
+                                else if Set.size model.meetingParticipants <= 100 then
                                     Set.insert key model.meetingParticipants
+
+                                else
+                                    model.meetingParticipants
                             )
                         |> Maybe.withDefault model.meetingParticipants
             in
@@ -877,6 +926,46 @@ update user msg model =
               }
             , Effect.none
             )
+
+        TogglePurchaseModal ->
+            ( { model | purchaseModalActive = not model.purchaseModalActive }, Effect.none )
+
+        SetPurchaseTab tab ->
+            let
+                effect =
+                    case tab of
+                        Checkout ->
+                            if model.checkoutIntent == Nothing then
+                                Effect.fromCmd <| requestBeginCheckout model.endpoint user.jwt model.checkoutCredits
+
+                            else
+                                Effect.none
+
+                        _ ->
+                            Effect.none
+            in
+            ( { model | purchaseModalTab = tab }, effect )
+
+        CheckoutIntentResponse resp ->
+            case resp of
+                RemoteData.Success data ->
+                    let
+                        amount =
+                            data.amount
+
+                        secret =
+                            data.clientSecret
+
+                        id =
+                            data.orderId
+                    in
+                    ( { model | checkoutIntent = Just secret }, Effect.none )
+
+                _ ->
+                    ( model, Effect.none )
+
+        SetPurchaseCreditsAmount value ->
+            ( { model | checkoutCredits = String.toInt value |> Maybe.withDefault 5 }, Effect.none )
 
         NoOp ->
             ( model, Effect.none )
@@ -1187,6 +1276,7 @@ sliderView model =
                                                         ]
                                                         [ input
                                                             [ type_ "checkbox"
+                                                            , disabled <| Set.size model.meetingParticipants >= 100
                                                             , checked <| Set.member name model.meetingParticipants
                                                             , onCheck <| SelectMeetingParticipant name
                                                             ]
@@ -1245,7 +1335,7 @@ sliderView model =
                                                                 |> Maybe.map
                                                                     (\participant ->
                                                                         participant.events
-                                                                            ++ (participant.blockedDays |> List.map dayToEvent)
+                                                                            ++ List.map dayToEvent participant.blockedDays
                                                                     )
                                                                 |> Maybe.withDefault []
                                                         )
@@ -1258,7 +1348,7 @@ sliderView model =
                                                 Set.member id model.expandedMeetings
                                         in
                                         div
-                                            [ class "column meeting-item is-4 panel is-info"
+                                            [ class "column meeting-item is-4 panel is-primary"
                                             , classList [ ( "is-danger", List.isEmpty meetingTimes ) ]
                                             ]
                                         <|
@@ -1345,6 +1435,108 @@ sliderView model =
                     ]
                 ]
 
+        ScheduleMeetingsSlider ->
+            div
+                [ class "columns p-2"
+                , classList [ ( "is-clipped", model.purchaseModalActive ) ]
+                ]
+                [ div
+                    [ class "modal"
+                    , classList [ ( "is-active", model.purchaseModalActive ) ]
+                    ]
+                    [ div [ class "modal-background", onClick TogglePurchaseModal ] []
+                    , div [ class "modal-content" ]
+                        [ div [ class "box" ]
+                            [ div [ class "tabs is-centered" ]
+                                [ ul []
+                                    [ li [ classList [ ( "is-active", model.purchaseModalTab == SelectCredits ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Select Credits" ] ]
+                                    , li [ classList [ ( "is-active", model.purchaseModalTab == Checkout ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Checkout with Stripe" ] ]
+                                    ]
+                                ]
+                            , if model.purchaseModalTab == SelectCredits then
+                                form [ onSubmit <| SetPurchaseTab Checkout ]
+                                    [ div [ class "field" ]
+                                        [ label [ class "label" ] [ text "Choose how many credits to purchase" ]
+                                        , div [ class "control has-icons-left" ]
+                                            [ div [ class "select is-fullwidth is-rounded is-medium" ]
+                                                [ select [ onInput SetPurchaseCreditsAmount ]
+                                                    (let
+                                                        purchaseOptions =
+                                                            [ 5, 10, 25, 50 ]
+
+                                                        values =
+                                                            List.map String.fromInt purchaseOptions
+                                                     in
+                                                     purchaseOptions
+                                                        |> List.map
+                                                            (\credits ->
+                                                                option [ value (String.fromInt credits), selected <| model.checkoutCredits == credits ] [ text <| String.fromInt credits ++ " - " ++ displayCreditCost credits ]
+                                                            )
+                                                    )
+                                                ]
+                                            , div [ class "icon is-small is-left" ]
+                                                [ Icon.view Solid.coins ]
+                                            ]
+                                        ]
+                                    , p [ class "subtitle" ] [ text "Note: purchasing more credits is cheaper per-credit." ]
+                                    , button [ class "button is-success" ] [ text "Continue to Checkout" ]
+                                    ]
+
+                              else
+                                div []
+                                    [ p [ class "subtitle" ] [ text "Pay securely with Stripe" ]
+                                    , p [ class "subtitle is-6 mt-1" ] [ text <| "Total: " ++ displayCreditCost model.checkoutCredits ]
+                                    , Maybe.map
+                                        (\secret ->
+                                            let
+                                                cost =
+                                                    computeCreditCostCents model.checkoutCredits
+                                            in
+                                            Html.node "stripe-web-component"
+                                                [ attribute "amount" (String.fromInt cost), attribute "client-secret" secret ]
+                                                []
+                                        )
+                                        model.checkoutIntent
+                                        |> Maybe.withDefault (Icon.view Solid.spinner)
+                                    , p [ class "subtitle is-6 mt-1" ] [ text "Note: you will be redirected to a confirmation page upon successful payment" ]
+                                    ]
+                            ]
+                        ]
+                    ]
+                , div [ class "column is-3" ]
+                    [ div [ class "card" ]
+                        [ div [ class "card-content" ]
+                            [ div [ class "media" ]
+                                [ div [ class "media-left" ] [ Icon.view Solid.user ]
+                                , div [ class "media-content" ]
+                                    [ h2 [ class "title is-4" ] [ text <| "Credits: " ++ String.fromInt model.credits ]
+                                    , p [ class "subtitle is-6" ] [ text "Each credit can be used to compute a schedule" ]
+                                    ]
+                                ]
+                            ]
+                        , Html.footer [ class "card-footer" ]
+                            [ button [ class "card-footer-item button is-success", onClick TogglePurchaseModal ] [ text "Purchase more credits" ]
+                            ]
+                        ]
+                    ]
+                , div [ class "column is-9" ]
+                    []
+                ]
+
+
+computeCreditCostCents : Int -> Int
+computeCreditCostCents credits =
+    25 * (round <| 9 * (toFloat credits ^ 0.725))
+
+
+displayCreditCost : Int -> String
+displayCreditCost credits =
+    let
+        cost =
+            computeCreditCostCents credits
+    in
+    "$" ++ (String.fromInt <| cost // 100) ++ "." ++ String.padRight 2 '0' (String.fromInt <| modBy 100 cost)
+
 
 view : Shared.Model -> Model -> View Msg
 view shared model =
@@ -1374,11 +1566,11 @@ view shared model =
                             , onClick <| SetSliderState AvailableCalendarSlider
                             ]
                             [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarWeek ]
-                            , div [ class "steps-content" ] [ text "Set Available Times" ]
+                            , div [ class "steps-content" ] [ text "Available Times" ]
                             ]
                         ]
                     , li
-                        [ tooltip "Add people to meet with - and when they can't meet"
+                        [ tooltip "Add people to meet with - and block off times they can't meet"
                         , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
                         , classList
                             [ ( "is-active", model.slider == ParticipantCalendarSlider )
@@ -1390,9 +1582,9 @@ view shared model =
                             , class "has-text-dark"
                             , onClick <| SetSliderState ParticipantCalendarSlider
                             ]
-                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.user ]
+                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.users ]
                             , div [ class "steps-content" ]
-                                [ text "Add Participants"
+                                [ text "Participants"
                                 , span [ class "ml-2" ]
                                     [ text <|
                                         if Dict.isEmpty model.participants then
@@ -1419,7 +1611,7 @@ view shared model =
                             ]
                             [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarPlus ]
                             , div [ class "steps-content" ]
-                                [ text "Create Meetings"
+                                [ text "Meetings"
                                 , span [ class "ml-2" ]
                                     [ text <|
                                         if Dict.isEmpty model.meetings then
@@ -1429,6 +1621,23 @@ view shared model =
                                             "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
                                     ]
                                 ]
+                            ]
+                        ]
+                    , li
+                        [ tooltip "Find a way to schedule your meetings"
+                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                        , classList
+                            [ ( "is-active", model.slider == ScheduleMeetingsSlider )
+                            , ( "ignore-pointer-events", Dict.isEmpty model.meetings )
+                            ]
+                        ]
+                        [ a
+                            [ href "#"
+                            , class "has-text-dark"
+                            , onClick <| SetSliderState ScheduleMeetingsSlider
+                            ]
+                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.robot ]
+                            , div [ class "steps-content" ] [ text "Compute Schedule" ]
                             ]
                         ]
                     ]

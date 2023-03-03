@@ -2,6 +2,7 @@ use crate::meeting::Meeting;
 use crate::time::{Available, Pigeons, TimeMerge, TimeRange, Validate, Windowed};
 use core::fmt::{Debug, Display};
 use log::{debug, info, trace};
+use num::traits::AsPrimitive;
 use num::{CheckedAdd, CheckedSub, Integer, One};
 use std::cmp::Ordering;
 use std::collections::BTreeMap;
@@ -128,6 +129,7 @@ impl<
             + Integer
             + One
             + Clone
+            + AsPrimitive<usize>
             + Copy
             + std::iter::Sum
             + std::ops::AddAssign
@@ -138,6 +140,7 @@ impl<
         #[cfg(all(not(feature = "rayon"), not(feature = "serde")))] N: Display
             + Debug
             + Integer
+            + AsPrimitive<usize>
             + One
             + Clone
             + Copy
@@ -150,6 +153,7 @@ impl<
             + Debug
             + Integer
             + One
+            + AsPrimitive<usize>
             + Clone
             + Copy
             + std::iter::Sum
@@ -166,6 +170,7 @@ impl<
             + One
             + Clone
             + Copy
+            + AsPrimitive<usize>
             + std::iter::Sum
             + std::ops::AddAssign
             + CheckedSub
@@ -190,7 +195,18 @@ impl<
     }
 }
 
-type MeetingSchedule<N> = Vec<(String, N, Vec<TimeRange<N>>)>;
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+struct MeetingScheduleInfo<N>
+where
+    N: Integer + Debug + Display + Debug + Copy,
+{
+    id: String,
+    duration: N,
+    availability: Vec<TimeRange<N>>,
+}
+
+type MeetingSchedule<N> = Vec<MeetingScheduleInfo<N>>;
 
 impl<
         #[cfg(all(not(feature = "rayon"), feature = "serde"))] N: Display
@@ -199,6 +215,7 @@ impl<
             + One
             + Clone
             + Copy
+            + AsPrimitive<usize>
             + std::iter::Sum
             + std::ops::AddAssign
             + CheckedSub
@@ -209,6 +226,7 @@ impl<
             + Integer
             + One
             + Clone
+            + AsPrimitive<usize>
             + Copy
             + std::iter::Sum
             + std::ops::AddAssign
@@ -220,6 +238,7 @@ impl<
             + One
             + Clone
             + Copy
+            + AsPrimitive<usize>
             + std::iter::Sum
             + std::ops::AddAssign
             + CheckedSub
@@ -231,6 +250,7 @@ impl<
             + Debug
             + Integer
             + One
+            + AsPrimitive<usize>
             + Clone
             + Copy
             + std::iter::Sum
@@ -258,14 +278,32 @@ impl<
                 if meeting_availability.is_empty() {
                     None
                 } else {
-                    Some((
-                        meeting.id.clone(),
-                        meeting.duration,
-                        meeting.get_availability(&self.availability),
-                    ))
+                    Some(MeetingScheduleInfo {
+                        id: meeting.id.clone(),
+                        duration: meeting.duration,
+                        availability: meeting.get_availability(&self.availability),
+                    })
                 }
             })
             .collect()
+    }
+
+    pub fn compute_windows(&self) -> usize {
+        self.meetings
+            .iter()
+            .map(|meeting| {
+                let meeting_availability = meeting.get_availability(&self.availability);
+                if meeting_availability.is_empty() {
+                    <N>::one()
+                } else {
+                    meeting_availability
+                        .iter()
+                        .map(|t| t.end() - t.start() - (meeting.duration - <N>::one()))
+                        .sum::<N>()
+                }
+            })
+            .map(|n| n.as_())
+            .product()
     }
 
     fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
@@ -277,11 +315,11 @@ impl<
 
         let pigeon_holes = meeting_availability
             .iter()
-            .flat_map(|m| m.2.iter())
+            .flat_map(|m| m.availability.iter())
             .time_merge()
             .count_pigeons();
 
-        let mut pigeon_iter = self.meetings.iter().map(|m| m.duration);
+        let mut pigeon_iter = meeting_availability.iter().map(|m| m.duration);
 
         let pigeon_counter =
             pigeon_iter.try_fold(<N>::zero(), |acc, n| match acc.checked_add(&n) {
@@ -355,7 +393,7 @@ impl<
     ///
     /// let schedule = Schedule::new(meetings, available_slots);
     ///
-    /// match schedule.schedule_meetings(None) {
+    /// match schedule.schedule_meetings(None, None, None) {
     ///     Err(ValidationError::PigeonholeError {
     ///         pigeons,
     ///         pigeon_holes,
@@ -395,7 +433,7 @@ impl<
     ///
     /// let schedule = Schedule::new(meetings, available_slots);
     ///
-    /// match schedule.schedule_meetings(None) {
+    /// match schedule.schedule_meetings(None, None, None) {
     ///     Err(ValidationError::PigeonholeError {
     ///         pigeons,
     ///         pigeon_holes,
@@ -439,19 +477,21 @@ impl<
     ///
     /// // First - A single iteration is attempted
     /// assert!(matches!(
-    ///     schedule.schedule_meetings(Some(1)),
+    ///     schedule.schedule_meetings(Some(1), None, None),
     ///     Err(ValidationError::NoSolutionWithinIteration(1))
     /// ));
     ///
     /// // No matter how many iterations we provide, no solution will be found
     /// assert!(matches!(
-    ///     schedule.schedule_meetings(None),
+    ///     schedule.schedule_meetings(None, None, None),
     ///     Err(ValidationError::NoSolution)
     /// ));
     /// ```
     pub fn schedule_meetings(
         &self,
         count: Option<usize>,
+        _per_thread: Option<usize>,
+        _num_shuffles: Option<usize>,
     ) -> Result<Vec<(String, TimeRange<N>)>, ValidationError<N>> {
         /*
         TODO: We do it like this for now because we can *technically* setup
@@ -464,32 +504,34 @@ impl<
             #[cfg(feature = "rayon")]
             setup.par_sort_unstable_by(|a, b| {
                 match (a
-                    .2
+                    .availability
                     .iter()
-                    .map(|t| t.end() - t.start() - (a.1 - <N>::one()))
+                    .map(|t| t.end() - t.start() - (a.duration - <N>::one()))
                     .sum::<N>())
                 .cmp(
-                    &b.2.iter()
-                        .map(|t| t.end() - t.start() - (b.1 - <N>::one()))
+                    &b.availability
+                        .iter()
+                        .map(|t| t.end() - t.start() - (b.duration - <N>::one()))
                         .sum::<N>(),
                 ) {
-                    Ordering::Equal => a.1.cmp(&b.1),
+                    Ordering::Equal => a.duration.cmp(&b.duration),
                     e => e,
                 }
             });
             #[cfg(not(feature = "rayon"))]
             setup.sort_unstable_by(|a, b| {
                 match (a
-                    .2
+                    .availability
                     .iter()
-                    .map(|t| t.end() - t.start() - (a.1 - <N>::one()))
+                    .map(|t| t.end() - t.start() - (a.duration - <N>::one()))
                     .sum::<N>())
                 .cmp(
-                    &b.2.iter()
-                        .map(|t| t.end() - t.start() - (b.1 - <N>::one()))
+                    &b.availability
+                        .iter()
+                        .map(|t| t.end() - t.start() - (b.duration - <N>::one()))
                         .sum::<N>(),
                 ) {
-                    Ordering::Equal => a.1.cmp(&b.1),
+                    Ordering::Equal => a.duration.cmp(&b.duration),
                     e => e,
                 }
             });
@@ -519,12 +561,14 @@ impl<
                     // * This should probably be changed in the future
                     // * to be configurable
                     schedule_shuffle(
-                    Some(match count {
-                        Some(n) => n.min(10_000),
-                        None => 10_000,
-                    }),
+                    match (count, _per_thread) {
+                        (Some(n), Some(o)) => Some(n.min(o)),
+                        (Some(n), None) => Some(n),
+                        (None, Some(o)) => Some(o),
+                        (None, None) => None
+                    },
                     meetings,
-                ).take(45))
+                ).take(_num_shuffles.unwrap_or(45)))
                 .par_bridge()
                 .find_map_any(
                     move |(is_primary, iteration_count, meeting_configuration)| {
@@ -568,7 +612,7 @@ impl<
 
     fn schedule_setup(
         len: usize,
-        meetings: &[(String, N, Vec<TimeRange<N>>)],
+        meetings: &[MeetingScheduleInfo<N>],
         count: Option<usize>,
         #[cfg(feature = "rayon")] should_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
     ) -> Result<Vec<(String, TimeRange<N>)>, ValidationError<N>> {
@@ -592,9 +636,9 @@ impl<
             }
 
             if meetings.iter().enumerate().skip(nth - 1).all(
-                |(index, (meeting_id, duration, meeting_times))| match meeting_times
+                |(index, schedule_info)| match schedule_info.availability
                     .iter()
-                    .windowed(*duration)
+                    .windowed(schedule_info.duration)
                     .enumerate()
                     .skip(state[index])
                     .find(|(_time_index, time)| {
@@ -608,7 +652,7 @@ impl<
                         trace!(target: "Schedule", time = log::as_display!(time); "Attempting to add new time for scheduling");
 
                         state[index] = i;
-                        solution.insert(time.into(), meeting_id.to_owned());
+                        solution.insert(time.into(), schedule_info.id.to_owned());
                         last_key.push(time);
                         nth += 1;
                         true

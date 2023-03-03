@@ -23,7 +23,7 @@ fuzz_target!(|data: Schedule<u8>| {
         .chain(std::io::stdout())
         .apply();
 
-    if let Ok(schedule) = data.schedule_meetings(None) {
+    if let Ok(schedule) = data.schedule_meetings(None, None, None) {
         let available: Vec<TimeRange<_>> = data.availability.iter().time_merge().collect();
         let schedule_times = schedule.iter().map(|m| &m.1);
         if let Some(e) = schedule_times.clone().find(|t| {

@@ -24,12 +24,34 @@ type Meeting {
 type PaymentIntent {
   clientSecret: String!
   amount: Int
+  orderId: ID!
+}
+
+type PaymentUpdate {
+  amount: Int!
+}
+
+type Schedules {
+  data: [ScheduleResponse!]!
+  nextToken: String
+}
+
+type ScheduleMeetingResult {
+  id: String!,
+  time: Event!
+}
+
+type ScheduleResponse {
+  schedule: [ScheduleMeetingResult!]
+  failed: [String!]
+  error: String
 }
 
 type Query @aws_cognito_user_pools {
   calendars: [Calendar!]!
   meetings: [Meeting!]!
   user: User!
+  schedules(limit: Int!, nextToken: String): Schedules
 }
 
 input EventInput {
@@ -48,7 +70,9 @@ type Mutation @aws_cognito_user_pools {
   ): Meeting!
   deleteMeeting(created: Long!): Meeting
   saveEvents(events: [EventInput!]!): [Event!]!
-  beginCheckout(credits: Int!): PaymentIntent
+  beginCheckout(credits: Int!): PaymentIntent!
+  updateCheckout(credits: Int!, orderId: ID!): PaymentUpdate!
+  computeSchedule(credits: Int!): ScheduleResponse!
   creditsChanged(userId: ID!, credits: Int!): Int!
     @aws_auth(cognito_groups: ["Backend"])
 }

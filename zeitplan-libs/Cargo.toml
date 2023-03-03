@@ -35,7 +35,7 @@ harness = false
 
 [features]
 default = []
-arbitrary = ["dep:arbitrary", "dep:uuid"]
+arbitrary = ["dep:arbitrary", "dep:uuid", "rayon"]
 rayon = ["dep:rayon", "dep:rand"]
 serde = ["dep:serde", "log/kv_unstable_serde"]
 wasm = ["serde", "dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
