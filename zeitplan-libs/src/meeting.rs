@@ -122,7 +122,7 @@ where
     /// to schedule _first_.
     pub fn sort_val(&self, available_times: &[TimeRange<N>]) -> N {
         available_times.iter().fold(<N>::one(), |acc, time| {
-            acc + time.1 - (self.duration + time.0 + <N>::one())
+            acc + time.end - (self.duration + time.start + <N>::one())
         })
     }
 }
@@ -177,7 +177,7 @@ where
             .iter()
             .blocks(self.blocked_times.iter())
             .filter(|&time| {
-                (time.1 - time.0)
+                (time.end - time.start)
                     .checked_add(&<N>::one())
                     .map(|n| n >= self.duration)
                     // Only happens if timespan is the max value available

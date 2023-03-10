@@ -1,4 +1,21 @@
-module Calendar exposing (CalendarState, Event, Model, Msg, Weekday, addEvent, dayString, dayToEvent, encodeEvent, init, isSaveMsg, stringToDay, timeRangeToDayString, update, view)
+module Calendar exposing
+    ( CalendarState
+    , Event
+    , Model
+    , Msg
+    , Weekday
+    , addEvent
+    , dayString
+    , dayToEvent
+    , encodeEvent
+    , init
+    , isSaveMsg
+    , stringToDay
+    , timeRangeToDayString
+    , timeToDayString
+    , update
+    , view
+    )
 
 import Array
 import Effect exposing (Effect)
@@ -222,20 +239,23 @@ timeSlotToString timeSlot =
     String.fromInt twelveHour ++ ":" ++ (String.padLeft 2 '0' <| String.fromInt time) ++ " " ++ meridian
 
 
+timeToDayString : Int -> String
+timeToDayString slot =
+    Array.get (slot // slots) days
+        |> Maybe.map dayString
+        |> Maybe.withDefault ""
+
+
 timeRangeToDayString : Int -> Int -> String
 timeRangeToDayString startTimeslot endTimeslot =
     let
         startDayOfWeek : String
         startDayOfWeek =
-            Array.get (startTimeslot // slots) days
-                |> Maybe.map dayString
-                |> Maybe.withDefault ""
+            timeToDayString startTimeslot
 
         endDayOfWeek : String
         endDayOfWeek =
-            Array.get (endTimeslot // slots) days
-                |> Maybe.map dayString
-                |> Maybe.withDefault ""
+            timeToDayString endTimeslot
 
         startTime =
             timeSlotToString startTimeslot

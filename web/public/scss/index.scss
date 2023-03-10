@@ -1,5 +1,6 @@
 $primary: #264d4a;
 $success: #86ce93;
+$danger: #843e37;
 $dark: #271f26;
 $info: #3f3024;
 $link: #ad7d59;
@@ -27,6 +28,7 @@ $background: #fafcfb;
 @import "node_modules/bulma/sass/elements/notification";
 @import "node_modules/bulma/sass/elements/other";
 @import "node_modules/bulma/sass/elements/title";
+@import "node_modules/bulma/sass/elements/table";
 @import "node_modules/bulma/sass/form/_all";
 @import "node_modules/bulma/sass/grid/columns";
 @import "node_modules/bulma/sass/helpers/flexbox";

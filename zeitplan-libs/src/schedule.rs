@@ -90,6 +90,27 @@ where
     pub availability: Vec<TimeRange<N>>,
 }
 
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct ScheduleResult<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    pub count: usize,
+    pub results: Vec<MeetingTime<N>>,
+    pub indices: Vec<usize>,
+}
+
+#[derive(Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize))]
+pub struct MeetingTime<N>
+where
+    N: Integer + One + Copy + Display + Debug,
+{
+    pub id: String,
+    pub time: TimeRange<N>,
+}
+
 impl<N> Validate for Schedule<N>
 where
     N: Integer + One + Copy + Display + Debug,
@@ -298,7 +319,7 @@ impl<
                 } else {
                     meeting_availability
                         .iter()
-                        .map(|t| t.end() - t.start() - (meeting.duration - <N>::one()))
+                        .map(|t| t.end - t.start - (meeting.duration - <N>::one()))
                         .sum::<N>()
                 }
             })
@@ -492,7 +513,7 @@ impl<
         count: Option<usize>,
         _per_thread: Option<usize>,
         _num_shuffles: Option<usize>,
-    ) -> Result<Vec<(String, TimeRange<N>)>, ValidationError<N>> {
+    ) -> Result<ScheduleResult<N>, ValidationError<N>> {
         /*
         TODO: We do it like this for now because we can *technically* setup
         any iteration order we want. For instance - we can now spawn separate/
@@ -506,12 +527,12 @@ impl<
                 match (a
                     .availability
                     .iter()
-                    .map(|t| t.end() - t.start() - (a.duration - <N>::one()))
+                    .map(|t| t.end - t.start - (a.duration - <N>::one()))
                     .sum::<N>())
                 .cmp(
                     &b.availability
                         .iter()
-                        .map(|t| t.end() - t.start() - (b.duration - <N>::one()))
+                        .map(|t| t.end - t.start - (b.duration - <N>::one()))
                         .sum::<N>(),
                 ) {
                     Ordering::Equal => a.duration.cmp(&b.duration),
@@ -523,12 +544,12 @@ impl<
                 match (a
                     .availability
                     .iter()
-                    .map(|t| t.end() - t.start() - (a.duration - <N>::one()))
+                    .map(|t| t.end - t.start - (a.duration - <N>::one()))
                     .sum::<N>())
                 .cmp(
                     &b.availability
                         .iter()
-                        .map(|t| t.end() - t.start() - (b.duration - <N>::one()))
+                        .map(|t| t.end - t.start - (b.duration - <N>::one()))
                         .sum::<N>(),
                 ) {
                     Ordering::Equal => a.duration.cmp(&b.duration),
@@ -615,7 +636,7 @@ impl<
         meetings: &[MeetingScheduleInfo<N>],
         count: Option<usize>,
         #[cfg(feature = "rayon")] should_stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    ) -> Result<Vec<(String, TimeRange<N>)>, ValidationError<N>> {
+    ) -> Result<ScheduleResult<N>, ValidationError<N>> {
         let mut nth: usize = 1;
         let mut count_iter: usize = 0;
         let mut state: Vec<usize> = vec![0; len];
@@ -632,8 +653,9 @@ impl<
                 if limit == count_iter {
                     return Err(ValidationError::NoSolutionWithinIteration(limit));
                 }
-                count_iter += 1;
             }
+
+            count_iter += 1;
 
             if meetings.iter().enumerate().skip(nth - 1).all(
                 |(index, schedule_info)| match schedule_info.availability
@@ -681,12 +703,12 @@ impl<
                 #[cfg(feature = "rayon")]
                 let as_ret = solution
                     .into_par_iter()
-                    .map(|(k, v)| (v, TimeRange::from(k)))
+                    .map(|(k, v)| MeetingTime { id: v, time: TimeRange::from(k)} )
                     .collect();
                 #[cfg(not(feature = "rayon"))]
                 let as_ret = solution
                     .into_iter()
-                    .map(|(k, v)| (v, TimeRange::from(k)))
+                    .map(|(k, v)| MeetingTime { id: v, time: TimeRange::from(k)} )
                     .collect();
 
                 #[cfg(feature = "serde")]
@@ -704,7 +726,7 @@ impl<
                 // Stop processing on other threads
                 should_stop.store(true, std::sync::atomic::Ordering::SeqCst);
 
-                return Ok(as_ret);
+                return Ok(ScheduleResult { count: count_iter, results: as_ret, indices: state });
             }
             if nth == 0 {
                 #[cfg(feature = "rayon")]
@@ -720,16 +742,20 @@ impl<
 /// Inclusive [start, end] time range
 /// <N>: Any integer type
 #[derive(Debug, Copy, Clone, Eq)]
-struct InternalTimeRange<N>(pub N, pub N)
+struct InternalTimeRange<N>
 where
-    N: Integer + One + Copy;
+    N: Integer + One + Copy,
+{
+    start: N,
+    end: N,
+}
 
 impl<N> From<InternalTimeRange<N>> for TimeRange<N>
 where
     N: Integer + One + Copy + Display + Debug,
 {
     fn from(other: InternalTimeRange<N>) -> Self {
-        TimeRange::new(other.0, other.1)
+        TimeRange::new(other.start, other.end)
     }
 }
 
@@ -738,7 +764,7 @@ where
     N: Integer + One + Copy + Display + Debug,
 {
     fn from(other: TimeRange<N>) -> Self {
-        InternalTimeRange::new(other.0, other.1)
+        InternalTimeRange::new(other.start, other.end)
     }
 }
 
@@ -747,7 +773,7 @@ where
     N: Integer + One + Copy + Display + Debug,
 {
     fn from(other: &TimeRange<N>) -> Self {
-        InternalTimeRange::new(other.0, other.1)
+        InternalTimeRange::new(other.start, other.end)
     }
 }
 
@@ -757,18 +783,13 @@ where
 {
     fn new(start: N, end: N) -> Self {
         if start > end {
-            InternalTimeRange(end, start)
+            InternalTimeRange {
+                start: end,
+                end: start,
+            }
         } else {
-            InternalTimeRange(start, end)
+            InternalTimeRange { start, end }
         }
-    }
-
-    fn start(self) -> N {
-        self.0
-    }
-
-    fn end(self) -> N {
-        self.1
     }
 }
 
@@ -777,9 +798,9 @@ where
     N: Integer + Copy,
 {
     fn cmp(&self, other: &Self) -> Ordering {
-        match self.start().cmp(&other.start()) {
-            Ordering::Less if self.end() < other.start() => Ordering::Less,
-            Ordering::Greater if self.start() > other.end() => Ordering::Greater,
+        match self.start.cmp(&other.start) {
+            Ordering::Less if self.end < other.start => Ordering::Less,
+            Ordering::Greater if self.start > other.end => Ordering::Greater,
             _ => Ordering::Equal,
         }
     }
@@ -799,6 +820,6 @@ where
     N: Integer + Copy,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.0 == other.0 && self.1 == other.1
+        self.start == other.start && self.end == other.end
     }
 }

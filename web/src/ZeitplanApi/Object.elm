@@ -37,5 +37,9 @@ type Schedules
     = Schedules
 
 
+type StatusResponse
+    = StatusResponse
+
+
 type User
     = User

@@ -112,7 +112,7 @@ beginCheckout requiredArgs____ object____ =
 
 type alias UpdateCheckoutRequiredArguments =
     { credits : Int
-    , orderId : String
+    , orderId : ZeitplanApi.ScalarCodecs.Id
     }
 
 
@@ -121,7 +121,19 @@ updateCheckout :
     -> SelectionSet decodesTo ZeitplanApi.Object.PaymentUpdate
     -> SelectionSet decodesTo RootMutation
 updateCheckout requiredArgs____ object____ =
-    Object.selectionForCompositeField "updateCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int, Argument.required "orderId" requiredArgs____.orderId Encode.string ] object____ Basics.identity
+    Object.selectionForCompositeField "updateCheckout" [ Argument.required "credits" requiredArgs____.credits Encode.int, Argument.required "orderId" requiredArgs____.orderId (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapEncoder .codecId) ] object____ Basics.identity
+
+
+type alias DeleteCheckoutRequiredArguments =
+    { orderId : ZeitplanApi.ScalarCodecs.Id }
+
+
+deleteCheckout :
+    DeleteCheckoutRequiredArguments
+    -> SelectionSet decodesTo ZeitplanApi.Object.StatusResponse
+    -> SelectionSet (Maybe decodesTo) RootMutation
+deleteCheckout requiredArgs____ object____ =
+    Object.selectionForCompositeField "deleteCheckout" [ Argument.required "orderId" requiredArgs____.orderId (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapEncoder .codecId) ] object____ (Basics.identity >> Decode.nullable)
 
 
 type alias ComputeScheduleRequiredArguments =

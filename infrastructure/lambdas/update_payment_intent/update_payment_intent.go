@@ -19,6 +19,7 @@ import (
 type Request struct {
 	Credits *int    `json:"credits"`
 	OrderId *string `json:"orderId"`
+	UserId  *string `json:"userId"`
 }
 
 type Response struct {
@@ -30,8 +31,9 @@ type UpdateKey struct {
 }
 
 type UpdateRequest struct {
-	Amount  int `dynamodbav:":amount"`
-	Credits int `dynamodbav:":credits"`
+	Amount  int    `dynamodbav:":amount"`
+	Credits int    `dynamodbav:":credits"`
+	UserId  string `dynamodbav:":userId"`
 }
 
 var (
@@ -52,15 +54,15 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		return Response{}, errors.New("PaymentIntentRequired")
 	}
 
+	if req.UserId == nil {
+		return Response{}, errors.New("UsernameRequired")
+	}
+
 	paymentAmount := ComputeCreditAmount(credits)
 
 	stripePayment := &stripe.PaymentIntentParams{
-		Amount:      stripe.Int64(paymentAmount),
-		Currency:    stripe.String(string(stripe.CurrencyUSD)),
-		Description: stripe.String("Add credits to your account"),
-		AutomaticPaymentMethods: &stripe.PaymentIntentAutomaticPaymentMethodsParams{
-			Enabled: stripe.Bool(true),
-		},
+		Amount:   stripe.Int64(paymentAmount),
+		Currency: stripe.String(string(stripe.CurrencyUSD)),
 	}
 
 	pi, err := paymentintent.Update(*req.OrderId, stripePayment)
@@ -93,20 +95,16 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		return Response{}, err
 	}
 
-	updateValues, err := attributevalue.MarshalMap(UpdateRequest{
-		Amount:  int(paymentAmount),
-		Credits: *req.Credits,
-	})
-
 	if err != nil {
 		log.Println("Could not marshall update values")
 		return Response{}, err
 	}
 
-	update := expression.Set(expression.Name("amount"), expression.Value(updateValues[":amount"]))
-	update.Set(expression.Name("credits"), expression.Value(updateValues[":credits"]))
+	update := expression.Set(expression.Name("amount"), expression.Value(paymentAmount))
+	update.Set(expression.Name("credits"), expression.Value(req.Credits))
+	condition := expression.Equal(expression.Name("userId"), expression.Value(req.UserId))
 
-	updateExpression, err := expression.NewBuilder().WithUpdate(update).Build()
+	updateExpression, err := expression.NewBuilder().WithCondition(condition).WithUpdate(update).Build()
 
 	if err != nil {
 		log.Println("Could not build update expression")
@@ -119,6 +117,7 @@ func HandleRequest(ctx context.Context, req Request) (Response, error) {
 		ExpressionAttributeNames:  updateExpression.Names(),
 		ExpressionAttributeValues: updateExpression.Values(),
 		TableName:                 &tableName,
+		ConditionExpression:       updateExpression.Condition(),
 	}
 
 	_, err = client.UpdateItem(ctx, &updateItemInput)

@@ -73,7 +73,6 @@ customElements.define(
 
       this._elements = this._stripe.elements({
         clientSecret: this.getAttribute("client-secret"),
-        amount: Number(this.getAttribute("amount")),
         appearance: {
           theme: "flat"
         }
@@ -112,8 +111,6 @@ customElements.define(
       this._form.onsubmit = async (e) => {
         e.preventDefault();
         if (this._elements === null || this._stripe === null) return;
-
-        this.dispatchEvent(new CustomEvent("formSubmit"));
 
         const { error } = await this._stripe?.confirmPayment({
           elements: this._elements,

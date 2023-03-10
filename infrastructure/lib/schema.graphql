@@ -41,9 +41,14 @@ type ScheduleMeetingResult {
   time: Event!
 }
 
+type StatusResponse {
+  success: Boolean
+}
+
 type ScheduleResponse {
-  schedule: [ScheduleMeetingResult!]
+  results: [ScheduleMeetingResult!]
   failed: [String!]
+  created: Long!
   error: String
 }
 
@@ -72,6 +77,7 @@ type Mutation @aws_cognito_user_pools {
   saveEvents(events: [EventInput!]!): [Event!]!
   beginCheckout(credits: Int!): PaymentIntent!
   updateCheckout(credits: Int!, orderId: ID!): PaymentUpdate!
+  deleteCheckout(orderId: ID!): StatusResponse
   computeSchedule(credits: Int!): ScheduleResponse!
   creditsChanged(userId: ID!, credits: Int!): Int!
     @aws_auth(cognito_groups: ["Backend"])

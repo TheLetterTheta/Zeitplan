@@ -5,6 +5,9 @@ build-stripe-checkout:
 
 build-update-checkout:
     just lambdas/update_payment_intent/build
+
+build-cancel-checkout:
+    just lambdas/cancel_payment_intent/build
     
 build-create-user:
     just lambdas/create_user/build
@@ -18,4 +21,4 @@ build-user-db-stream:
 deploy:
     cdk deploy --outputs-file ../web/aws-cdk-outputs.json
     
-build: build-stripe-checkout build-create-user build-stripe-webhook build-user-db-stream build-update-checkout
+build: build-stripe-checkout build-create-user build-stripe-webhook build-user-db-stream build-update-checkout build-cancel-checkout

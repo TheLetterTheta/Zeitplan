@@ -19,16 +19,21 @@ import ZeitplanApi.ScalarCodecs
 import ZeitplanApi.Union
 
 
-schedule :
+results :
     SelectionSet decodesTo ZeitplanApi.Object.ScheduleMeetingResult
     -> SelectionSet (Maybe (List decodesTo)) ZeitplanApi.Object.ScheduleResponse
-schedule object____ =
-    Object.selectionForCompositeField "schedule" [] object____ (Basics.identity >> Decode.list >> Decode.nullable)
+results object____ =
+    Object.selectionForCompositeField "results" [] object____ (Basics.identity >> Decode.list >> Decode.nullable)
 
 
 failed : SelectionSet (Maybe (List String)) ZeitplanApi.Object.ScheduleResponse
 failed =
     Object.selectionForField "(Maybe (List String))" "failed" [] (Decode.string |> Decode.list |> Decode.nullable)
+
+
+created : SelectionSet ZeitplanApi.ScalarCodecs.Long ZeitplanApi.Object.ScheduleResponse
+created =
+    Object.selectionForField "ScalarCodecs.Long" "created" [] (ZeitplanApi.ScalarCodecs.codecs |> ZeitplanApi.Scalar.unwrapCodecs |> .codecLong |> .decoder)
 
 
 error : SelectionSet (Maybe String) ZeitplanApi.Object.ScheduleResponse

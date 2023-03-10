@@ -1,9 +1,10 @@
 module Pages.Schedule exposing (Model, Msg, Participant, page)
 
 import Browser.Dom as Dom exposing (setViewportOf)
-import Calendar exposing (Event, Weekday, addEvent, dayString, dayToEvent, encodeEvent, isSaveMsg, stringToDay, timeRangeToDayString)
+import Calendar exposing (Event, Weekday, addEvent, dayString, dayToEvent, encodeEvent, isSaveMsg, stringToDay, timeRangeToDayString, timeToDayString)
 import Decoders exposing (AuthUser)
 import Dict exposing (Dict)
+import Dict.Extra exposing (groupBy)
 import Effect exposing (Effect, fromCmd)
 import FontAwesome as Icon
 import FontAwesome.Attributes exposing (fa10x, spin)
@@ -14,7 +15,7 @@ import Graphql.Http
 import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
-import Html exposing (Html, a, aside, button, code, datalist, div, figure, footer, form, h2, h3, h4, header, img, input, label, li, option, p, section, select, span, text, ul)
+import Html exposing (Html, a, aside, button, code, datalist, div, figure, footer, form, h2, h3, h4, header, img, input, label, li, option, p, section, select, span, table, tbody, td, text, tfoot, th, thead, tr, ul)
 import Html.Attributes exposing (attribute, checked, class, classList, disabled, for, href, id, list, name, placeholder, selected, style, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
@@ -26,7 +27,7 @@ import Request
 import Set exposing (Set)
 import Shared exposing (isError, saveKey)
 import Task
-import Time exposing (Posix)
+import Time exposing (Posix, Zone)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, tooltip, zeitplanNav)
 import ZeitplanApi.Mutation as Mutation
@@ -35,6 +36,9 @@ import ZeitplanApi.Object.Calendar as ApiCalendar
 import ZeitplanApi.Object.Event as ApiEvent
 import ZeitplanApi.Object.Meeting as ApiMeeting
 import ZeitplanApi.Object.PaymentIntent as ApiCheckout
+import ZeitplanApi.Object.ScheduleMeetingResult as ApiScheduleMeetingResult
+import ZeitplanApi.Object.ScheduleResponse as ApiScheduleResponse
+import ZeitplanApi.Object.Schedules as ApiSchedules
 import ZeitplanApi.Object.User as ApiUser
 import ZeitplanApi.Query as Query
 import ZeitplanApi.Scalar exposing (Id, Long(..))
@@ -159,10 +163,54 @@ calendarsQuery =
         |> with ApiCalendar.blockedDays
 
 
+type alias ScheduleResult =
+    { id : String
+    , time : GraphqlEvent
+    }
+
+
+responseQuery : SelectionSet ScheduleResult ZeitplanApi.Object.ScheduleMeetingResult
+responseQuery =
+    SelectionSet.succeed ScheduleResult
+        |> with ApiScheduleMeetingResult.id
+        |> with (ApiScheduleMeetingResult.time eventQuery)
+
+
+type alias Schedule =
+    { results : Maybe (List ScheduleResult)
+    , failed : Maybe (List String)
+    , error : Maybe String
+    , created : Long
+    }
+
+
+dataQuery : SelectionSet Schedule ZeitplanApi.Object.ScheduleResponse
+dataQuery =
+    SelectionSet.succeed Schedule
+        |> with (ApiScheduleResponse.results responseQuery)
+        |> with ApiScheduleResponse.failed
+        |> with ApiScheduleResponse.error
+        |> with ApiScheduleResponse.created
+
+
+type alias Schedules =
+    { data : List Schedule
+    , nextToken : Maybe String
+    }
+
+
+schedulesQuery : SelectionSet Schedules ZeitplanApi.Object.Schedules
+schedulesQuery =
+    SelectionSet.succeed Schedules
+        |> with (ApiSchedules.data dataQuery)
+        |> with ApiSchedules.nextToken
+
+
 type alias InitialQuery =
     { user : GraphqlUser
     , calendars : List GraphqlCalendar
     , meetings : List GraphqlMeeting
+    , schedules : Maybe Schedules
     }
 
 
@@ -172,6 +220,7 @@ initialLoad =
         |> with (Query.user userQuery)
         |> with (Query.calendars calendarsQuery)
         |> with (Query.meetings meetingsQuery)
+        |> with (Query.schedules (always { nextToken = Absent }) { limit = 5 } schedulesQuery)
 
 
 requestInitialLoad : String -> String -> Cmd Msg
@@ -235,13 +284,11 @@ type alias DeleteCalendarResponse =
     { name : String }
 
 
-gqlDeleteParticipant : String -> SelectionSet (Maybe DeleteCalendarResponse) RootMutation
+gqlDeleteParticipant : String -> SelectionSet (Maybe ()) RootMutation
 gqlDeleteParticipant key =
     Mutation.deleteCalendar
         (Mutation.DeleteCalendarRequiredArguments key)
-        (SelectionSet.succeed DeleteCalendarResponse
-            |> with ApiCalendar.name
-        )
+        SelectionSet.empty
 
 
 requestDeleteParticipant : String -> String -> String -> Cmd Msg
@@ -256,7 +303,7 @@ type alias SaveMeetingResponse =
     { created : Long }
 
 
-createMeeting : Int -> Meeting -> SelectionSet SaveMeetingResponse RootMutation
+createMeeting : Int -> Meeting -> SelectionSet () RootMutation
 createMeeting created meeting =
     Mutation.saveMeeting
         (\_ -> Mutation.SaveMeetingOptionalArguments (Present <| ZeitplanApi.Scalar.Long <| String.fromInt created))
@@ -265,9 +312,7 @@ createMeeting created meeting =
             meeting.title
             meeting.duration
         )
-        (SelectionSet.succeed SaveMeetingResponse
-            |> with ApiMeeting.created
-        )
+        SelectionSet.empty
 
 
 requestCreateMeeting : String -> String -> Int -> Meeting -> Cmd Msg
@@ -337,6 +382,83 @@ meetingTitleValidator =
     ifBlank identity "Must enter a title"
 
 
+formatTime : Zone -> Time.Posix -> String
+formatTime zone time =
+    let
+        day =
+            case Time.toWeekday zone time of
+                Time.Mon ->
+                    "Monday"
+
+                Time.Tue ->
+                    "Tuesday"
+
+                Time.Wed ->
+                    "Wednesday"
+
+                Time.Thu ->
+                    "Thursday"
+
+                Time.Fri ->
+                    "Friday"
+
+                Time.Sat ->
+                    "Saturday"
+
+                Time.Sun ->
+                    "Sunday"
+
+        zeroHour =
+            Time.toHour zone time
+
+        meridian =
+            if zeroHour < 12 then
+                "AM"
+
+            else
+                "PM"
+
+        hour =
+            case modBy 12 zeroHour of
+                0 ->
+                    "12"
+
+                e ->
+                    String.fromInt e
+
+        minute =
+            String.padLeft 2 '0' <| String.fromInt <| Time.toMinute zone time
+
+        second =
+            String.padLeft 2 '0' <| String.fromInt <| Time.toSecond zone time
+    in
+    day ++ " " ++ hour ++ ":" ++ minute ++ ":" ++ second ++ " " ++ meridian
+
+durationToString : Int -> String
+durationToString duration =
+    case duration of
+        0 -> "0 min"
+        1 ->
+            "30 min"
+
+        2 ->
+            "1 hour"
+
+        3 ->
+            "90 min"
+
+        4 ->
+            "2 hours"
+
+        other ->
+            let
+                hours = String.fromInt (other // 2) ++ " hours"
+                minutes = if modBy 2 other == 1 then
+                              " 30 min"
+                            else
+                                ""
+            in
+            hours ++ minutes
 
 -- MODEL
 
@@ -366,6 +488,10 @@ type alias Model =
     , purchaseModalTab : PurchaseModalTab
     , checkoutIntent : Maybe String
     , checkoutCredits : Int
+    , schedules : List Schedule
+    , schedulesNextToken : Maybe String
+    , viewSchedule : Maybe (List ScheduleResult)
+    , zone : Maybe Zone
     }
 
 
@@ -402,12 +528,17 @@ init shared user =
       , purchaseModalTab = SelectCredits
       , checkoutIntent = Nothing
       , checkoutCredits = 5
+      , schedules = []
+      , schedulesNextToken = Nothing
+      , viewSchedule = Nothing
+      , zone = Nothing
       }
     , Effect.batch
         [ Effect.map (\a -> CalendarMsg ParticipantCalendar a) participantEffects
         , Effect.map (\a -> CalendarMsg ParticipantCalendar a) availableEffects
         , fromCmd <| Task.attempt (\_ -> NoOp) <| setViewportOf "participant-calendar" 0 310
         , fromCmd <| requestInitialLoad shared.graphQlEndpoint user.jwt
+        , fromCmd <| Task.perform GetCurrentTimezone <| Time.here
         ]
     )
 
@@ -467,6 +598,8 @@ subtractTimes times subtract =
 
 type Msg
     = SelectParticipant String
+    | InitialDataLoaded (RemoteData (Graphql.Http.Error InitialQuery) InitialQuery)
+    | GetCurrentTimezone Zone
     | ChangeParticipantName String
     | SubmitNewParticipant
     | RequestDeleteParticipant String
@@ -477,7 +610,6 @@ type Msg
     | SharedMsg Shared.Msg
     | SaveAvailableCalendarSuccess (RemoteData (Graphql.Http.Error (List SaveAvailableResponse)) (List SaveAvailableResponse))
     | SetSliderState SliderState
-    | InitialDataLoaded (RemoteData (Graphql.Http.Error InitialQuery) InitialQuery)
     | SaveParticipantQueue
     | SetSearchParticipant String
     | SelectMeetingParticipant String Bool
@@ -492,6 +624,8 @@ type Msg
     | TogglePurchaseModal
     | SetPurchaseTab PurchaseModalTab
     | CheckoutIntentResponse (RemoteData (Graphql.Http.Error BeginCheckoutResponse) BeginCheckoutResponse)
+    | ViewScheduleResults (List ScheduleResult)
+    | CloseScheduleModal
     | SetPurchaseCreditsAmount String
     | NoOp
 
@@ -499,6 +633,9 @@ type Msg
 update : AuthUser -> Msg -> Model -> ( Model, Effect Msg )
 update user msg model =
     case msg of
+        GetCurrentTimezone zone ->
+            ( { model | zone = Just zone }, Effect.none )
+
         InitialDataLoaded remote ->
             case remote of
                 RemoteData.Success data ->
@@ -570,6 +707,16 @@ update user msg model =
                                         ( created, Meeting meeting.title meeting.duration (Set.fromList meeting.participants) )
                                     )
                                 |> Dict.fromList
+
+                        nextToken : Maybe String
+                        nextToken =
+                            data.schedules |> Maybe.map .nextToken |> Maybe.withDefault Nothing
+
+                        schedules : List Schedule
+                        schedules =
+                            data.schedules
+                                |> Maybe.map .data
+                                |> Maybe.withDefault []
                     in
                     ( { model
                         | availableCalendar = updatedAvailableCalendar
@@ -578,6 +725,8 @@ update user msg model =
                         , selectedParticipant = selectedParticipant
                         , participantCalendar = updatedCalendar
                         , meetings = meetings
+                        , schedules = schedules
+                        , schedulesNextToken = nextToken
                         , initialLoad = remote
                       }
                     , Effect.none
@@ -967,6 +1116,12 @@ update user msg model =
         SetPurchaseCreditsAmount value ->
             ( { model | checkoutCredits = String.toInt value |> Maybe.withDefault 5 }, Effect.none )
 
+        ViewScheduleResults results ->
+            ( { model | viewSchedule = Just results }, Effect.none )
+
+        CloseScheduleModal ->
+            ( { model | viewSchedule = Nothing }, Effect.none )
+
         NoOp ->
             ( model, Effect.none )
 
@@ -1342,7 +1497,7 @@ sliderView model =
                                                     |> List.concat
                                                     |> mergeTimes
                                                     |> subtractTimes (model.availableCalendar.events ++ List.map dayToEvent model.availableCalendar.blockedDays)
-                                                    |> List.filter (\event -> (event.end - event.start) + 1 >= model.meetingDuration)
+                                                    |> List.filter (\event -> (event.end - event.start) + 1 >= meeting.duration)
 
                                             meetingExpanded =
                                                 Set.member id model.expandedMeetings
@@ -1357,22 +1512,7 @@ sliderView model =
                                                     [ text <|
                                                         meeting.title
                                                             ++ " ("
-                                                            ++ (case meeting.duration of
-                                                                    1 ->
-                                                                        "30 min"
-
-                                                                    2 ->
-                                                                        "1 hour"
-
-                                                                    3 ->
-                                                                        "90 min"
-
-                                                                    4 ->
-                                                                        "2 hours"
-
-                                                                    other ->
-                                                                        String.fromInt (other * 30) ++ " min."
-                                                               )
+                                                            ++ (durationToString meeting.duration)
                                                             ++ ")"
                                                     ]
                                                 , button [ class "delete", onClick <| DeleteMeeting id ] []
@@ -1520,7 +1660,136 @@ sliderView model =
                         ]
                     ]
                 , div [ class "column is-9" ]
-                    []
+                    [ div
+                        [ class "modal"
+                        , classList [ ( "is-active", model.viewSchedule /= Nothing ) ]
+                        ]
+                        [ div [ class "modal-background", onClick CloseScheduleModal ] []
+                        , div [ class "modal-content" ]
+                            [ div [ class "box" ]
+                                (model.viewSchedule
+                                    |> Maybe.map
+                                        (\result ->
+                                            let
+                                                dayDict =
+                                                    result
+                                                        |> List.filterMap
+                                                            (\row ->
+                                                                String.toInt row.id
+                                                                    |> Maybe.andThen (\id -> Dict.get id model.meetings)
+                                                                    |> Maybe.map (\val -> { meeting = val, time = row.time  } )
+                                                            )
+                                                        |> groupBy (\row -> timeToDayString row.time.start )
+                                            in
+                                            [text <| Debug.toString dayDict]
+                                        )
+                                    |> Maybe.withDefault
+                                        []
+                                )
+                            ]
+                        ]
+                    , table [ class "table is-fullwidth is-striped" ]
+                        [ thead []
+                            [ tr []
+                                [ th [] [ text "Created" ]
+                                , th [] [ text "Failed Meetings" ]
+                                , th [] [ text "Errors" ]
+                                , th [] [ text "Status" ]
+                                , th [] []
+                                ]
+                            ]
+                        , tbody []
+                            (model.schedules
+                                |> List.map
+                                    (\schedule ->
+                                        tr []
+                                            [ td []
+                                                [ text <|
+                                                    case schedule.created of
+                                                        Long val ->
+                                                            String.toInt val
+                                                                |> Maybe.map Time.millisToPosix
+                                                                |> Maybe.map2 (\zone -> \time -> formatTime zone time) model.zone
+                                                                |> Maybe.withDefault ""
+                                                ]
+                                            , td []
+                                                [ text
+                                                    (Maybe.withDefault [] schedule.failed
+                                                        |> List.filterMap
+                                                            (\id ->
+                                                                String.toInt id
+                                                                    |> Maybe.andThen (\key -> Dict.get key model.meetings)
+                                                                    |> Maybe.map (\meeting -> meeting.title ++ " (" ++ (durationToString meeting.duration) ++ ")")
+                                                            )
+                                                        |> String.join ","
+                                                    )
+                                                ]
+                                            , td [] <|
+                                                let
+                                                    content =
+                                                        Maybe.withDefault "" schedule.error
+
+                                                    hasExtra =
+                                                        String.length content > 20
+                                                in
+                                                (text <| String.left 20 content)
+                                                    :: (if hasExtra then
+                                                            [ span
+                                                                [ tooltip content
+                                                                , class "has-tooltip-bottom has-tooltip-multiline"
+                                                                ]
+                                                                [ text "..." ]
+                                                            ]
+
+                                                        else
+                                                            []
+                                                       )
+                                            , td [] <|
+                                                case schedule.results of
+                                                    Just resultList ->
+                                                        let
+                                                            allMeetingsExist =
+                                                                resultList
+                                                                    |> List.all
+                                                                        (\result ->
+                                                                            String.toInt result.id
+                                                                                |> Maybe.map (\id -> Dict.member id model.meetings)
+                                                                                |> Maybe.withDefault True
+                                                                        )
+                                                        in
+                                                        [ p []
+                                                            [ text "Valid: "
+                                                            , span []
+                                                                [ Icon.view <|
+                                                                    if allMeetingsExist then
+                                                                        Solid.check
+
+                                                                    else
+                                                                        Solid.xmark
+                                                                ]
+                                                            ]
+                                                        ]
+
+                                                    Nothing ->
+                                                        []
+                                            , td []
+                                                [ case schedule.results of
+                                                    Just result ->
+                                                        button
+                                                            [ class "button is-link is-small is-icon is-rounded"
+                                                            , onClick <| ViewScheduleResults result
+                                                            ]
+                                                            [ Icon.view Solid.search ]
+
+                                                    Nothing ->
+                                                        text ""
+                                                ]
+                                            ]
+                                    )
+                            )
+                        , tfoot [] []
+                        ]
+                    ]
                 ]
 
 

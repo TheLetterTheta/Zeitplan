@@ -1,7 +1,10 @@
 use lambda_runtime::{run, service_fn, Error, LambdaEvent};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::env;
-use zeitplan_libs::{schedule::Schedule, schedule::ValidationError, time::TimeRange};
+use zeitplan_libs::{
+    schedule::ValidationError,
+    schedule::{MeetingTime, Schedule},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,8 +23,9 @@ struct Request {
 /// to the contents of the response payload.
 #[derive(Serialize)]
 struct Response {
-    schedule: HashMap<String, TimeRange<u16>>,
+    results: Vec<MeetingTime<u16>>,
     failed: HashSet<String>,
+    attempts: usize,
 }
 
 /// This is the main body for the function.
@@ -53,14 +57,18 @@ async fn function_handler(event: LambdaEvent<Request>) -> Result<Response, Valid
     schedule
         .schedule_meetings(event.payload.count, per_thread, num_shuffles)
         .map(|result| {
-            let schedule: HashMap<String, TimeRange<u16>> = result.into_iter().collect();
+            let results: Vec<MeetingTime<u16>> = result.results;
 
             let failed: HashSet<String> = meeting_ids
                 .into_iter()
-                .filter(|meeting| !schedule.contains_key(meeting))
+                .filter(|id| !results.iter().any(|r| r.id == *id))
                 .collect();
 
-            Response { schedule, failed }
+            Response {
+                results,
+                failed,
+                attempts: result.count,
+            }
         })
 }
 

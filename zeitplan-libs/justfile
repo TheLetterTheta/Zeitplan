@@ -33,3 +33,6 @@ clippy-rayon: check-rayon
 
 fuzz-rayon-schedule: test-rayon
     cargo +nightly fuzz run schedule --features rayon -- -timeout=0
+
+fuzz-artifact ARTIFACT:
+    cargo +nightly fuzz run schedule --features rayon,log fuzz/artifacts/schedule/{{ARTIFACT}}

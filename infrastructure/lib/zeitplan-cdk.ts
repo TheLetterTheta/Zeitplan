@@ -824,6 +824,26 @@ export class ZeitplanCdk extends Stack {
     updatePaymentIntentLambda.grantInvoke(executePaymentRole);
     paymentsTable.grantWriteData(updatePaymentIntentLambda);
 
+    const deletePaymentIntentLambda = new Function(
+      this,
+      "zeitplan-delete-payment-intent",
+      {
+        functionName: "Zeitplan-Delete-Payment-Intent",
+        description:
+          "Delete a payment intent",
+        handler: "main",
+        runtime: Runtime.GO_1_X,
+        code: Code.fromAsset(
+          path.join(__dirname, "../lambdas/cancel_payment_intent/main.zip")
+        ),
+        environment: {
+          PAYMENT_TABLE_NAME: paymentsTable.tableName
+        }
+      }
+    );
+    deletePaymentIntentLambda.grantInvoke(executePaymentRole);
+    paymentsTable.grantWriteData(deletePaymentIntentLambda);
+
     const createPaymentDataSource = new appsync.CfnDataSource(
       this,
       "zeitplan-create-payment-data-source",
@@ -847,6 +867,20 @@ export class ZeitplanCdk extends Stack {
         type: "AWS_LAMBDA",
         lambdaConfig: {
           lambdaFunctionArn: updatePaymentIntentLambda.functionArn,
+        },
+        serviceRoleArn: executePaymentRole.roleArn,
+      }
+    );
+
+    const deletePaymentDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-delete-payment-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "deletePaymentLambdaSource",
+        type: "AWS_LAMBDA",
+        lambdaConfig: {
+          lambdaFunctionArn: deletePaymentIntentLambda.functionArn,
         },
         serviceRoleArn: executePaymentRole.roleArn,
       }
@@ -886,13 +920,37 @@ export class ZeitplanCdk extends Stack {
           "operation": "Invoke",
           "payload": {
             "credits": $context.arguments.credits,
-            "paymentIntent": "$context.arguments.paymentIntent"
+            "orderId": "$context.arguments.orderId",
+            "userId": "$context.identity.username"
           }
         }`,
         responseMappingTemplate: `$util.toJson($ctx.result)`,
       }
     )
     updatePaymentResolver.addDependency(graphqlSchema);
+    updatePaymentResolver.addDependency(updatePaymentDataSource);
+
+    const deletePaymentResolver = new appsync.CfnResolver(
+      this,
+      "delete-payment-intent-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Mutation",
+        fieldName: "deleteCheckout",
+        dataSourceName: deletePaymentDataSource.name,
+        requestMappingTemplate: `{
+          "version": "2018-05-29",
+          "operation": "Invoke",
+          "payload": {
+            "orderId": "$context.arguments.orderId",
+            "userId": "$context.identity.username"
+          }
+        }`,
+        responseMappingTemplate: `$util.toJson($ctx.result)`,
+      }
+    )
+    deletePaymentResolver.addDependency(deletePaymentDataSource);
+    deletePaymentResolver.addDependency(graphqlSchema);
 
     const creditsCreatedSubscriptionResolver = new appsync.CfnResolver(
       this,
@@ -1062,7 +1120,7 @@ export class ZeitplanCdk extends Stack {
               if (unique_participants.every((i) => i !== id)) {
                 unique_participants.push(id);
                 getItems.push(util.dynamodb.toMapValues({ userId: username, name: id }))
-              } 
+              }
             }
           }
 
@@ -1192,27 +1250,20 @@ export class ZeitplanCdk extends Stack {
   
             return {
               operation: 'Invoke',
-              payload: { schedule, count: credits * 800 }
+              payload: { schedule, count: credits * 10000 }
             }
           }
   
           export function response(context) {
-            const { schedule, failed } = context.result;
+            const { results, failed, attempts } = context.result;
             const error = context.error;
 
             if (error) {
               util.appendError(error.message, error.type, context.result);
 
-              return { error, solution: schedule, failed }
+              return { error, results, failed }
             } else {
-
-              const solution = [];
-              for (let [id, val] of Object.entries(schedule)) {
-                const time = { start: val[0], end: val[1] };
-                solution.push({ id, time });
-              }
-    
-              return { solution, failed };
+              return { results, failed, attempts };
             }
           }
         `,
@@ -1266,7 +1317,7 @@ export class ZeitplanCdk extends Stack {
           let item = context.result;
           item.error = item.error?.message;
 
-          return context.result;
+          return item;
         }
         `,
       }
@@ -1417,9 +1468,9 @@ export class ZeitplanCdk extends Stack {
         }
 
         export function response(context) {
-          const { failed, solution } = context.prev.result;
+          const { failed, results, created } = context.prev.result;
 
-          return { failed, schedule: solution };
+          return { failed, results, created };
         }
         `,
       }

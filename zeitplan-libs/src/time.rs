@@ -9,9 +9,13 @@ use std::hash::Hash;
 /// <N>: Any integer type
 #[derive(PartialEq, Hash, Debug, Copy, Clone, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
-pub struct TimeRange<N>(pub N, pub N)
+pub struct TimeRange<N>
 where
-    N: Integer + One + Copy + Display + Debug;
+    N: Integer + One + Copy + Display + Debug,
+{
+    pub start: N,
+    pub end: N,
+}
 
 impl<N> TimeRange<N>
 where
@@ -31,38 +35,13 @@ where
     pub fn new(start: N, end: N) -> TimeRange<N> {
         if end < start {
             debug!("TimeRange::new called with end before start");
-            TimeRange(end, start)
+            TimeRange {
+                start: end,
+                end: start,
+            }
         } else {
-            TimeRange(start, end)
+            TimeRange { start, end }
         }
-    }
-
-    /// Convenience function for readability
-    /// Returns the start of the TimeRange
-    ///
-    /// # Examples
-    /// ```
-    /// use zeitplan_libs::time::TimeRange;
-    ///
-    /// let test = TimeRange::new(0, 100);
-    /// assert_eq!(test.0, test.start());
-    /// ```
-    pub fn start(self) -> N {
-        self.0
-    }
-
-    /// Convenience function for readability
-    /// Returns the start of the TimeRange
-    ///
-    /// # Examples
-    /// ```
-    /// use zeitplan_libs::time::TimeRange;
-    ///
-    /// let test = TimeRange::new(0, 100);
-    /// assert_eq!(test.1, test.end());
-    /// ```
-    pub fn end(self) -> N {
-        self.1
     }
 }
 
@@ -71,7 +50,7 @@ where
     N: Integer + One + Copy + Display + Debug,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> Result<(), std::fmt::Error> {
-        write!(f, "TimeRange({}, {})", self.0, self.1)
+        write!(f, "TimeRange({}, {})", self.start, self.end)
     }
 }
 
@@ -84,11 +63,10 @@ where
     N: Integer + One + Copy + Display + Debug,
 {
     fn validate(&self) -> Result<(), String> {
-        if self.end() < self.start() {
+        if self.end < self.start {
             Err(format!(
                 "Start ({}) is after End ({})",
-                self.start(),
-                self.end()
+                self.start, self.end
             ))
         } else {
             Ok(())
@@ -113,10 +91,10 @@ where
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
         trace!(target: "TimeRange", "partial_cmp {} and {}", self, other);
-        match self.start().cmp(&other.start()) {
-            Ordering::Less if self.end() < other.start() => Some(Ordering::Less),
-            Ordering::Greater if self.start() > other.end() => Some(Ordering::Greater),
-            Ordering::Equal if self.end().eq(&other.end()) => Some(Ordering::Equal),
+        match self.start.cmp(&other.start) {
+            Ordering::Less if self.end < other.start => Some(Ordering::Less),
+            Ordering::Greater if self.start > other.end => Some(Ordering::Greater),
+            Ordering::Equal if self.end.eq(&other.end) => Some(Ordering::Equal),
             _ => {
                 debug!(target: "TimeRange", "Time Ranges must overlap, and are not able to be \"compared\"");
                 None
@@ -257,18 +235,18 @@ where
         let mut count = 0;
         let chain = self
             .time_merge()
-            .flat_map(|time| [Time::Start(time.0), Time::End(time.1)])
+            .flat_map(|time| [Time::Start(time.start), Time::End(time.end)])
             .merge(blocking.time_merge().flat_map(|time| {
                 let mut times: Vec<Time<N>> = Vec::with_capacity(2);
 
-                match time.0.checked_sub(&<N>::one()) {
+                match time.start.checked_sub(&<N>::one()) {
                     Some(n) => times.push(Time::End(n)),
                     None => {
                         count -= 1;
                     }
                 }
 
-                if let Some(n) = time.1.checked_add(&<N>::one()) {
+                if let Some(n) = time.end.checked_add(&<N>::one()) {
                     times.push(Time::Start(n))
                 }
 
@@ -429,7 +407,7 @@ where
     fn time_merge(self) -> TimeMergeIterator<N> {
         TimeMergeIterator {
             collection: self
-                .flat_map(|t| [TimeType::Start(t.start()), TimeType::End(t.end())])
+                .flat_map(|t| [TimeType::Start(t.start), TimeType::End(t.end)])
                 .sorted_unstable()
                 .peekable(),
         }
@@ -475,7 +453,7 @@ where
     /// ```
     fn count_pigeons(&mut self) -> Option<N> {
         let mut sum = <N>::zero();
-        for t in self.map(|time| (time.end() - time.start()).checked_add(&<N>::one())) {
+        for t in self.map(|time| (time.end - time.start).checked_add(&<N>::one())) {
             sum = sum + t?;
         }
         Some(sum)
@@ -514,7 +492,7 @@ where
         loop {
             match self.time {
                 Some(time) => {
-                    if self.start.checked_add(&zero_duration)? > time.end() {
+                    if self.start.checked_add(&zero_duration)? > time.end {
                         self.time = None;
                         continue;
                     }
@@ -528,9 +506,9 @@ where
                     Some(time) => {
                         self.time = Some(*time);
 
-                        let curr_start = time.start();
+                        let curr_start = time.start;
 
-                        if curr_start.checked_add(&zero_duration)? > time.end() {
+                        if curr_start.checked_add(&zero_duration)? > time.end {
                             self.time = None;
                             continue;
                         }
@@ -592,9 +570,9 @@ where
         let zero_duration = duration - <N>::one();
 
         for time in self {
-            let mut start = time.start();
+            let mut start = time.start;
 
-            while start + zero_duration <= time.end() {
+            while start + zero_duration <= time.end {
                 windows.push(TimeRange::new(start, start + zero_duration));
                 start = start + <N>::one();
             }
