@@ -218,7 +218,7 @@ impl<
 
 #[derive(Debug, Clone)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize))]
-struct MeetingScheduleInfo<N>
+pub struct MeetingScheduleInfo<N>
 where
     N: Integer + Debug + Display + Debug + Copy,
 {
@@ -327,7 +327,7 @@ impl<
             .product()
     }
 
-    fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
+    pub fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
         if let Err(e) = self.validate() {
             return Err(ValidationError::InvalidData { error: e });
         }

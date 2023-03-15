@@ -63,3 +63,10 @@ schedules fillInOptionals____ requiredArgs____ object____ =
                 |> List.filterMap Basics.identity
     in
     Object.selectionForCompositeField "schedules" (optionalArgs____ ++ [ Argument.required "limit" requiredArgs____.limit Encode.int ]) object____ (Basics.identity >> Decode.nullable)
+
+
+validate :
+    SelectionSet decodesTo ZeitplanApi.Object.ValidationResponse
+    -> SelectionSet decodesTo RootQuery
+validate object____ =
+    Object.selectionForCompositeField "validate" [] object____ Basics.identity

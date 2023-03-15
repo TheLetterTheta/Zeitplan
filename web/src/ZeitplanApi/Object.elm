@@ -43,3 +43,7 @@ type StatusResponse
 
 type User
     = User
+
+
+type ValidationResponse
+    = ValidationResponse

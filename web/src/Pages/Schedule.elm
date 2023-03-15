@@ -1,7 +1,22 @@
 module Pages.Schedule exposing (Model, Msg, Participant, page)
 
+import Array
 import Browser.Dom as Dom exposing (setViewportOf)
-import Calendar exposing (Event, Weekday, addEvent, dayString, dayToEvent, encodeEvent, isSaveMsg, stringToDay, timeRangeToDayString, timeToDayString)
+import Calendar
+    exposing
+        ( Event
+        , addEvent
+        , dayNum
+        , dayString
+        , dayToEvent
+        , days
+        , encodeEvent
+        , isSaveMsg
+        , stringToDay
+        , timeRangeToDayString
+        , timeSlotToString
+        , timeToDayInt
+        )
 import Decoders exposing (AuthUser)
 import Dict exposing (Dict)
 import Dict.Extra exposing (groupBy)
@@ -16,7 +31,7 @@ import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
 import Html exposing (Html, a, aside, button, code, datalist, div, figure, footer, form, h2, h3, h4, header, img, input, label, li, option, p, section, select, span, table, tbody, td, text, tfoot, th, thead, tr, ul)
-import Html.Attributes exposing (attribute, checked, class, classList, disabled, for, href, id, list, name, placeholder, selected, style, type_, value)
+import Html.Attributes exposing (attribute, checked, class, classList, colspan, disabled, for, href, id, list, name, placeholder, rowspan, selected, style, type_, value)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -40,6 +55,7 @@ import ZeitplanApi.Object.ScheduleMeetingResult as ApiScheduleMeetingResult
 import ZeitplanApi.Object.ScheduleResponse as ApiScheduleResponse
 import ZeitplanApi.Object.Schedules as ApiSchedules
 import ZeitplanApi.Object.User as ApiUser
+import ZeitplanApi.Object.ValidationResponse as ApiValidationResponse
 import ZeitplanApi.Query as Query
 import ZeitplanApi.Scalar exposing (Id, Long(..))
 
@@ -62,7 +78,7 @@ page shared _ =
 
 type alias Participant =
     { events : List Event
-    , blockedDays : List Weekday
+    , blockedDays : List Time.Weekday
     }
 
 
@@ -365,6 +381,28 @@ requestBeginCheckout url auth credits =
         |> Graphql.Http.send (RemoteData.fromResult >> CheckoutIntentResponse)
 
 
+type alias ValidateResponse =
+    { success : Bool
+    , error : Maybe String
+    }
+
+
+checkSchedule : SelectionSet ValidateResponse RootQuery
+checkSchedule =
+    Query.validate
+        (SelectionSet.succeed ValidateResponse
+            |> with ApiValidationResponse.success
+            |> with ApiValidationResponse.error
+        )
+
+
+requestCheckSchedule url auth =
+    checkSchedule
+        |> Graphql.Http.queryRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (RemoteData.fromResult >> ValidationResponse)
+
+
 
 -- VALIDATOR
 
@@ -434,10 +472,13 @@ formatTime zone time =
     in
     day ++ " " ++ hour ++ ":" ++ minute ++ ":" ++ second ++ " " ++ meridian
 
+
 durationToString : Int -> String
 durationToString duration =
     case duration of
-        0 -> "0 min"
+        0 ->
+            "0 min"
+
         1 ->
             "30 min"
 
@@ -452,13 +493,19 @@ durationToString duration =
 
         other ->
             let
-                hours = String.fromInt (other // 2) ++ " hours"
-                minutes = if modBy 2 other == 1 then
-                              " 30 min"
-                            else
-                                ""
+                hours =
+                    String.fromInt (other // 2) ++ " hours"
+
+                minutes =
+                    if modBy 2 other == 1 then
+                        " 30 min"
+
+                    else
+                        ""
             in
             hours ++ minutes
+
+
 
 -- MODEL
 
@@ -471,7 +518,6 @@ type alias Model =
     , newParticipantName : String
     , validatedParticipantName : Maybe (Result (List String) (Validate.Valid String))
     , slider : SliderState
-    , initialLoad : RemoteData (Graphql.Http.Error InitialQuery) InitialQuery
     , credits : Int
     , endpoint : String
     , saveAvailableCalendarQueued : Bool
@@ -483,8 +529,6 @@ type alias Model =
     , meetingDuration : Int
     , meetings : Dict Int Meeting
     , expandedMeetings : Set Int
-    , deleteParticipant : Maybe { key : String, removedMeetings : Dict Int Meeting, affectedMeetings : Dict Int Meeting }
-    , purchaseModalActive : Bool
     , purchaseModalTab : PurchaseModalTab
     , checkoutIntent : Maybe String
     , checkoutCredits : Int
@@ -492,6 +536,9 @@ type alias Model =
     , schedulesNextToken : Maybe String
     , viewSchedule : Maybe (List ScheduleResult)
     , zone : Maybe Zone
+    , modal : Modal
+    , validationRequest : RemoteData (Graphql.Http.Error ValidateResponse) ValidateResponse
+    , loaded : Bool
     }
 
 
@@ -511,7 +558,6 @@ init shared user =
       , newParticipantName = ""
       , validatedParticipantName = Nothing
       , slider = AvailableCalendarSlider
-      , initialLoad = RemoteData.NotAsked
       , credits = 0
       , endpoint = shared.graphQlEndpoint
       , saveAvailableCalendarQueued = False
@@ -523,8 +569,6 @@ init shared user =
       , meetingDuration = 2
       , meetings = Dict.empty
       , expandedMeetings = Set.empty
-      , deleteParticipant = Nothing
-      , purchaseModalActive = False
       , purchaseModalTab = SelectCredits
       , checkoutIntent = Nothing
       , checkoutCredits = 5
@@ -532,6 +576,9 @@ init shared user =
       , schedulesNextToken = Nothing
       , viewSchedule = Nothing
       , zone = Nothing
+      , modal = CloseModal
+      , validationRequest = RemoteData.NotAsked
+      , loaded = False
       }
     , Effect.batch
         [ Effect.map (\a -> CalendarMsg ParticipantCalendar a) participantEffects
@@ -596,6 +643,14 @@ subtractTimes times subtract =
 -- UPDATE
 
 
+type Modal
+    = CloseModal
+    | InitiateScheduleModal
+    | ViewScheduleModal (List ScheduleResult)
+    | PurchaseModal
+    | DeleteParticipantModal { key : String, removedMeetings : Dict Int Meeting, affectedMeetings : Dict Int Meeting }
+
+
 type Msg
     = SelectParticipant String
     | InitialDataLoaded (RemoteData (Graphql.Http.Error InitialQuery) InitialQuery)
@@ -618,21 +673,22 @@ type Msg
     | SetMeetingDuration String
     | CreateMeeting
     | FinishCreateMeeting Time.Posix
-    | CloseDeleteModal
     | ExpandMeeting Bool Int
     | DeleteMeeting Int
-    | TogglePurchaseModal
     | SetPurchaseTab PurchaseModalTab
     | CheckoutIntentResponse (RemoteData (Graphql.Http.Error BeginCheckoutResponse) BeginCheckoutResponse)
-    | ViewScheduleResults (List ScheduleResult)
-    | CloseScheduleModal
     | SetPurchaseCreditsAmount String
+    | SetModal Modal
+    | ValidationResponse (RemoteData (Graphql.Http.Error ValidateResponse) ValidateResponse)
     | NoOp
 
 
 update : AuthUser -> Msg -> Model -> ( Model, Effect Msg )
 update user msg model =
     case msg of
+        ValidationResponse remote ->
+            ( { model | validationRequest = remote }, Effect.none )
+
         GetCurrentTimezone zone ->
             ( { model | zone = Just zone }, Effect.none )
 
@@ -641,9 +697,9 @@ update user msg model =
                 RemoteData.Success data ->
                     let
                         toCalendarEvent =
-                            \e ->
-                                { start = e.start
-                                , end = e.end
+                            \{ start, end } ->
+                                { start = start
+                                , end = end
                                 , dragging = False
                                 , classList = []
                                 }
@@ -666,7 +722,7 @@ update user msg model =
                                         ( cal.name
                                         , Participant
                                             (List.map toCalendarEvent cal.events)
-                                            (List.map stringToDay cal.blockedDays)
+                                            (List.filterMap stringToDay cal.blockedDays)
                                         )
                                     )
                                 |> Dict.fromList
@@ -727,13 +783,13 @@ update user msg model =
                         , meetings = meetings
                         , schedules = schedules
                         , schedulesNextToken = nextToken
-                        , initialLoad = remote
+                        , loaded = True
                       }
                     , Effect.none
                     )
 
                 _ ->
-                    ( { model | initialLoad = remote }, Effect.none )
+                    ( model, Effect.none )
 
         SelectParticipant participantKey ->
             let
@@ -771,8 +827,8 @@ update user msg model =
                         |> Dict.filter (\id -> \meeting -> Set.member key meeting.participants)
             in
             ( { model
-                | deleteParticipant =
-                    Just
+                | modal =
+                    DeleteParticipantModal
                         { key = key
                         , removedMeetings = removedMeetings
                         , affectedMeetings = affectedMeetings
@@ -826,7 +882,7 @@ update user msg model =
                 , participantCalendar = updatedCalendar
                 , meetingParticipants = selectedParticipants
                 , meetings = newMeetings
-                , deleteParticipant = Nothing
+                , modal = CloseModal
               }
               {--TODO: Delete meetings, and relevant participants also --}
             , Effect.fromCmd <| requestDeleteParticipant model.endpoint user.jwt key
@@ -1061,9 +1117,6 @@ update user msg model =
             , Effect.fromCmd <| requestDeleteMeeting model.endpoint user.jwt id
             )
 
-        CloseDeleteModal ->
-            ( { model | deleteParticipant = Nothing }, Effect.none )
-
         ExpandMeeting expand id ->
             ( { model
                 | expandedMeetings =
@@ -1075,9 +1128,6 @@ update user msg model =
               }
             , Effect.none
             )
-
-        TogglePurchaseModal ->
-            ( { model | purchaseModalActive = not model.purchaseModalActive }, Effect.none )
 
         SetPurchaseTab tab ->
             let
@@ -1116,11 +1166,8 @@ update user msg model =
         SetPurchaseCreditsAmount value ->
             ( { model | checkoutCredits = String.toInt value |> Maybe.withDefault 5 }, Effect.none )
 
-        ViewScheduleResults results ->
-            ( { model | viewSchedule = Just results }, Effect.none )
-
-        CloseScheduleModal ->
-            ( { model | viewSchedule = Nothing }, Effect.none )
+        SetModal modal ->
+            ( { model | modal = modal }, Effect.fromCmd <| requestCheckSchedule model.endpoint user.jwt )
 
         NoOp ->
             ( model, Effect.none )
@@ -1214,88 +1261,8 @@ sliderView model =
                 ]
 
         ParticipantCalendarSlider ->
-            div
-                [ class "columns"
-                , classList [ ( "is-clipped", model.deleteParticipant /= Nothing ) ]
-                ]
-                [ case model.deleteParticipant of
-                    Just { key, affectedMeetings, removedMeetings } ->
-                        let
-                            totalAffected =
-                                Dict.size removedMeetings + Dict.size affectedMeetings
-
-                            ableToDelete =
-                                totalAffected < 25
-                        in
-                        div [ class "modal is-active" ]
-                            [ div [ class "modal-background" ] []
-                            , if not ableToDelete then
-                                div [ class "modal-content" ]
-                                    [ section [ class "message is-danger" ]
-                                        [ div
-                                            [ class "message-header" ]
-                                            [ p [] [ text "Unable to delete this participant" ]
-                                            , button [ class "delete", onClick CloseDeleteModal ] []
-                                            ]
-                                        , div [ class "message-body" ]
-                                            [ p []
-                                                [ text
-                                                    """
-                                            This participant is a member of too many meetings. Please delete this participant's
-                                            meetings manually until there are 24 meetings or less.
-                                            """
-                                                ]
-                                            , p []
-                                                [ text <| "Currently, there are " ++ String.fromInt totalAffected ++ " meetings with this participant" ]
-                                            ]
-                                        ]
-                                    ]
-
-                              else
-                                div [ class "modal-card" ]
-                                    [ header [ class "modal-card-head" ]
-                                        [ h3 [ class "modal-card-title" ] [ text "Are you sure you want to delete ", code [] [ text key ], text "?" ]
-                                        , button [ class "delete", onClick CloseDeleteModal ] []
-                                        ]
-                                    , if Dict.isEmpty removedMeetings && Dict.isEmpty affectedMeetings then
-                                        section [ class "modal-card-body" ]
-                                            [ div
-                                                [ class "content" ]
-                                                [ p [] [ text "This participant has not been added to any meetings." ]
-                                                ]
-                                            ]
-
-                                      else
-                                        section [ class "modal-card-body" ]
-                                            [ div [ class "columns" ]
-                                                [ if Dict.isEmpty removedMeetings then
-                                                    text ""
-
-                                                  else
-                                                    div [ class "content column" ]
-                                                        [ h4 [ class "subtitle is-6" ] [ text "These meetings will be deleted:" ]
-                                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values removedMeetings)
-                                                        ]
-                                                , if Dict.isEmpty affectedMeetings then
-                                                    text ""
-
-                                                  else
-                                                    div [ class "content column" ]
-                                                        [ h4 [ class "subtitle is-6" ] [ code [] [ text key ], text " will be removed from these meetings" ]
-                                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values affectedMeetings)
-                                                        ]
-                                                ]
-                                            ]
-                                    , footer [ class "modal-card-foot" ]
-                                        [ button [ class "button is-success", onClick <| DeleteParticipant key ] [ text "Confirm" ]
-                                        , button [ class "button is-danger", onClick CloseDeleteModal ] [ text "Cancel" ]
-                                        ]
-                                    ]
-                            ]
-
-                    Nothing ->
-                        text ""
-                , div [ class "column is-one-fifth" ]
+            div [ class "columns" ]
+                [ div [ class "column is-one-fifth" ]
                     [ div [ class "columns is-multiline" ]
                         [ div [ class "column is-full" ] [ createParticipantForm model ]
                         , div [ class "column is-full" ]
@@ -1512,7 +1479,7 @@ sliderView model =
                                                     [ text <|
                                                         meeting.title
                                                             ++ " ("
-                                                            ++ (durationToString meeting.duration)
+                                                            ++ durationToString meeting.duration
                                                             ++ ")"
                                                     ]
                                                 , button [ class "delete", onClick <| DeleteMeeting id ] []
@@ -1578,72 +1545,8 @@ sliderView model =
         ScheduleMeetingsSlider ->
             div
                 [ class "columns p-2"
-                , classList [ ( "is-clipped", model.purchaseModalActive ) ]
                 ]
-                [ div
-                    [ class "modal"
-                    , classList [ ( "is-active", model.purchaseModalActive ) ]
-                    ]
-                    [ div [ class "modal-background", onClick TogglePurchaseModal ] []
-                    , div [ class "modal-content" ]
-                        [ div [ class "box" ]
-                            [ div [ class "tabs is-centered" ]
-                                [ ul []
-                                    [ li [ classList [ ( "is-active", model.purchaseModalTab == SelectCredits ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Select Credits" ] ]
-                                    , li [ classList [ ( "is-active", model.purchaseModalTab == Checkout ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Checkout with Stripe" ] ]
-                                    ]
-                                ]
-                            , if model.purchaseModalTab == SelectCredits then
-                                form [ onSubmit <| SetPurchaseTab Checkout ]
-                                    [ div [ class "field" ]
-                                        [ label [ class "label" ] [ text "Choose how many credits to purchase" ]
-                                        , div [ class "control has-icons-left" ]
-                                            [ div [ class "select is-fullwidth is-rounded is-medium" ]
-                                                [ select [ onInput SetPurchaseCreditsAmount ]
-                                                    (let
-                                                        purchaseOptions =
-                                                            [ 5, 10, 25, 50 ]
-
-                                                        values =
-                                                            List.map String.fromInt purchaseOptions
-                                                     in
-                                                     purchaseOptions
-                                                        |> List.map
-                                                            (\credits ->
-                                                                option [ value (String.fromInt credits), selected <| model.checkoutCredits == credits ] [ text <| String.fromInt credits ++ " - " ++ displayCreditCost credits ]
-                                                            )
-                                                    )
-                                                ]
-                                            , div [ class "icon is-small is-left" ]
-                                                [ Icon.view Solid.coins ]
-                                            ]
-                                        ]
-                                    , p [ class "subtitle" ] [ text "Note: purchasing more credits is cheaper per-credit." ]
-                                    , button [ class "button is-success" ] [ text "Continue to Checkout" ]
-                                    ]
-
-                              else
-                                div []
-                                    [ p [ class "subtitle" ] [ text "Pay securely with Stripe" ]
-                                    , p [ class "subtitle is-6 mt-1" ] [ text <| "Total: " ++ displayCreditCost model.checkoutCredits ]
-                                    , Maybe.map
-                                        (\secret ->
-                                            let
-                                                cost =
-                                                    computeCreditCostCents model.checkoutCredits
-                                            in
-                                            Html.node "stripe-web-component"
-                                                [ attribute "amount" (String.fromInt cost), attribute "client-secret" secret ]
-                                                []
-                                        )
-                                        model.checkoutIntent
-                                        |> Maybe.withDefault (Icon.view Solid.spinner)
-                                    , p [ class "subtitle is-6 mt-1" ] [ text "Note: you will be redirected to a confirmation page upon successful payment" ]
-                                    ]
-                            ]
-                        ]
-                    ]
-                , div [ class "column is-3" ]
+                [ div [ class "column is-3" ]
                     [ div [ class "card" ]
                         [ div [ class "card-content" ]
                             [ div [ class "media" ]
@@ -1655,47 +1558,25 @@ sliderView model =
                                 ]
                             ]
                         , Html.footer [ class "card-footer" ]
-                            [ button [ class "card-footer-item button is-success", onClick TogglePurchaseModal ] [ text "Purchase more credits" ]
+                            [ button [ class "card-footer-item button is-success", onClick <| SetModal PurchaseModal ] [ text "Purchase more credits" ]
                             ]
+                        , div
+                            [ class "modal"
+                            ]
+                            []
                         ]
                     ]
                 , div [ class "column is-9" ]
-                    [ div
-                        [ class "modal"
-                        , classList [ ( "is-active", model.viewSchedule /= Nothing ) ]
-                        ]
-                        [ div [ class "modal-background", onClick CloseScheduleModal ] []
-                        , div [ class "modal-content" ]
-                            [ div [ class "box" ]
-                                (model.viewSchedule
-                                    |> Maybe.map
-                                        (\result ->
-                                            let
-                                                dayDict =
-                                                    result
-                                                        |> List.filterMap
-                                                            (\row ->
-                                                                String.toInt row.id
-                                                                    |> Maybe.andThen (\id -> Dict.get id model.meetings)
-                                                                    |> Maybe.map (\val -> { meeting = val, time = row.time  } )
-                                                            )
-                                                        |> groupBy (\row -> timeToDayString row.time.start )
-                                            in
-                                            [text <| Debug.toString dayDict]
-                                        )
-                                    |> Maybe.withDefault
-                                        []
-                                )
-                            ]
-                        ]
-                    , table [ class "table is-fullwidth is-striped" ]
+                    [ table [ class "table is-fullwidth is-striped" ]
                         [ thead []
                             [ tr []
                                 [ th [] [ text "Created" ]
                                 , th [] [ text "Failed Meetings" ]
                                 , th [] [ text "Errors" ]
                                 , th [] [ text "Status" ]
-                                , th [] []
+                                , th []
+                                    [ button [ onClick <| SetModal InitiateScheduleModal, class "button is-rounded" ] [ Icon.view Solid.add ]
+                                    ]
                                 ]
                             ]
                         , tbody []
@@ -1719,7 +1600,7 @@ sliderView model =
                                                             (\id ->
                                                                 String.toInt id
                                                                     |> Maybe.andThen (\key -> Dict.get key model.meetings)
-                                                                    |> Maybe.map (\meeting -> meeting.title ++ " (" ++ (durationToString meeting.duration) ++ ")")
+                                                                    |> Maybe.map (\meeting -> meeting.title ++ " (" ++ durationToString meeting.duration ++ ")")
                                                             )
                                                         |> String.join ","
                                                     )
@@ -1751,17 +1632,42 @@ sliderView model =
                                                             allMeetingsExist =
                                                                 resultList
                                                                     |> List.all
-                                                                        (\result ->
-                                                                            String.toInt result.id
-                                                                                |> Maybe.map (\id -> Dict.member id model.meetings)
+                                                                        (\{ id } ->
+                                                                            String.toInt id
+                                                                                |> Maybe.map (\key -> Dict.member key model.meetings)
                                                                                 |> Maybe.withDefault True
+                                                                        )
+
+                                                            allTimesStillFit =
+                                                                resultList
+                                                                    |> List.all
+                                                                        (\{ time } ->
+                                                                            model.availableCalendar.events
+                                                                                |> List.any
+                                                                                    (\event ->
+                                                                                        event.start
+                                                                                            <= time.start
+                                                                                            && event.end
+                                                                                            >= time.end
+                                                                                    )
                                                                         )
                                                         in
                                                         [ p []
-                                                            [ text "Valid: "
+                                                            [ text "Meetings exist? "
                                                             , span []
                                                                 [ Icon.view <|
                                                                     if allMeetingsExist then
+                                                                        Solid.check
+
+                                                                    else
+                                                                        Solid.xmark
+                                                                ]
+                                                            ]
+                                                        , p []
+                                                            [ text "Times still fit? "
+                                                            , span []
+                                                                [ Icon.view <|
+                                                                    if allTimesStillFit then
                                                                         Solid.check
 
                                                                     else
@@ -1777,7 +1683,7 @@ sliderView model =
                                                     Just result ->
                                                         button
                                                             [ class "button is-link is-small is-icon is-rounded"
-                                                            , onClick <| ViewScheduleResults result
+                                                            , onClick <| SetModal <| ViewScheduleModal result
                                                             ]
                                                             [ Icon.view Solid.search ]
 
@@ -1807,17 +1713,231 @@ displayCreditCost credits =
     "$" ++ (String.fromInt <| cost // 100) ++ "." ++ String.padRight 2 '0' (String.fromInt <| modBy 100 cost)
 
 
+viewModalBody : Model -> Html Msg
+viewModalBody model =
+    case model.modal of
+        CloseModal ->
+            text ""
+
+        DeleteParticipantModal { key, removedMeetings, affectedMeetings } ->
+            let
+                totalAffected =
+                    Dict.size removedMeetings + Dict.size affectedMeetings
+
+                ableToDelete =
+                    totalAffected < 25
+            in
+            if not ableToDelete then
+                div [ class "modal-content" ]
+                    [ section [ class "message is-danger" ]
+                        [ div
+                            [ class "message-header" ]
+                            [ p [] [ text "Unable to delete this participant" ]
+                            , button [ class "delete", onClick <| SetModal CloseModal ] []
+                            ]
+                        , div [ class "message-body" ]
+                            [ p []
+                                [ text
+                                    """
+                            This participant is a member of too many meetings. Please delete this participant's
+                            meetings manually until there are 24 meetings or less.
+                            """
+                                ]
+                            , p []
+                                [ text <| "Currently, there are " ++ String.fromInt totalAffected ++ " meetings with this participant" ]
+                            ]
+                        ]
+                    ]
+
+            else
+                div [ class "modal-card" ]
+                    [ header [ class "modal-card-head" ]
+                        [ h3 [ class "modal-card-title" ] [ text "Are you sure you want to delete ", code [] [ text key ], text "?" ]
+                        , button [ class "delete", onClick <| SetModal CloseModal ] []
+                        ]
+                    , if Dict.isEmpty removedMeetings && Dict.isEmpty affectedMeetings then
+                        section [ class "modal-card-body" ]
+                            [ div
+                                [ class "content" ]
+                                [ p [] [ text "This participant has not been added to any meetings." ]
+                                ]
+                            ]
+
+                      else
+                        section [ class "modal-card-body" ]
+                            [ div [ class "columns" ]
+                                [ if Dict.isEmpty removedMeetings then
+                                    text ""
+
+                                  else
+                                    div [ class "content column" ]
+                                        [ h4 [ class "subtitle is-6" ] [ text "These meetings will be deleted:" ]
+                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values removedMeetings)
+                                        ]
+                                , if Dict.isEmpty affectedMeetings then
+                                    text ""
+
+                                  else
+                                    div [ class "content column" ]
+                                        [ h4 [ class "subtitle is-6" ] [ code [] [ text key ], text " will be removed from these meetings" ]
+                                        , ul [] <| List.map (\meeting -> li [] [ code [] [ text meeting.title ] ]) (Dict.values affectedMeetings)
+                                        ]
+                                ]
+                            ]
+                    , footer [ class "modal-card-foot" ]
+                        [ button [ class "button is-success", onClick <| DeleteParticipant key ] [ text "Confirm" ]
+                        , button [ class "button is-danger", onClick <| SetModal CloseModal ] [ text "Cancel" ]
+                        ]
+                    ]
+
+        ViewScheduleModal results ->
+            let
+                dayDict =
+                    results
+                        |> List.filterMap
+                            (\row ->
+                                String.toInt row.id
+                                    |> Maybe.andThen (\id -> Dict.get id model.meetings)
+                                    |> Maybe.map (\val -> { meeting = val, time = row.time })
+                            )
+                        |> groupBy (\row -> timeToDayInt row.time.start)
+            in
+            div [ class "modal-card" ]
+                [ div [ class "modal-card-body" ]
+                    [ table [ class "table is-bordered is-fullwidth is-striped" ]
+                        [ thead []
+                            [ tr []
+                                [ th [ class "table_day-header" ] [ text "Day" ]
+                                , th [ class "table_time-header" ] [ text "Time" ]
+                                , th [ class "table_meeting-header" ] [ text "Meeting" ]
+                                ]
+                            ]
+                        , tbody []
+                            (dayDict
+                                |> Dict.map
+                                    (\day ->
+                                        \meetings ->
+                                            tr [ style "display" "none" ] []
+                                                :: tr []
+                                                    [ td
+                                                        [ class "table_day-row"
+                                                        , rowspan <| 1 + List.length meetings
+                                                        ]
+                                                        [ text <|
+                                                            Maybe.withDefault "" <|
+                                                                Maybe.map dayString <|
+                                                                    Array.get day days
+                                                        ]
+                                                    ]
+                                                :: (meetings
+                                                        |> List.sortBy (\{ time } -> time.start)
+                                                        |> List.map
+                                                            (\{ meeting, time } ->
+                                                                tr []
+                                                                    [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
+                                                                    , td [ class "table_meeting-row content" ]
+                                                                        [ code [] [ text meeting.title ]
+                                                                        , text <| " (" ++ durationToString meeting.duration ++ ")"
+                                                                        , div [ class "tags are-small" ] <|
+                                                                            List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
+                                                                                Set.toList meeting.participants
+                                                                        ]
+                                                                    ]
+                                                            )
+                                                   )
+                                    )
+                                |> Dict.values
+                                |> List.concat
+                            )
+                        ]
+                    ]
+                ]
+
+        InitiateScheduleModal ->
+            text ""
+
+        PurchaseModal ->
+            div [ class "modal-content" ]
+                [ div [ class "box" ]
+                    [ div [ class "tabs is-centered" ]
+                        [ ul []
+                            [ li [ classList [ ( "is-active", model.purchaseModalTab == SelectCredits ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Select Credits" ] ]
+                            , li [ classList [ ( "is-active", model.purchaseModalTab == Checkout ) ] ] [ a [ class "ignore-pointer-events" ] [ text "Checkout with Stripe" ] ]
+                            ]
+                        ]
+                    , if model.purchaseModalTab == SelectCredits then
+                        form [ onSubmit <| SetPurchaseTab Checkout ]
+                            [ div [ class "field" ]
+                                [ label [ class "label" ] [ text "Choose how many credits to purchase" ]
+                                , div [ class "control has-icons-left" ]
+                                    [ div [ class "select is-fullwidth is-rounded is-medium" ]
+                                        [ select [ onInput SetPurchaseCreditsAmount ]
+                                            (let
+                                                purchaseOptions =
+                                                    [ 5, 10, 25, 50 ]
+
+                                                values =
+                                                    List.map String.fromInt purchaseOptions
+                                             in
+                                             purchaseOptions
+                                                |> List.map
+                                                    (\credits ->
+                                                        option [ value (String.fromInt credits), selected <| model.checkoutCredits == credits ] [ text <| String.fromInt credits ++ " - " ++ displayCreditCost credits ]
+                                                    )
+                                            )
+                                        ]
+                                    , div [ class "icon is-small is-left" ]
+                                        [ Icon.view Solid.coins ]
+                                    ]
+                                ]
+                            , p [ class "subtitle" ] [ text "Note: purchasing more credits is cheaper per-credit." ]
+                            , button [ class "button is-success" ] [ text "Continue to Checkout" ]
+                            ]
+
+                      else
+                        div []
+                            [ p [ class "subtitle" ] [ text "Pay securely with Stripe" ]
+                            , p [ class "subtitle is-6 mt-1" ] [ text <| "Total: " ++ displayCreditCost model.checkoutCredits ]
+                            , Maybe.map
+                                (\secret ->
+                                    let
+                                        cost =
+                                            computeCreditCostCents model.checkoutCredits
+                                    in
+                                    Html.node "stripe-web-component"
+                                        [ attribute "amount" (String.fromInt cost), attribute "client-secret" secret ]
+                                        []
+                                )
+                                model.checkoutIntent
+                                |> Maybe.withDefault (Icon.view Solid.spinner)
+                            , p [ class "subtitle is-6 mt-1" ] [ text "Note: you will be redirected to a confirmation page upon successful payment" ]
+                            ]
+                    ]
+                ]
+
+
 view : Shared.Model -> Model -> View Msg
 view shared model =
     View "Zeitplan - Schedule"
-        [ zeitplanNav
-            { logo = shared.logo
-            , shared = shared
-            }
-            |> Html.map SharedMsg
+        [ div
+            [ classList [ ( "is-clipped", model.modal /= CloseModal ) ]
+            ]
+            [ zeitplanNav
+                { logo = shared.logo
+                , shared = shared
+                }
+                |> Html.map SharedMsg
+            , div
+                [ class "modal"
+                , classList [ ( "is-active", model.modal /= CloseModal ) ]
+                ]
+                [ div [ class "modal-background", onClick <| SetModal CloseModal ] []
+                , viewModalBody model
+                ]
+            ]
         , div
             [ class "pageloader"
-            , classList [ ( "is-active", model.initialLoad == RemoteData.NotAsked || model.initialLoad == RemoteData.Loading ) ]
+            , classList [ ( "is-active", not model.loaded ) ]
             ]
             [ span [ class "title" ] [ text "Please wait while we fetch your information" ]
             ]

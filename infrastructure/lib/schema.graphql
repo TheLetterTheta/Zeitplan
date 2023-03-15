@@ -37,7 +37,7 @@ type Schedules {
 }
 
 type ScheduleMeetingResult {
-  id: String!,
+  id: String!
   time: Event!
 }
 
@@ -52,11 +52,17 @@ type ScheduleResponse {
   error: String
 }
 
+type ValidationResponse {
+  success: Boolean!
+  error: String
+}
+
 type Query @aws_cognito_user_pools {
   calendars: [Calendar!]!
   meetings: [Meeting!]!
   user: User!
   schedules(limit: Int!, nextToken: String): Schedules
+  validate: ValidationResponse!
 }
 
 input EventInput {

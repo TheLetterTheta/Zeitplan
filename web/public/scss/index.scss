@@ -413,7 +413,7 @@ html {
 }
 
 #available-calendar {
-    max-height: 80vh;
+    height: 80vh;
     overflow: scroll;
 
     // VARIABLES
@@ -434,4 +434,8 @@ html {
 
 .highlighted {
     background: #{$info-light};
+}
+
+.table_time-row {
+    max-width: min-content;
 }

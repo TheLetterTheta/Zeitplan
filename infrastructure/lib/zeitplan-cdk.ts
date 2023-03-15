@@ -1206,8 +1206,8 @@ export class ZeitplanCdk extends Stack {
           "../lambdas/schedule_meetings"
         ),
         environment: {
-          NUM_SHUFFLES: "10000",
-          PER_THREAD: "45",
+          NUM_SHUFFLES: "45",
+          PER_THREAD: "10000",
         },
         timeout: Duration.seconds(30),
         description: "Search for a way to fit the schedule"
@@ -1215,6 +1215,22 @@ export class ZeitplanCdk extends Stack {
     );
 
     scheduleFunction.grantInvoke(executeScheduleFunctionRole);
+
+    const checkScheduleFunction = new RustFunction(
+      this,
+      "zeitplan-check-schedule-function",
+      {
+        functionName: "Zeitplan-Check-Schedule",
+        manifestPath: path.join(
+          __dirname,
+          "../lambdas/precheck_schedule"
+        ),
+        timeout: Duration.seconds(3),
+        description: "Check if any errors exist in the schedule"
+      }
+    );
+
+    checkScheduleFunction.grantInvoke(executeScheduleFunctionRole);
 
     const scheduleFunctionDataSource = new appsync.CfnDataSource(
       this,
@@ -1229,6 +1245,53 @@ export class ZeitplanCdk extends Stack {
         serviceRoleArn: executeScheduleFunctionRole.roleArn,
       }
     );
+
+
+    const checkScheduleFunctionDataSource = new appsync.CfnDataSource(
+      this,
+      "zeitplan-check-meetings-data-source",
+      {
+        apiId: graphQL.attrApiId,
+        name: "checkScheduleFunctionDataSource",
+        type: "AWS_LAMBDA",
+        lambdaConfig: {
+          lambdaFunctionArn: checkScheduleFunction.functionArn,
+        },
+        serviceRoleArn: executeScheduleFunctionRole.roleArn,
+      }
+    );
+
+    const checkScheduleFunctionResolverFunction =
+      new appsync.CfnFunctionConfiguration(
+        this,
+        "zeitplan-check-schedule-resolver-function",
+        {
+          apiId: graphQL.attrApiId,
+          runtime: {
+            name: "APPSYNC_JS",
+            runtimeVersion: "1.0.0",
+          },
+          name: "CheckScheduleFunction",
+          dataSourceName: checkScheduleFunctionDataSource.name,
+          code: `import { util } from '@aws-appsync/utils';
+
+          export function request(context) {
+            const schedule = context.prev.result;
+            const { credits } = context.arguments;
+
+            return {
+              operation: 'Invoke',
+              payload: { schedule }
+            }
+          }
+
+          export function response(context) {
+            return context.result;
+          }
+        `,
+        }
+      );
+    checkScheduleFunctionResolverFunction.addDependency(checkScheduleFunctionDataSource);
 
     const scheduleFunctionResolverFunction =
       new appsync.CfnFunctionConfiguration(
@@ -1482,6 +1545,45 @@ export class ZeitplanCdk extends Stack {
     computeScheduleResolver.addDependency(scheduleFunctionResolverFunction);
     computeScheduleResolver.addDependency(saveScheduleFunction);
     computeScheduleResolver.addDependency(deductCreditsFunction);
+
+    const checkScheduleResolver = new appsync.CfnResolver(
+      this,
+      "zeitplan-check-schedule-resolver",
+      {
+        apiId: graphQL.attrApiId,
+        typeName: "Query",
+        fieldName: "validate",
+        kind: "PIPELINE",
+        runtime: {
+          name: "APPSYNC_JS",
+          runtimeVersion: "1.0.0",
+        },
+        pipelineConfig: {
+          functions: [
+            getScheduleAvailabilityFunction.attrFunctionId,
+            getMeetingsForScheduleFunction.attrFunctionId,
+            getMeetingParticipants.attrFunctionId,
+            checkScheduleFunctionResolverFunction.attrFunctionId,
+          ],
+        },
+        code: `
+        import { util } from '@aws-appsync/utils';
+
+        export function request(context) {
+          return {};
+        }
+
+        export function response(context) {
+          return context.prev.result;
+        }
+        `,
+      }
+    );
+    checkScheduleResolver.addDependency(graphqlSchema);
+    checkScheduleResolver.addDependency(getScheduleAvailabilityFunction);
+    checkScheduleResolver.addDependency(getMeetingsForScheduleFunction);
+    checkScheduleResolver.addDependency(getMeetingParticipants);
+    checkScheduleResolver.addDependency(checkScheduleFunctionResolverFunction);
 
     const stripeLambdaUrl = stripeWebhookLambda.addFunctionUrl({
       authType: FunctionUrlAuthType.NONE,

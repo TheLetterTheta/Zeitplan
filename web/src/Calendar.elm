@@ -3,15 +3,18 @@ module Calendar exposing
     , Event
     , Model
     , Msg
-    , Weekday
     , addEvent
+    , dayNum
     , dayString
     , dayToEvent
+    , days
     , encodeEvent
     , init
     , isSaveMsg
     , stringToDay
     , timeRangeToDayString
+    , timeSlotToString
+    , timeToDayInt
     , timeToDayString
     , update
     , view
@@ -26,6 +29,7 @@ import Html.Attributes exposing (attribute, class, classList, style, type_)
 import Html.Events exposing (onClick, onMouseDown, onMouseEnter, onMouseLeave, onMouseUp, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
+import Time exposing (Weekday(..))
 
 
 
@@ -47,76 +51,87 @@ slots =
     minutesInDay // const_interval
 
 
-type Weekday
-    = Sunday
-    | Monday
-    | Tuesday
-    | Wednesday
-    | Thursday
-    | Friday
-    | Saturday
-    | NotValidDay
-
-
-stringToDay : String -> Weekday
+stringToDay : String -> Maybe Weekday
 stringToDay s =
     case s of
         "Sunday" ->
-            Sunday
+            Just Sun
 
         "Monday" ->
-            Monday
+            Just Mon
 
         "Tuesday" ->
-            Tuesday
+            Just Tue
 
         "Wednesday" ->
-            Wednesday
+            Just Wed
 
         "Thursday" ->
-            Thursday
+            Just Thu
 
         "Friday" ->
-            Friday
+            Just Fri
 
         "Saturday" ->
-            Saturday
+            Just Sat
 
         _ ->
-            NotValidDay
+            Nothing
 
 
 dayString : Weekday -> String
 dayString d =
     case d of
-        Sunday ->
+        Sun ->
             "Sunday"
 
-        Monday ->
+        Mon ->
             "Monday"
 
-        Tuesday ->
+        Tue ->
             "Tuesday"
 
-        Wednesday ->
+        Wed ->
             "Wednesday"
 
-        Thursday ->
+        Thu ->
             "Thursday"
 
-        Friday ->
+        Fri ->
             "Friday"
 
-        Saturday ->
+        Sat ->
             "Saturday"
 
-        _ ->
-            ""
+
+dayNum : Weekday -> Int
+dayNum d =
+    case d of
+        Sun ->
+            0
+
+        Mon ->
+            1
+
+        Tue ->
+            2
+
+        Wed ->
+            3
+
+        Thu ->
+            4
+
+        Fri ->
+            5
+
+        Sat ->
+            6
 
 
 days : Array.Array Weekday
 days =
-    Array.fromList [ Sunday, Monday, Tuesday, Wednesday, Thursday, Friday, Saturday ]
+    Array.fromList [ Sun, Mon, Tue, Wed, Thu, Fri, Sat ]
 
 
 dayToEvent : Weekday -> Event
@@ -244,6 +259,13 @@ timeToDayString slot =
     Array.get (slot // slots) days
         |> Maybe.map dayString
         |> Maybe.withDefault ""
+
+
+timeToDayInt : Int -> Int
+timeToDayInt slot =
+    Array.get (slot // slots) days
+        |> Maybe.map dayNum
+        |> Maybe.withDefault 0
 
 
 timeRangeToDayString : Int -> Int -> String
