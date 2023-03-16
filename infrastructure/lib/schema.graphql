@@ -1,0 +1,101 @@
+type User {
+  credits: Int!
+  events: [Event!]!
+}
+
+type Calendar {
+  name: String!
+  events: [Event!]!
+  blockedDays: [String!]!
+}
+
+type Event {
+  start: Int!
+  end: Int!
+}
+
+type Meeting {
+  participants: [String!]!
+  title: String!
+  duration: Int!
+  created: Long!
+}
+
+type PaymentIntent {
+  clientSecret: String!
+  amount: Int
+  orderId: ID!
+}
+
+type PaymentUpdate {
+  amount: Int!
+}
+
+type Schedules {
+  data: [ScheduleResponse!]!
+  nextToken: String
+}
+
+type ScheduleMeetingResult {
+  id: String!
+  time: Event!
+}
+
+type StatusResponse {
+  success: Boolean
+}
+
+type ScheduleResponse {
+  results: [ScheduleMeetingResult!]
+  failed: [String!]
+  created: Long!
+  error: String
+}
+
+type ValidationResponse {
+  success: Boolean!
+  error: String
+}
+
+type Query @aws_cognito_user_pools {
+  calendars: [Calendar!]!
+  meetings: [Meeting!]!
+  user: User!
+  schedules(limit: Int!, nextToken: String): Schedules
+  validate: ValidationResponse!
+}
+
+input EventInput {
+  start: Int!
+  end: Int!
+}
+
+type Mutation @aws_cognito_user_pools {
+  saveCalendar(name: String!, events: [EventInput!]!, blockedDays: [String!]!): Calendar!
+  deleteCalendar(name: String!): Calendar
+  saveMeeting(
+    participants: [String!]!
+    title: String!
+    duration: Int!
+    created: Long
+  ): Meeting!
+  deleteMeeting(created: Long!): Meeting
+  saveEvents(events: [EventInput!]!): [Event!]!
+  beginCheckout(credits: Int!): PaymentIntent!
+  updateCheckout(credits: Int!, orderId: ID!): PaymentUpdate!
+  deleteCheckout(orderId: ID!): StatusResponse
+  computeSchedule(credits: Int!): ScheduleResponse!
+  creditsChanged(userId: ID!, credits: Int!): Int!
+    @aws_auth(cognito_groups: ["Backend"])
+}
+
+type Subscription {
+  onCreditsChanged: Int!
+    @aws_subscribe(mutations: ["creditsChanged"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}

@@ -1,0 +1,441 @@
+$primary: #264d4a;
+$success: #86ce93;
+$danger: #843e37;
+$dark: #271f26;
+$info: #3f3024;
+$link: #ad7d59;
+$background: #fafcfb;
+
+@import "node_modules/bulma/sass/base/_all.sass";
+@import "node_modules/bulma/sass/utilities/_all";
+@import "node_modules/bulma/sass/utilities/initial-variables";
+@import "node_modules/bulma/sass/components/level";
+@import "node_modules/bulma/sass/components/card";
+@import "node_modules/bulma/sass/components/navbar";
+@import "node_modules/bulma/sass/components/tabs";
+@import "node_modules/bulma/sass/components/menu";
+@import "node_modules/bulma/sass/components/panel";
+@import "node_modules/bulma/sass/components/modal";
+@import "node_modules/bulma/sass/components/message";
+@import "node_modules/bulma/sass/elements/box";
+@import "node_modules/bulma/sass/elements/button";
+@import "node_modules/bulma/sass/elements/container";
+@import "node_modules/bulma/sass/elements/content";
+@import "node_modules/bulma/sass/elements/icon";
+@import "node_modules/bulma/sass/elements/image";
+@import "node_modules/bulma/sass/components/media";
+@import "node_modules/bulma/sass/elements/tag";
+@import "node_modules/bulma/sass/elements/notification";
+@import "node_modules/bulma/sass/elements/other";
+@import "node_modules/bulma/sass/elements/title";
+@import "node_modules/bulma/sass/elements/table";
+@import "node_modules/bulma/sass/form/_all";
+@import "node_modules/bulma/sass/grid/columns";
+@import "node_modules/bulma/sass/helpers/flexbox";
+@import "node_modules/bulma/sass/helpers/spacing";
+@import "node_modules/bulma/sass/helpers/typography";
+@import "node_modules/bulma/sass/helpers/position";
+@import "node_modules/bulma/sass/helpers/visibility";
+@import "node_modules/bulma/sass/helpers/color";
+@import "node_modules/bulma/sass/layout/footer";
+@import "node_modules/bulma/sass/layout/hero";
+@import "node_modules/bulma/sass/layout/section";
+
+@import "node_modules/bulma-pageloader/src/sass";
+@import "node_modules/bulma-steps-component/bulma-steps.sass";
+@import "@creativebulma/bulma-tooltip";
+@import "@creativebulma/bulma-divider";
+
+// Fix bulma-tooltip setting this to look like a clickable element?
+
+[data-tooltip]{
+    cursor: unset !important;
+}
+
+
+@import "../../node_modules/@fortawesome/fontawesome-free/css/svg-with-js.min.css";
+
+@mixin no-spacing {
+    padding: 0;
+    margin: 0;
+}
+
+a {
+    text-decoration: none;
+}
+
+body,
+html {
+    @include no-spacing;
+    height: 100%;
+    width: 100%;
+    background-color: $background;
+}
+
+* {
+    scroll-behavior: smooth;
+}
+
+.wrap-text {
+    max-width: 200px;
+    margin-left: auto;
+    margin-right: auto;
+    word-wrap: break-word;
+}
+
+/*
+********************
+    SCHEDULE PAGE
+********************
+*/
+
+.calendar {
+
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+    user-select: none;
+    min-width: calc(7 * 99px + 9px);
+    background-color: var(--calendar-background);
+
+    >thead {
+        position: sticky;
+        top: 0;
+        box-shadow: 0 1px 1px 0px var(--calendar-border-color);
+        background-color: var(--calendar-background);
+        z-index: 10;
+    }
+
+    td,
+    p {
+        @include no-spacing;
+    }
+
+    .week {
+        width: 100%;
+        table-layout: fixed;
+    }
+
+    .time-header {
+        width: calc($size-small * 5);
+    }
+
+    .display-time>p {
+        font-size: $size-small;
+        position: relative;
+        top: -8px;
+        right: 2px;
+        color: var(--calendar-time-legend-color);
+        white-space: nowrap;
+        text-align: right;
+        user-select: none;
+    }
+
+    .day-name {
+        text-align: center;
+        display: inline-block;
+        width: 100%;
+        text-overflow: ellipsis;
+        overflow: hidden;
+    }
+
+    .all-day-interval {
+        border: solid 1px var(--calendar-border-color);
+        height: 17px;
+        cursor: pointer;
+
+        svg {
+            height: 12px;
+            flex-shrink: 1;
+        }
+
+        .lock-text {
+            color: var(--calendar-background);
+            font-size: 12px;
+            flex-grow: 1;
+        }
+
+        .all-day-lock,
+        .all-day-unlock {
+            display: flex;
+            padding-inline: 1rem;
+            align-items: center;
+            height: 100%;
+            gap: 0.25rem;
+        }
+
+        &:hover {
+            color: var(--calendar-hover-text) !important;
+
+            .lock-text {
+                color: var(--calendar-hover-text) !important;
+            }
+
+            background-color: var(--calendar-hover);
+        }
+    }
+
+    td:not(.display-time) {
+        height: 25px;
+        border: 1px solid var(--calendar-border-color);
+
+        &:hover {
+            background-color: var(--calendar-hover);
+        }
+
+        &.blocked {
+            background-color: var(--calendar-blocked-color);
+            cursor: not-allowed;
+            border: none;
+            cursor: not-allowed;
+
+            &:hover {
+                background-color: var(--calendar-blocked-color);
+            }
+        }
+    }
+
+    .event {
+        position: relative;
+        width: calc(100% - 0.5rem);
+        background-color: var(--calendar-event-color);
+        margin-inline: auto;
+        height: 100%;
+
+        &:not(.draft) {
+            cursor: -webkit-grab;
+            cursor: -moz-grab;
+        }
+
+        &:not(.event-end):not(.event-start) {
+            margin-bottom: -1px;
+            height: calc(100% + 1px);
+        }
+
+        &-start {
+            top: 1px;
+            z-index: 1;
+            border-top-right-radius: 5px;
+            border-top-left-radius: 5px;
+
+            &:not(.event-end)>.event-time {
+                white-space: unset;
+                overflow: unset;
+            }
+
+            &>.event-resize {
+                top: 2;
+                cursor: n-resize;
+                border-top-color: var(--calendar-event-text-color);
+                border-top-style: solid;
+                border-top-width: 1px;
+                border-bottom-color: unset;
+                border-bottom-style: unset;
+                border-bottom-width: unset;
+            }
+        }
+
+        &-end {
+            bottom: 1px;
+            border-bottom-right-radius: 5px;
+            border-bottom-left-radius: 5px;
+        }
+
+        &-time {
+            text-align: center;
+            color: var(--calendar-event-text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            position: absolute;
+            width: calc(100% - 20px);
+            font-size: 0.85em;
+            height: 100%;
+            vertical-align: center;
+            margin-top: 2px;
+        }
+
+        &-close {
+            background-color: transparent;
+            border: none;
+            color: var(--calendar-event-text-color);
+            cursor: pointer;
+            position: absolute;
+            right: 0;
+            top: 4;
+            width: 20px;
+            z-index: 1;
+        }
+
+        &-resize {
+            position: absolute;
+            border: none;
+            height: 15px;
+            min-width: 20px;
+            width: 25%;
+            margin-left: auto;
+            margin-right: auto;
+            left: 0;
+            right: 0;
+            bottom: 2;
+            background-color: transparent;
+            border-bottom-color: var(--calendar-event-text-color);
+            border-bottom-style: solid;
+            border-bottom-width: 1px;
+            cursor: s-resize;
+            z-index: 1;
+        }
+
+        &.dragging {
+            opacity: 0.9;
+        }
+
+        &.draft {
+            opacity: 0.5;
+            cursor: ns-resize;
+
+            &.dragging {
+                cursor: grabbing;
+            }
+        }
+
+        &.blocked {
+            cursor: not-allowed;
+            background-color: var(--calendar-event-color);
+            opacity: 0.7;
+
+            .event-resize {
+                cursor: not-allowed;
+            }
+
+            .event-close {
+                cursor: not-allowed;
+            }
+        }
+    }
+
+    .event-start.event-end {
+        height: calc(100% - 2px);
+        top: 1px;
+        bottom: 1px;
+    }
+
+    .overlay-event {
+        background-color: var(--calendar-overlay);
+
+        &:hover {
+            background-color: var(--calendar-overlay);
+        }
+    }
+
+    .all-day-row {
+        font-size: smaller;
+    }
+
+}
+
+.participants {
+    display: flex;
+    flex-direction: row;
+    column-gap: $block-spacing;
+    height: 80vh;
+}
+
+.participant-name {
+    display: flex !important;
+    flex-direction: row;
+    justify-content: space-between;
+}
+
+.participant-list-item {
+    margin-bottom: 2px;
+}
+
+.participant-list {
+    overflow-y: auto;
+    max-height: calc(80vh - 96px - 18px - 1em);
+}
+
+.meeting-configuration {
+    label.panel-block {
+        border-left-width: 3px;
+        border-left-style: solid;
+
+        &:not(.is-active) {
+            border-left-color: transparent;
+        }
+    }
+
+    .meeting-item {
+        height: min-content;
+    }
+
+    .meeting-form {
+        flex-shrink: 1;
+    }
+
+    .meeting-participant-list {
+        overflow-y: auto;
+        max-height: 30vh;
+    }
+}
+
+.loading {
+    filter: blur(2px);
+}
+
+.loading-container {
+    height: 100%;
+    width: 100%;
+    display: grid;
+    place-items: center;
+}
+
+.unstyled {
+    background: unset;
+    border: unset;
+}
+
+#participant-calendar {
+    height: 80vh;
+    overflow: scroll;
+
+    // VARIABLES
+    --calendar-background: #{$body-background-color};
+    --calendar-hover: #{$info-light};
+    --calendar-hover-text: #{$info-dark};
+    --calendar-border-color: #{$border};
+    --calendar-event-color: #{$primary};
+    --calendar-event-text-color: #{$primary-invert};
+    --calendar-blocked-color: #{$dark};
+    --calendar-time-legend-color: #{$text};
+    --calendar-overlay: #{$primary-dark};
+}
+
+#available-calendar {
+    height: 80vh;
+    overflow: scroll;
+
+    // VARIABLES
+    --calendar-background: #{$body-background-color};
+    --calendar-hover: #{$info-light};
+    --calendar-hover-text: #{$info-dark};
+    --calendar-border-color: #{$border};
+    --calendar-event-color: #{$primary};
+    --calendar-event-text-color: #{$primary-invert};
+    --calendar-blocked-color: #{$dark};
+    --calendar-time-legend-color: #{$text};
+    --calendar-overlay: #{$primary-dark};
+}
+
+.ignore-pointer-events {
+    pointer-events: none;
+}
+
+.highlighted {
+    background: #{$info-light};
+}
+
+.table_time-row {
+    max-width: min-content;
+}

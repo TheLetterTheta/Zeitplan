@@ -1,0 +1,42 @@
+[package]
+name = "zeitplan_libs"
+version = "0.1.2"
+authors = ["Nick Dolan <nicholas.dolan1@gmail.com>"]
+edition = "2018"
+description = "A scheduling application for scheduling multiple meetings at the same time"
+license = "GPL-3.0-or-later"
+repository = "https://github.com/TheLetterTheta/Zeitplan"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+bench = false
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+num = "0.4"
+log = { version = "0.4", features = ["kv_unstable"] }
+itertools = "0.10"
+thiserror = "1.0"
+serde-wasm-bindgen = { version = "0.4.3", optional = true}
+wasm-bindgen = { version = "0.2", optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true}
+arbitrary = { version = "1", optional = true, features = ["derive"] }
+uuid = {version = "1.0", optional = true, features = ["v4", "fast-rng", "arbitrary"]}
+rayon = { version = "1.5.3", optional = true }
+rand = { version = "0.8.5", optional = true }
+
+[dev-dependencies]
+criterion = { version = "0.3", features = ["html_reports"] }
+
+[[bench]]
+name = "zeitplan_benches"
+harness = false
+
+[features]
+default = []
+arbitrary = ["dep:arbitrary", "dep:uuid", "rayon"]
+rayon = ["dep:rayon", "dep:rand"]
+serde = ["dep:serde", "log/kv_unstable_serde"]
+wasm = ["serde", "dep:wasm-bindgen", "dep:serde-wasm-bindgen"]
+all = ["arbitrary", "serde", "wasm", "rayon"]

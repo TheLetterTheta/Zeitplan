@@ -1,7 +1,12 @@
-node_modules
-package-lock.json
 .DS_Store
-elm-stuff
-*.log
-dist
 .npmrc
+*.log
+*.zip
+dist/
+elm-stuff/
+node_modules/
+target/
+.parcel-cache/
+.cache/
+*.env
+web/aws-cdk-outputs.json

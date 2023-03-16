@@ -1,0 +1,109 @@
+#+CAPTION: Logo
+[[./Zeitplan.png]]
+
+* AWS Services
+** TODO S3
+** TODO X-Ray
+** TODO Cloudfront
+
+#+begin_src plantuml :noweb :file AWS-Checkout Process
+@startuml
+
+!theme superhero-outline
+
+!include <awslib/AWSCommon.puml>
+!include <awslib/DeveloperTools/XRay.puml>
+!include <awslib/SecurityIdentityAndCompliance/Cognito.puml>
+!include <awslib/Compute/Lambda.puml>
+!include <awslib/Database/DynamoDB.puml>
+!include <awslib/General/Client.puml>
+!include <logos/stripe>
+
+title AWS Login Sequence
+
+ClientParticipant(frontend, "Elm App", "Checkout")
+LambdaParticipant(checkout, "Begin Checkout", "")
+LambdaParticipant(webhook, "Stripe Webhook", "payment_intent.succeeded")
+LambdaParticipant(streamListener, "Stream Process DB", "MODIFY")
+DynamoDBParticipant(db, "Users Table", "")
+participant "<$stripe>" as stripe
+
+frontend -> checkout: Checkout with `int credits`
+checkout -> db: Update user with new Cart ID + PurchaseCredits
+checkout -> frontend: Return ClientSecret
+frontend -> stripe: Complete Payment
+stripe -> webhook: Payment Succeeded
+webhook -> db: Update order by OrderID with new credits
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:AWS-Checkout Process]]
+
+
+#+begin_src plantuml :noweb :file AWS-Events.png
+@startuml
+
+!theme superhero-outline
+
+!include <awslib/AWSCommon.puml>
+!include <awslib/DeveloperTools/XRay.puml>
+!include <awslib/SecurityIdentityAndCompliance/Cognito.puml>
+!include <awslib/ApplicationIntegration/AppSync.puml>
+!include <awslib/Compute/Lambda.puml>
+!include <awslib/Database/DynamoDB.puml>
+!include <awslib/General/Client.puml>
+!include <logos/stripe>
+
+title AWS Stripe Update Subscription
+
+ClientParticipant(frontend, "Web App", "Subscribe to changes")
+DynamoDBParticipant(db, "Users Table", "")
+AppSyncParticipant(subscriptionHub, "Users Table", "")
+LambdaParticipant(streamListener, "Stream Process DB", "MODIFY")
+
+frontend -> subscriptionHub: Listen for user credit changes
+db -> streamListener: Record has changed
+streamListener -> subscriptionHub: User {_} now has {_} credits
+subscriptionHub -> frontend: Changed...
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:AWS-Events.png]]
+
+#+begin_src plantuml :noweb :file Stripe Subscription Sequence.svg
+@startuml
+!theme superhero-outline
+
+!include <awslib/AWSCommon.puml>
+!include <awslib/DeveloperTools/XRay.puml>
+!include <awslib/SecurityIdentityAndCompliance/Cognito.puml>
+!include <awslib/Compute/Lambda.puml>
+!include <awslib/Database/DynamoDB.puml>
+!include <awslib/General/Client.puml>
+!include <awslib/ApplicationIntegration/APIGateway.puml>
+!include <awslib/General/Internet.puml>
+
+ClientParticipant(frontend, "Elm App", "")
+InternetParticipant(stripe, "Stripe", "")
+APIGatewayParticipant(api, "Zeitplan API", "")
+DynamoDBParticipant(db, "Zeitplan DB", "")
+
+== New User Process ==
+frontend -> api: Login
+api --> frontend: New User
+frontend -> stripe: Create subscription
+stripe --> frontend: Updated subscription
+
+== Stripe -> Lambda Integration ==
+stripe -> api: User updated subscription
+api -> db: Update user subscription status
+
+@enduml
+#+end_src
+
+#+RESULTS:
+[[file:Stripe Subscription Sequence.svg]]
