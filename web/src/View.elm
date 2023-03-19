@@ -53,7 +53,7 @@ tooltip message =
 
 footer : Html msg
 footer =
-    Html.footer [ class "footer hero is-dark" ]
+    Html.footer [ class "footer hero is-dark zeitplan-footer" ]
         [ content [ class "mt-3 is-flex is-flex-direction-column has-text-weight-bold" ]
             [ p [] [ text "This project was made possible thanks to Professor Victor Drescher at Southeastern Louisiana University." ]
             , div [ class "columns" ]

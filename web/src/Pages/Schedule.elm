@@ -382,8 +382,7 @@ requestBeginCheckout url auth credits =
 
 
 type alias ValidateResponse =
-    { success : Bool
-    , error : Maybe String
+    { error : Maybe String
     }
 
 
@@ -391,7 +390,6 @@ checkSchedule : SelectionSet ValidateResponse RootQuery
 checkSchedule =
     Query.validate
         (SelectionSet.succeed ValidateResponse
-            |> with ApiValidationResponse.success
             |> with ApiValidationResponse.error
         )
 
@@ -401,6 +399,19 @@ requestCheckSchedule url auth =
         |> Graphql.Http.queryRequest url
         |> Graphql.Http.withHeader "Authorization" auth
         |> Graphql.Http.send (RemoteData.fromResult >> ValidationResponse)
+
+
+computeSchedule : SelectionSet Schedule RootMutation
+computeSchedule =
+    Mutation.computeSchedule { credits = 1 }
+        dataQuery
+
+
+requestComputeSchedule url auth =
+    computeSchedule
+        |> Graphql.Http.mutationRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (RemoteData.fromResult >> ScheduleResponse)
 
 
 
@@ -537,7 +548,6 @@ type alias Model =
     , viewSchedule : Maybe (List ScheduleResult)
     , zone : Maybe Zone
     , modal : Modal
-    , validationRequest : RemoteData (Graphql.Http.Error ValidateResponse) ValidateResponse
     , loaded : Bool
     }
 
@@ -577,7 +587,6 @@ init shared user =
       , viewSchedule = Nothing
       , zone = Nothing
       , modal = CloseModal
-      , validationRequest = RemoteData.NotAsked
       , loaded = False
       }
     , Effect.batch
@@ -645,7 +654,7 @@ subtractTimes times subtract =
 
 type Modal
     = CloseModal
-    | InitiateScheduleModal
+    | InitiateScheduleModal (RemoteData (Graphql.Http.Error ValidateResponse) ValidateResponse)
     | ViewScheduleModal (List ScheduleResult)
     | PurchaseModal
     | DeleteParticipantModal { key : String, removedMeetings : Dict Int Meeting, affectedMeetings : Dict Int Meeting }
@@ -680,14 +689,44 @@ type Msg
     | SetPurchaseCreditsAmount String
     | SetModal Modal
     | ValidationResponse (RemoteData (Graphql.Http.Error ValidateResponse) ValidateResponse)
+    | ScheduleResponse (RemoteData (Graphql.Http.Error Schedule) Schedule)
+    | BeginScheduleRequest
+    | RequestSchedule
     | NoOp
 
 
 update : AuthUser -> Msg -> Model -> ( Model, Effect Msg )
 update user msg model =
     case msg of
+        RequestSchedule ->
+            ( { model | modal = InitiateScheduleModal RemoteData.Loading }, Effect.fromCmd <| requestComputeSchedule model.endpoint user.jwt )
+
+        ScheduleResponse resp ->
+            case resp of
+                RemoteData.Success schedule ->
+                    ( { model
+                        | credits = model.credits - 1
+                        , schedules = schedule :: model.schedules
+                        , modal = CloseModal
+                      }
+                    , Effect.none
+                    )
+
+                _ ->
+                    ( model, Effect.none )
+
+        BeginScheduleRequest ->
+            ( { model | modal = InitiateScheduleModal RemoteData.Loading }
+            , Effect.fromCmd <| requestCheckSchedule model.endpoint user.jwt
+            )
+
         ValidationResponse remote ->
-            ( { model | validationRequest = remote }, Effect.none )
+            case model.modal of
+                InitiateScheduleModal _ ->
+                    ( { model | modal = InitiateScheduleModal remote }, Effect.none )
+
+                _ ->
+                    ( model, Effect.none )
 
         GetCurrentTimezone zone ->
             ( { model | zone = Just zone }, Effect.none )
@@ -1167,7 +1206,7 @@ update user msg model =
             ( { model | checkoutCredits = String.toInt value |> Maybe.withDefault 5 }, Effect.none )
 
         SetModal modal ->
-            ( { model | modal = modal }, Effect.fromCmd <| requestCheckSchedule model.endpoint user.jwt )
+            ( { model | modal = modal }, Effect.none )
 
         NoOp ->
             ( model, Effect.none )
@@ -1575,7 +1614,7 @@ sliderView model =
                                 , th [] [ text "Errors" ]
                                 , th [] [ text "Status" ]
                                 , th []
-                                    [ button [ onClick <| SetModal InitiateScheduleModal, class "button is-rounded" ] [ Icon.view Solid.add ]
+                                    [ button [ onClick BeginScheduleRequest, class "button is-rounded" ] [ Icon.view Solid.add ]
                                     ]
                                 ]
                             ]
@@ -1802,59 +1841,150 @@ viewModalBody model =
                             )
                         |> groupBy (\row -> timeToDayInt row.time.start)
             in
-            div [ class "modal-card" ]
-                [ div [ class "modal-card-body" ]
-                    [ table [ class "table is-bordered is-fullwidth is-striped" ]
-                        [ thead []
-                            [ tr []
-                                [ th [ class "table_day-header" ] [ text "Day" ]
-                                , th [ class "table_time-header" ] [ text "Time" ]
-                                , th [ class "table_meeting-header" ] [ text "Meeting" ]
-                                ]
+            div [ class "modal-content" ]
+                [ table [ class "table is-bordered is-fullwidth is-striped" ]
+                    [ thead []
+                        [ tr []
+                            [ th [ class "table_day-header" ] [ text "Day" ]
+                            , th [ class "table_time-header" ] [ text "Time" ]
+                            , th [ class "table_meeting-header" ] [ text "Meeting" ]
                             ]
-                        , tbody []
-                            (dayDict
-                                |> Dict.map
-                                    (\day ->
-                                        \meetings ->
-                                            tr [ style "display" "none" ] []
-                                                :: tr []
-                                                    [ td
-                                                        [ class "table_day-row"
-                                                        , rowspan <| 1 + List.length meetings
-                                                        ]
-                                                        [ text <|
-                                                            Maybe.withDefault "" <|
-                                                                Maybe.map dayString <|
-                                                                    Array.get day days
-                                                        ]
-                                                    ]
-                                                :: (meetings
-                                                        |> List.sortBy (\{ time } -> time.start)
-                                                        |> List.map
-                                                            (\{ meeting, time } ->
-                                                                tr []
-                                                                    [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
-                                                                    , td [ class "table_meeting-row content" ]
-                                                                        [ code [] [ text meeting.title ]
-                                                                        , text <| " (" ++ durationToString meeting.duration ++ ")"
-                                                                        , div [ class "tags are-small" ] <|
-                                                                            List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
-                                                                                Set.toList meeting.participants
-                                                                        ]
-                                                                    ]
-                                                            )
-                                                   )
-                                    )
-                                |> Dict.values
-                                |> List.concat
-                            )
                         ]
+                    , tbody []
+                        (dayDict
+                            |> Dict.map
+                                (\day ->
+                                    \meetings ->
+                                        tr [ style "display" "none" ] []
+                                            :: tr []
+                                                [ td
+                                                    [ class "table_day-row"
+                                                    , rowspan <| 1 + List.length meetings
+                                                    ]
+                                                    [ text <|
+                                                        Maybe.withDefault "" <|
+                                                            Maybe.map dayString <|
+                                                                Array.get day days
+                                                    ]
+                                                ]
+                                            :: (meetings
+                                                    |> List.sortBy (\{ time } -> time.start)
+                                                    |> List.map
+                                                        (\{ meeting, time } ->
+                                                            tr []
+                                                                [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
+                                                                , td [ class "table_meeting-row content" ]
+                                                                    [ code [] [ text meeting.title ]
+                                                                    , text <| " (" ++ durationToString meeting.duration ++ ")"
+                                                                    , div [ class "tags are-small" ] <|
+                                                                        List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
+                                                                            Set.toList meeting.participants
+                                                                    ]
+                                                                ]
+                                                        )
+                                               )
+                                )
+                            |> Dict.values
+                            |> List.concat
+                        )
                     ]
                 ]
 
-        InitiateScheduleModal ->
-            text ""
+        InitiateScheduleModal remote ->
+            case remote of
+                RemoteData.Loading ->
+                    div [ class "modal-card" ]
+                        [ div [ class "modal-card-body" ]
+                            [ Icon.view <| Icon.styled [ spin ] Solid.spinner ]
+                        ]
+
+                RemoteData.Success { error } ->
+                    case error of
+                        Nothing ->
+                            let
+                                meetings =
+                                    model.meetings
+                                        |> Dict.filter
+                                            (\id ->
+                                                \meeting ->
+                                                    meeting.participants
+                                                        |> Set.toList
+                                                        |> List.map
+                                                            (\key ->
+                                                                Dict.get key model.participants
+                                                                    |> Maybe.map
+                                                                        (\participant ->
+                                                                            participant.events
+                                                                                ++ List.map dayToEvent participant.blockedDays
+                                                                        )
+                                                                    |> Maybe.withDefault []
+                                                            )
+                                                        |> List.concat
+                                                        |> mergeTimes
+                                                        |> subtractTimes (model.availableCalendar.events ++ List.map dayToEvent model.availableCalendar.blockedDays)
+                                                        |> List.filter (\event -> (event.end - event.start) + 1 >= meeting.duration)
+                                                        |> List.isEmpty
+                                            )
+                                        |> Dict.values
+                            in
+                            div [ class "modal-card" ]
+                                [ header [ class "modal-card-head" ]
+                                    [ p [ class "modal-card-title" ] [ text "Review" ] ]
+                                , section [ class "modal-card-body" ]
+                                    ([ div [ class "content" ]
+                                        [ h3 [] [ text "Please note:" ]
+                                        , p []
+                                            [ text
+                                                """
+                                            A credit will be deducted from your account. Though Zeitplan is highly
+                                            optimized for finding the solution, it is not guranteed that a solution
+                                            exists, nor that a solution will be found if it does exist. With a single
+                                            credit, we will search over 10,000 configurations to identify a solution.
+                                            Regardless of if a solution is found, the credit will be deducted from your account,
+                                            as we do still perform the search.
+                                            """
+                                            ]
+                                        ]
+                                     ]
+                                        ++ (if List.isEmpty meetings then
+                                                []
+
+                                            else
+                                                [ div [ class "message is-warning" ]
+                                                    [ div [ class "message-header" ] [ text "The following meetings will not be scheduled" ]
+                                                    , div [ class "message-body" ]
+                                                        [ div [ class "content" ]
+                                                            [ ul [] <|
+                                                                List.map
+                                                                    (\{ title, duration } ->
+                                                                        li []
+                                                                            [ text <|
+                                                                                title
+                                                                                    ++ " ("
+                                                                                    ++ durationToString duration
+                                                                                    ++ ")"
+                                                                            ]
+                                                                    )
+                                                                    meetings
+                                                            ]
+                                                        ]
+                                                    ]
+                                                ]
+                                           )
+                                    )
+                                , footer [ class "modal-card-foot" ]
+                                    [ button [ onClick <| RequestSchedule, class "button is-success" ] [ text "Schedule" ] ]
+                                ]
+
+                        Just message ->
+                            div [ class "message is-danger" ]
+                                [ div [ class "message-header" ]
+                                    [ text "Can't schedule meeting!" ]
+                                , div [ class "message-body" ] [ text message ]
+                                ]
+
+                _ ->
+                    div [] []
 
         PurchaseModal ->
             div [ class "modal-content" ]
@@ -1909,7 +2039,7 @@ viewModalBody model =
                                         []
                                 )
                                 model.checkoutIntent
-                                |> Maybe.withDefault (Icon.view Solid.spinner)
+                                |> Maybe.withDefault (Icon.view <| Icon.styled [ spin ] Solid.spinner)
                             , p [ class "subtitle is-6 mt-1" ] [ text "Note: you will be redirected to a confirmation page upon successful payment" ]
                             ]
                     ]
@@ -1920,7 +2050,8 @@ view : Shared.Model -> Model -> View Msg
 view shared model =
     View "Zeitplan - Schedule"
         [ div
-            [ classList [ ( "is-clipped", model.modal /= CloseModal ) ]
+            [ class "zeitplan-container"
+            , classList [ ( "is-clipped", model.modal /= CloseModal ) ]
             ]
             [ zeitplanNav
                 { logo = shared.logo
@@ -1934,104 +2065,104 @@ view shared model =
                 [ div [ class "modal-background", onClick <| SetModal CloseModal ] []
                 , viewModalBody model
                 ]
-            ]
-        , div
-            [ class "pageloader"
-            , classList [ ( "is-active", not model.loaded ) ]
-            ]
-            [ span [ class "title" ] [ text "Please wait while we fetch your information" ]
-            ]
-        , div [ class "container is-fullhd" ]
-            [ div [ class "box mt-2" ]
-                [ ul [ class "steps is-centered has-content-centered" ]
-                    [ li
-                        [ tooltip "Add times for your meetings"
-                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                        , classList [ ( "is-active", model.slider == AvailableCalendarSlider ) ]
-                        ]
-                        [ a
-                            [ href "#"
-                            , class "has-text-dark"
-                            , onClick <| SetSliderState AvailableCalendarSlider
-                            ]
-                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarWeek ]
-                            , div [ class "steps-content" ] [ text "Available Times" ]
-                            ]
-                        ]
-                    , li
-                        [ tooltip "Add people to meet with - and block off times they can't meet"
-                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                        , classList
-                            [ ( "is-active", model.slider == ParticipantCalendarSlider )
-                            , ( "ignore-pointer-events", List.isEmpty model.availableCalendar.events )
-                            ]
-                        ]
-                        [ a
-                            [ href "#"
-                            , class "has-text-dark"
-                            , onClick <| SetSliderState ParticipantCalendarSlider
-                            ]
-                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.users ]
-                            , div [ class "steps-content" ]
-                                [ text "Participants"
-                                , span [ class "ml-2" ]
-                                    [ text <|
-                                        if Dict.isEmpty model.participants then
-                                            ""
-
-                                        else
-                                            "(" ++ (String.fromInt <| Dict.size model.participants) ++ ")"
-                                    ]
-                                ]
-                            ]
-                        ]
-                    , li
-                        [ tooltip "Setup meetings with your participants"
-                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                        , classList
-                            [ ( "is-active", model.slider == MeetingConfigurationSlider )
-                            , ( "ignore-pointer-events", Dict.isEmpty model.participants )
-                            ]
-                        ]
-                        [ a
-                            [ href "#"
-                            , class "has-text-dark"
-                            , onClick <| SetSliderState MeetingConfigurationSlider
-                            ]
-                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarPlus ]
-                            , div [ class "steps-content" ]
-                                [ text "Meetings"
-                                , span [ class "ml-2" ]
-                                    [ text <|
-                                        if Dict.isEmpty model.meetings then
-                                            ""
-
-                                        else
-                                            "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
-                                    ]
-                                ]
-                            ]
-                        ]
-                    , li
-                        [ tooltip "Find a way to schedule your meetings"
-                        , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
-                        , classList
-                            [ ( "is-active", model.slider == ScheduleMeetingsSlider )
-                            , ( "ignore-pointer-events", Dict.isEmpty model.meetings )
-                            ]
-                        ]
-                        [ a
-                            [ href "#"
-                            , class "has-text-dark"
-                            , onClick <| SetSliderState ScheduleMeetingsSlider
-                            ]
-                            [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.robot ]
-                            , div [ class "steps-content" ] [ text "Compute Schedule" ]
-                            ]
-                        ]
-                    ]
-                , sliderView model
+            , div
+                [ class "pageloader"
+                , classList [ ( "is-active", not model.loaded ) ]
                 ]
+                [ span [ class "title" ] [ text "Please wait while we fetch your information" ]
+                ]
+            , div [ class "container is-fullhd" ]
+                [ div [ class "box mt-2" ]
+                    [ ul [ class "steps is-centered has-content-centered" ]
+                        [ li
+                            [ tooltip "Add times for your meetings"
+                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                            , classList [ ( "is-active", model.slider == AvailableCalendarSlider ) ]
+                            ]
+                            [ a
+                                [ href "#"
+                                , class "has-text-dark"
+                                , onClick <| SetSliderState AvailableCalendarSlider
+                                ]
+                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarWeek ]
+                                , div [ class "steps-content" ] [ text "Available Times" ]
+                                ]
+                            ]
+                        , li
+                            [ tooltip "Add people to meet with - and block off times they can't meet"
+                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                            , classList
+                                [ ( "is-active", model.slider == ParticipantCalendarSlider )
+                                , ( "ignore-pointer-events", List.isEmpty model.availableCalendar.events )
+                                ]
+                            ]
+                            [ a
+                                [ href "#"
+                                , class "has-text-dark"
+                                , onClick <| SetSliderState ParticipantCalendarSlider
+                                ]
+                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.users ]
+                                , div [ class "steps-content" ]
+                                    [ text "Participants"
+                                    , span [ class "ml-2" ]
+                                        [ text <|
+                                            if Dict.isEmpty model.participants then
+                                                ""
+
+                                            else
+                                                "(" ++ (String.fromInt <| Dict.size model.participants) ++ ")"
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        , li
+                            [ tooltip "Setup meetings with your participants"
+                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                            , classList
+                                [ ( "is-active", model.slider == MeetingConfigurationSlider )
+                                , ( "ignore-pointer-events", Dict.isEmpty model.participants )
+                                ]
+                            ]
+                            [ a
+                                [ href "#"
+                                , class "has-text-dark"
+                                , onClick <| SetSliderState MeetingConfigurationSlider
+                                ]
+                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.calendarPlus ]
+                                , div [ class "steps-content" ]
+                                    [ text "Meetings"
+                                    , span [ class "ml-2" ]
+                                        [ text <|
+                                            if Dict.isEmpty model.meetings then
+                                                ""
+
+                                            else
+                                                "(" ++ (String.fromInt <| Dict.size model.meetings) ++ ")"
+                                        ]
+                                    ]
+                                ]
+                            ]
+                        , li
+                            [ tooltip "Find a way to schedule your meetings"
+                            , class "steps-segment has-tooltip-bottom has-tooltip-multiline"
+                            , classList
+                                [ ( "is-active", model.slider == ScheduleMeetingsSlider )
+                                , ( "ignore-pointer-events", Dict.isEmpty model.meetings )
+                                ]
+                            ]
+                            [ a
+                                [ href "#"
+                                , class "has-text-dark"
+                                , onClick <| SetSliderState ScheduleMeetingsSlider
+                                ]
+                                [ span [ class "steps-marker icon is-small" ] [ Icon.view Solid.robot ]
+                                , div [ class "steps-content" ] [ text "Compute Schedule" ]
+                                ]
+                            ]
+                        ]
+                    , sliderView model
+                    ]
+                ]
+            , View.footer
             ]
-        , View.footer
         ]

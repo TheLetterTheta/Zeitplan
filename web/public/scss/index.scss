@@ -439,3 +439,12 @@ html {
 .table_time-row {
     max-width: min-content;
 }
+
+.zeitplan-container {
+    height: 100%;
+}
+
+.zeitplan-footer {
+    position: sticky;
+    top: 100%;
+}
