@@ -3,7 +3,7 @@ use libfuzzer_sys::fuzz_target;
 use std::collections::HashSet;
 use zeitplan_libs::time::{Blocks, TimeMerge, TimeRange, Windowed};
 
-fuzz_target!(|data: (Vec<TimeRange<u8>>, u8 , Vec<TimeRange<u8 >>)| {
+fuzz_target!(|data: (Vec<TimeRange<u8>>, u8, Vec<TimeRange<u8>>)| {
     let available = data.0;
     let duration = data.1;
     let blocks = data.2;
@@ -11,7 +11,7 @@ fuzz_target!(|data: (Vec<TimeRange<u8>>, u8 , Vec<TimeRange<u8 >>)| {
     let mut windows = available.iter().windowed(duration);
 
     assert!(
-        windows.all(|w| w.end() - w.start() == duration - 1),
+        windows.all(|w| w.end - w.start == duration - 1),
         "Duration should be the same for all windows"
     );
 

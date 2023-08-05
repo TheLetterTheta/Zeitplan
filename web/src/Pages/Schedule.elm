@@ -27,6 +27,7 @@ import FontAwesome.Regular as Regular
 import FontAwesome.Solid as Solid
 import Gen.Params.Schedule exposing (Params)
 import Graphql.Http
+import Graphql.Http.GraphqlError exposing (PossiblyParsedData(..))
 import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
@@ -42,7 +43,7 @@ import Request
 import Set exposing (Set)
 import Shared exposing (isError, saveKey)
 import Task
-import Time exposing (Posix, Zone)
+import Time exposing (Month(..), Posix, Zone)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, tooltip, zeitplanNav)
 import ZeitplanApi.Mutation as Mutation
@@ -54,6 +55,7 @@ import ZeitplanApi.Object.PaymentIntent as ApiCheckout
 import ZeitplanApi.Object.ScheduleMeetingResult as ApiScheduleMeetingResult
 import ZeitplanApi.Object.ScheduleResponse as ApiScheduleResponse
 import ZeitplanApi.Object.Schedules as ApiSchedules
+import ZeitplanApi.Object.StatusResponse as ApiStatusResponse
 import ZeitplanApi.Object.User as ApiUser
 import ZeitplanApi.Object.ValidationResponse as ApiValidationResponse
 import ZeitplanApi.Query as Query
@@ -381,6 +383,21 @@ requestBeginCheckout url auth credits =
         |> Graphql.Http.send (RemoteData.fromResult >> CheckoutIntentResponse)
 
 
+type alias StatusResponse =
+    { success : Maybe Bool }
+
+
+requestDeleteCheckout : String -> String -> ZeitplanApi.Scalar.Id -> Cmd Msg
+requestDeleteCheckout url auth id =
+    Mutation.deleteCheckout { orderId = id }
+        (SelectionSet.succeed StatusResponse
+            |> with ApiStatusResponse.success
+        )
+        |> Graphql.Http.mutationRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (\_ -> NoOp)
+
+
 type alias ValidateResponse =
     { error : Maybe String
     }
@@ -394,6 +411,7 @@ checkSchedule =
         )
 
 
+requestCheckSchedule : String -> String -> Cmd Msg
 requestCheckSchedule url auth =
     checkSchedule
         |> Graphql.Http.queryRequest url
@@ -407,11 +425,20 @@ computeSchedule =
         dataQuery
 
 
+requestComputeSchedule : String -> String -> Cmd Msg
 requestComputeSchedule url auth =
     computeSchedule
         |> Graphql.Http.mutationRequest url
         |> Graphql.Http.withHeader "Authorization" auth
         |> Graphql.Http.send (RemoteData.fromResult >> ScheduleResponse)
+
+
+requestSchedulesData : String -> String -> String -> Cmd Msg
+requestSchedulesData url auth token =
+    Query.schedules (always { nextToken = Present token }) { limit = 5 } schedulesQuery
+        |> Graphql.Http.queryRequest url
+        |> Graphql.Http.withHeader "Authorization" auth
+        |> Graphql.Http.send (RemoteData.fromResult >> AppendSchedules)
 
 
 
@@ -431,31 +458,83 @@ meetingTitleValidator =
     ifBlank identity "Must enter a title"
 
 
-formatTime : Zone -> Time.Posix -> String
-formatTime zone time =
+formatTime : Zone -> Time.Posix -> Time.Posix -> String
+formatTime zone now time =
     let
+        thisWeek =
+            Time.posixToMillis now - Time.posixToMillis time < (1000 * 60 * 60 * 24 * 7)
+
         day =
-            case Time.toWeekday zone time of
-                Time.Mon ->
-                    "Monday"
+            if thisWeek then
+                case Time.toWeekday zone time of
+                    Time.Mon ->
+                        "Monday"
 
-                Time.Tue ->
-                    "Tuesday"
+                    Time.Tue ->
+                        "Tuesday"
 
-                Time.Wed ->
-                    "Wednesday"
+                    Time.Wed ->
+                        "Wednesday"
 
-                Time.Thu ->
-                    "Thursday"
+                    Time.Thu ->
+                        "Thursday"
 
-                Time.Fri ->
-                    "Friday"
+                    Time.Fri ->
+                        "Friday"
 
-                Time.Sat ->
-                    "Saturday"
+                    Time.Sat ->
+                        "Saturday"
 
-                Time.Sun ->
-                    "Sunday"
+                    Time.Sun ->
+                        "Sunday"
+
+            else
+                let
+                    year =
+                        String.fromInt <| Time.toYear zone time
+
+                    month =
+                        case Time.toMonth zone time of
+                            Jan ->
+                                "01"
+
+                            Feb ->
+                                "02"
+
+                            Mar ->
+                                "03"
+
+                            Apr ->
+                                "04"
+
+                            May ->
+                                "05"
+
+                            Jun ->
+                                "06"
+
+                            Jul ->
+                                "07"
+
+                            Aug ->
+                                "08"
+
+                            Sep ->
+                                "09"
+
+                            Oct ->
+                                "10"
+
+                            Nov ->
+                                "11"
+
+                            Dec ->
+                                "12"
+
+                    date =
+                        String.padLeft 2 '0' <| String.fromInt <| Time.toDay zone time
+                in
+                year ++ "/" ++ month ++ "/" ++ date
 
         zeroHour =
             Time.toHour zone time
@@ -542,11 +621,13 @@ type alias Model =
     , expandedMeetings : Set Int
     , purchaseModalTab : PurchaseModalTab
     , checkoutIntent : Maybe String
+    , checkoutId : Maybe ZeitplanApi.Scalar.Id
     , checkoutCredits : Int
     , schedules : List Schedule
     , schedulesNextToken : Maybe String
     , viewSchedule : Maybe (List ScheduleResult)
     , zone : Maybe Zone
+    , time : Maybe Time.Posix
     , modal : Modal
     , loaded : Bool
     }
@@ -563,6 +644,7 @@ init shared user =
     in
     ( { participants = Dict.empty
       , participantCalendar = participantCalendar
+      , time = Nothing
       , availableCalendar = { availableCalendar | viewAllDayLine = False }
       , selectedParticipant = Nothing
       , newParticipantName = ""
@@ -582,6 +664,7 @@ init shared user =
       , purchaseModalTab = SelectCredits
       , checkoutIntent = Nothing
       , checkoutCredits = 5
+      , checkoutId = Nothing
       , schedules = []
       , schedulesNextToken = Nothing
       , viewSchedule = Nothing
@@ -595,6 +678,7 @@ init shared user =
         , fromCmd <| Task.attempt (\_ -> NoOp) <| setViewportOf "participant-calendar" 0 310
         , fromCmd <| requestInitialLoad shared.graphQlEndpoint user.jwt
         , fromCmd <| Task.perform GetCurrentTimezone <| Time.here
+        , fromCmd <| Task.perform GetCurrentTime <| Time.now
         ]
     )
 
@@ -692,18 +776,58 @@ type Msg
     | ScheduleResponse (RemoteData (Graphql.Http.Error Schedule) Schedule)
     | BeginScheduleRequest
     | RequestSchedule
+    | LoadMoreSchedules
+    | AppendSchedules (RemoteData (Graphql.Http.Error (Maybe Schedules)) (Maybe Schedules))
+    | GetCurrentTime Time.Posix
     | NoOp
 
 
 update : AuthUser -> Msg -> Model -> ( Model, Effect Msg )
 update user msg model =
     case msg of
+        GetCurrentTime time ->
+            ( { model | time = Just time }, Effect.none )
+
+        AppendSchedules remote ->
+            case remote of
+                RemoteData.Success (Just moreSchedules) ->
+                    ( { model
+                        | schedules = model.schedules ++ moreSchedules.data
+                        , schedulesNextToken = moreSchedules.nextToken
+                      }
+                    , Effect.none
+                    )
+
+                _ ->
+                    ( model, Effect.none )
+
+        LoadMoreSchedules ->
+            case model.schedulesNextToken of
+                Just token ->
+                    ( model, Effect.fromCmd <| requestSchedulesData model.endpoint user.jwt token )
+
+                Nothing ->
+                    ( model, Effect.none )
+
         RequestSchedule ->
             ( { model | modal = InitiateScheduleModal RemoteData.Loading }, Effect.fromCmd <| requestComputeSchedule model.endpoint user.jwt )
 
         ScheduleResponse resp ->
             case resp of
                 RemoteData.Success schedule ->
+                    ( { model
+                        | credits = model.credits - 1
+                        , schedules = schedule :: model.schedules
+                        , modal = CloseModal
+                      }
+                    , Effect.none
+                    )
+
+                RemoteData.Failure (Graphql.Http.GraphqlError (ParsedData returned) errorList) ->
+                    let
+                        schedule =
+                            { returned | error = Just <| String.join ", " (List.map .message errorList) }
+                    in
                     ( { model
                         | credits = model.credits - 1
                         , schedules = schedule :: model.schedules
@@ -1197,7 +1321,7 @@ update user msg model =
                         id =
                             data.orderId
                     in
-                    ( { model | checkoutIntent = Just secret }, Effect.none )
+                    ( { model | checkoutIntent = Just secret, checkoutId = Just id }, Effect.none )
 
                 _ ->
                     ( model, Effect.none )
@@ -1206,7 +1330,19 @@ update user msg model =
             ( { model | checkoutCredits = String.toInt value |> Maybe.withDefault 5 }, Effect.none )
 
         SetModal modal ->
-            ( { model | modal = modal }, Effect.none )
+            case ( model.modal, modal, model.checkoutId ) of
+                ( PurchaseModal, CloseModal, Just id ) ->
+                    ( { model
+                        | modal = modal
+                        , checkoutIntent = Nothing
+                        , purchaseModalTab = SelectCredits
+                        , checkoutId = Nothing
+                      }
+                    , Effect.fromCmd <| requestDeleteCheckout model.endpoint user.jwt id
+                    )
+
+                _ ->
+                    ( { model | modal = modal }, Effect.none )
 
         NoOp ->
             ( model, Effect.none )
@@ -1343,7 +1479,7 @@ sliderView model =
                         |> List.isEmpty
                         |> not
             in
-            div [ class "meeting-configuration container columns" ] <|
+            div [ class "meeting-configuration columns" ] <|
                 [ aside [ class "column is-one-quarter" ]
                     [ div [ class "columns is-multiline" ]
                         [ form [ class "column is-full", onSubmit CreateMeeting ]
@@ -1480,8 +1616,8 @@ sliderView model =
                             ]
                         ]
                     ]
-                , div [ class "column meeting-list" ]
-                    [ div [ class "columns is-multiline" ]
+                , div [ class "column" ]
+                    [ div [ class "columns is-variable is-2 is-multiline" ]
                         (model.meetings
                             |> Dict.map
                                 (\id ->
@@ -1599,10 +1735,6 @@ sliderView model =
                         , Html.footer [ class "card-footer" ]
                             [ button [ class "card-footer-item button is-success", onClick <| SetModal PurchaseModal ] [ text "Purchase more credits" ]
                             ]
-                        , div
-                            [ class "modal"
-                            ]
-                            []
                         ]
                     ]
                 , div [ class "column is-9" ]
@@ -1614,7 +1746,12 @@ sliderView model =
                                 , th [] [ text "Errors" ]
                                 , th [] [ text "Status" ]
                                 , th []
-                                    [ button [ onClick BeginScheduleRequest, class "button is-rounded" ] [ Icon.view Solid.add ]
+                                    [ button
+                                        [ onClick BeginScheduleRequest
+                                        , class "button is-success is-rounded"
+                                        , disabled <| model.credits < 1
+                                        ]
+                                        [ Icon.view Solid.add ]
                                     ]
                                 ]
                             ]
@@ -1629,7 +1766,7 @@ sliderView model =
                                                         Long val ->
                                                             String.toInt val
                                                                 |> Maybe.map Time.millisToPosix
-                                                                |> Maybe.map2 (\zone -> \time -> formatTime zone time) model.zone
+                                                                |> Maybe.map3 (\zone -> \time -> formatTime zone time) model.zone model.time
                                                                 |> Maybe.withDefault ""
                                                 ]
                                             , td []
@@ -1732,7 +1869,25 @@ sliderView model =
                                             ]
                                     )
                             )
-                        , tfoot [] []
+                        , tfoot []
+                            (model.schedulesNextToken
+                                |> Maybe.map
+                                    (\_ ->
+                                        [ tr []
+                                            [ td [ colspan 5 ]
+                                                [ div [ class "is-flex is-justify-content-center" ]
+                                                    [ button
+                                                        [ onClick LoadMoreSchedules
+                                                        , class "button is-light is-info is-small"
+                                                        ]
+                                                        [ text "Load more" ]
+                                                    ]
+                                                ]
+                                            ]
+                                        ]
+                                    )
+                                |> Maybe.withDefault []
+                            )
                         ]
                     ]
                 ]
@@ -1872,7 +2027,7 @@ viewModalBody model =
                                                     |> List.map
                                                         (\{ meeting, time } ->
                                                             tr []
-                                                                [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
+                                                                [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString (1 + time.end) ]
                                                                 , td [ class "table_meeting-row content" ]
                                                                     [ code [] [ text meeting.title ]
                                                                     , text <| " (" ++ durationToString meeting.duration ++ ")"
@@ -1939,7 +2094,7 @@ viewModalBody model =
                                             A credit will be deducted from your account. Though Zeitplan is highly
                                             optimized for finding the solution, it is not guranteed that a solution
                                             exists, nor that a solution will be found if it does exist. With a single
-                                            credit, we will search over 10,000 configurations to identify a solution.
+                                            credit, we will search over 450,000 configurations to identify a solution.
                                             Regardless of if a solution is found, the credit will be deducted from your account,
                                             as we do still perform the search.
                                             """
@@ -1977,10 +2132,12 @@ viewModalBody model =
                                 ]
 
                         Just message ->
-                            div [ class "message is-danger" ]
-                                [ div [ class "message-header" ]
-                                    [ text "Can't schedule meeting!" ]
-                                , div [ class "message-body" ] [ text message ]
+                            div [ class "modal-content" ]
+                                [ div [ class "message is-danger" ]
+                                    [ div [ class "message-header" ]
+                                        [ text "Can't schedule meeting!" ]
+                                    , div [ class "message-body" ] [ text message ]
+                                    ]
                                 ]
 
                 _ ->

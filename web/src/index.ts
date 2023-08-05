@@ -14,6 +14,8 @@ import { Amplify, Auth } from "aws-amplify";
 import { CognitoHostedUIIdentityProvider } from '@aws-amplify/auth';
 import { ZeitplanCdkStack } from "../aws-cdk-outputs.json";
 
+process.env.STRIPE_PUBLIC_API_KEY = "pk_live_51IaOKoHc4HUBPWg1FjT8MCb9idXoMnFHhOnuU9vvN2KF2GZm6DOlL42VoXzxVRY74UeiaL8klBAhdHlaHeslqkRC00l2dWyjwX"
+
 Amplify.configure({
   Auth: {
     region: ZeitplanCdkStack.region,

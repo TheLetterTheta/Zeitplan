@@ -367,7 +367,7 @@ update req msg model =
                     ( { model | requestError = Just other }, Effect.none )
 
                 _ ->
-                    ( { model | requestError = Just "Something went wrong!" }, Effect.none )
+                    ( { model | requestError = Just "Something went wrong! Please refresh the page" }, Effect.none )
 
         ResendConfirmationCode ->
             ( { model | loading = True }, Effect.fromCmd <| resendConfirmationCode model.authSignIn.username )

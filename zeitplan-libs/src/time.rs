@@ -29,8 +29,8 @@ where
     ///
     /// let test = TimeRange::new(0, 100);
     ///
-    /// assert_eq!(test.0, 0);
-    /// assert_eq!(test.1, 100);
+    /// assert_eq!(test.start, 0);
+    /// assert_eq!(test.end, 100);
     /// ```
     pub fn new(start: N, end: N) -> TimeRange<N> {
         if end < start {

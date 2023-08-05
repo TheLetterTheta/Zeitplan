@@ -25,11 +25,11 @@ fuzz_target!(|data: Schedule<u8>| {
 
     if let Ok(schedule) = data.schedule_meetings(None, None, None) {
         let available: Vec<TimeRange<_>> = data.availability.iter().time_merge().collect();
-        let schedule_times = schedule.result.iter().map(|m| m.time).collect::<Vec<_>>();
+        let schedule_times = schedule.results.iter().map(|m| m.time).collect::<Vec<_>>();
         if let Some(e) = schedule_times.iter().find(|t| {
             !available
                 .iter()
-                .any(|a| t.start() >= a.start() && t.end() <= a.end())
+                .any(|a| t.start >= a.start && t.end <= a.end)
         }) {
             panic!(
                 "Returned TimeRange outside of Available slots: time {:?} not within {:?}",
