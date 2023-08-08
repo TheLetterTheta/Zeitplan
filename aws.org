@@ -5,8 +5,8 @@
 ** TODO S3
 ** TODO X-Ray
 ** TODO Cloudfront
-
-#+begin_src plantuml :noweb :file AWS-Checkout Process
+* AWS Authentication Workflow
+#+begin_src plantuml :noweb :file AWS_Checkout_Process.png :exports results
 @startuml
 
 !theme superhero-outline
@@ -39,10 +39,11 @@ webhook -> db: Update order by OrderID with new credits
 #+end_src
 
 #+RESULTS:
-[[file:AWS-Checkout Process]]
+[[file:AWS_Checkout_Process.png]]
 
+* Stripe Workflow
 
-#+begin_src plantuml :noweb :file AWS-Events.png
+#+begin_src plantuml :noweb :file AWS_Events.png :exports results
 @startuml
 
 !theme superhero-outline
@@ -72,9 +73,11 @@ subscriptionHub -> frontend: Changed...
 #+end_src
 
 #+RESULTS:
-[[file:AWS-Events.png]]
+[[file:AWS_Events.png]]
 
-#+begin_src plantuml :noweb :file Stripe Subscription Sequence.svg
+* Stripe Subscription
+
+#+begin_src plantuml :noweb :file Stripe_Subscription_Sequence.png :exports results
 @startuml
 !theme superhero-outline
 
@@ -106,4 +109,4 @@ api -> db: Update user subscription status
 #+end_src
 
 #+RESULTS:
-[[file:Stripe Subscription Sequence.svg]]
+[[file:Stripe_Subscription_Sequence.png]]
