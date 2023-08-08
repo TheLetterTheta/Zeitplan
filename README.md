@@ -1,23 +1,23 @@
 
 # Table of Contents
 
-1.  [Zeitplan-libs](#org1d58634)
-    1.  [Schedule](#orgc0f3ab0)
-        1.  [Data](#org5d30300)
-        2.  [Compute Windows](#orge2d4b2e)
-        3.  [Setup](#org781df9d)
-        4.  [Schedule Meetings](#orgad4330a)
+1.  [Zeitplan-libs](#org33833df)
+    1.  [Schedule](#org45e36a3)
+        1.  [Data](#org11cfa0e)
+        2.  [Compute Windows](#orge5e0826)
+        3.  [Setup](#org8f39e33)
+        4.  [Schedule Meetings](#orga69b8cf)
 
 
 
-<a id="org1d58634"></a>
+<a id="org33833df"></a>
 
 # Zeitplan-libs
 
 The core of this project exists within the `zeitplan-libs` project. It contains all of the logic for scheduling meetings.
 
 
-<a id="orgc0f3ab0"></a>
+<a id="org45e36a3"></a>
 
 ## Schedule
 
@@ -27,14 +27,14 @@ The core of this project exists within the `zeitplan-libs` project. It contains 
     }
 
 
-<a id="org5d30300"></a>
+<a id="org11cfa0e"></a>
 
 ### Data
 
 `schedule.rs` contains the `Schedule` type. It accepts a list of `meetings`, and a list of times representing the `availability`. The `availability` represents times which meetings are to be scheduled within. Meetings contain blocked<sub>times</sub> which represents times that meetings can **not** be scheduled. This is so that - after initial setup - the `availability` is the only variable that needs to be modified.
 
 
-<a id="orge2d4b2e"></a>
+<a id="orge5e0826"></a>
 
 ### [Compute Windows](zeitplan-libs/src/schedule.rs)
 
@@ -45,7 +45,7 @@ The `compute_windows` function is designed for computing the number of checks th
     Currently, it returns a usize, but this is not large enough for most cases. The return type needs to eventually be changed at compile time to something like a BigInt or sufficiently large type.
 
 
-<a id="org781df9d"></a>
+<a id="org8f39e33"></a>
 
 ### [Setup](zeitplan-libs/src/schedule.rs)
 
@@ -54,7 +54,7 @@ The `setup` function does some initial checks to prepare the schedule for schedu
 `setup` does a check which can result in a `ValidationError::PigeonHole` error. This is when we can provably check that there are not enough available times to schedule meetings in. This **first** takes times that the meetings can each be scheduled, and only accounts for those times.
 Just because we say that all of Friday is avaialble - if no meetings can be scheduled on Friday - it does not count towards the `pigeon holes`.
 
-![img](Meeting Graph.png)
+![img](Meeting_Graph.png)
 
 Each node in the graph represents time that a meeting can be scheduled. A `subset` relationship is any set of times that fits entirely with its parent. An example of this (in the case of a teacher scheduling student lessons) is two students with similar schedules, except one student has more classes than the other. A more likely scenario might also be a meeting with multiple participants would have to be a subset of meeting with each participant individually.
 
@@ -96,7 +96,7 @@ Each node in the graph represents time that a meeting can be scheduled. A `subse
     This function returns a `Vec` of meetings (only the ones which *can* be scheduled)
 
 
-<a id="orgad4330a"></a>
+<a id="orga69b8cf"></a>
 
 ### [Schedule Meetings](zeitplan-libs/src/schedule.rs)
 
