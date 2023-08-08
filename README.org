@@ -27,7 +27,7 @@ The ~setup~ function does some initial checks to prepare the schedule for schedu
 Just because we say that all of Friday is avaialble - if no meetings can be scheduled on Friday - it does not count towards the ~pigeon holes~.
 
 
-#+begin_src plantuml :noweb :file Meeting Graph.png
+#+begin_src plantuml :noweb :file Meeting Graph.png :exports results
 !theme superhero-outline
 
 node A
@@ -69,22 +69,22 @@ A <-> F : intersects
 #+RESULTS:
 [[file:Meeting Graph.png]]
 
-Each node in teh graph represents time that a meeting can be scheduled. A ~subset~ relationship is any set of times that fits entirely with its parent. An example of this (in the case of a teacher scheduling student lessons) is two students with similar schedules, except one student has more classes than the other. A more likely scenario might also be a meeting with multiple participants would have to be a subset of meeting with each participant individually.
+Each node in the graph represents time that a meeting can be scheduled. A ~subset~ relationship is any set of times that fits entirely with its parent. An example of this (in the case of a teacher scheduling student lessons) is two students with similar schedules, except one student has more classes than the other. A more likely scenario might also be a meeting with multiple participants would have to be a subset of meeting with each participant individually.
 
 ***** For example
 ****** To verify node ~A~:
-Collect each ~subset~ of ~A~: ~[B,C,D]~
-Find groups of intersections between ~[B,C,D]~:
-    ~B~ has subset ~C~, and ~D~ - so group ~[B,C,D]~ together
-Verify that each group (~[[B,C,D]]~) can be scheduled together (Find minimum span of times, and check that the duration of ~B~, ~C~, and ~D~ can fit in the group)
+Collect each ~subset~ of ~A~: ~[B, C, D]~
+Find groups of intersections between ~[B, C, D]~:
+    ~B~ has subset ~C~, and ~D~ - so group ~[B, C, D]~ together
+Verify that each group (~[[B, C, D]]~) can be scheduled together (Find minimum span of times, and check that the duration of ~B~, ~C~, and ~D~ can fit in the group)
 
 ****** Similar logic exists for verifying node ~E~
 ****** To verify the Root:
-Collect each node: ~[A,B, ..., I]~
-Find groups of intersections between ~[A,B, ..., I]~:
-    ~A~ has intersection with ~E~ - so group ~[A,E]~ together. These nodes have connections forming the group ~[A,B, ..., H]~
+Collect each node: ~[A, B, ..., I]~
+Find groups of intersections between ~[A, B, ..., I]~:
+    ~A~ has intersection with ~E~ - so group ~[A, E]~ together. These nodes have connections forming the group ~[A, B, ..., H]~
     ~I~ has subsets forming group ~[I, J, K, L]~
-Verify that each group (~[[A,B, ..., H], [I, J, K, L]]~) can be scheduled together.
+Verify that each group (~[[A, B, ..., H], [I, J, K, L]]~) can be scheduled together.
 
 
 ***** TODO Improve the Pigeonhole check [0/4]
