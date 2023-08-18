@@ -228,6 +228,13 @@ where
     availability: Vec<TimeRange<N>>,
 }
 
+pub enum SetOrder {
+    Intersecting,
+    SubsetL,
+    SubsetR,
+    NoIntersection,
+}
+
 impl<N> MeetingScheduleInfo<N>
 where
     N: Integer + Debug + Display + Debug + Copy + std::iter::Sum,
@@ -238,137 +245,41 @@ where
             .map(|time| (time.end - time.start) + <N>::one())
             .sum()
     }
-}
 
-impl<N> PartialOrd for MeetingScheduleInfo<N>
-where
-    N: Integer + Debug + Display + Debug + Copy,
-{
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        if self == other {
-            Some(Ordering::Equal)
-        } else if self.availability.iter().all(|time| {
-            other
-                .availability
-                .iter()
-                .any(|inner| time.start >= inner.start && time.end <= inner.end)
-        }) {
-            Some(Ordering::Less)
-        } else if other.availability.iter().all(|time| {
-            self.availability
-                .iter()
-                .any(|inner| time.start >= inner.start && time.end <= inner.end)
-        }) {
-            Some(Ordering::Greater)
+    pub fn set_cmp(&self, other: &Self) -> SetOrder {
+        let mut is_left_subset = true;
+        let mut is_right_subset = true;
+        let mut intersecting = false;
+
+        let mut left_start = true;
+        let mut right_start = true;
+
+        let mut left_iterator = self
+            .availability
+            .iter()
+            .flat_map(|time| [time.start, time.end]);
+        let mut right_iterator = other
+            .availability
+            .iter()
+            .flat_map(|time| [time.start, time.end]);
+
+        if let Some(left) = left_iterator.next() {
         } else {
-            None
+            if !right_start || right_iterator.next().is_some() {
+                return if is_left_subset {
+                    SetOrder::SubsetL
+                } else if intersecting {
+                    SetOrder::Intersecting
+                } else {
+                    SetOrder::NoIntersection
+                };
+            }
         }
+        todo!()
     }
 }
 
 type MeetingSchedule<N> = Vec<MeetingScheduleInfo<N>>;
-
-struct Graph<N>
-where
-    N: Integer + Debug + Display + Debug + Copy,
-{
-    meetings: Vec<Graph<N>>,
-    times: Vec<TimeRange<N>>,
-    duration: N,
-}
-
-impl<N> Graph<N>
-where
-    N: Integer + Debug + Display + Debug + Copy,
-{
-    pub fn is_equal(&self, other: &Vec<TimeRange<N>>) -> bool {
-        self.times
-            .iter()
-            .zip(other.iter())
-            .all(|(a, b)| a.start == b.start && a.end == b.end)
-    }
-
-    pub fn is_subset(&self, other: &Vec<TimeRange<N>>) -> bool {
-        other.iter().all(|time| {
-            self.times
-                .iter()
-                .any(|within| time.start >= within.start && time.end <= within.end)
-        })
-    }
-}
-
-/*
-enum MeetingComparator {
-    Equal,
-    SubsetLeft,
-    SubsetRight,
-    Intersecting,
-}
-
-struct MeetingNode<N>
-where
-    N: Integer + One + Copy + Display + Debug,
-{
-    duration: N,
-    times: Vec<TimeRange<N>>,
-    children: Vec<MeetingNode<N>>,
-}
-
-impl<N> PartialEq for MeetingNode<N>
-where
-    N: Integer + One + Copy + Display + Debug,
-{
-    fn eq(&self, other: &Self) -> bool {
-        self.times
-            .iter()
-            .zip(other.times.iter())
-            .all(|(left, right)| left == right)
-    }
-}
-
-impl<N> MeetingNode<N>
-where
-    N: Integer + One + Copy + Display + Debug,
-{
-    fn is_subset(&self, other: &Self) -> MeetingComparator {
-        if self.eq(&other) {
-            MeetingComparator::Equal
-        } else {
-            if self.times.len() < other.times.len() {
-                if self.times.iter().all(|time| {
-                    other
-                        .times
-                        .iter()
-                        .any(|cmp| cmp.start <= time.start && cmp.end >= time.end)
-                }) {
-                    MeetingComparator::SubsetLeft
-                } else {
-                    MeetingComparator::Intersecting
-                }
-            } else {
-                if other.times.iter().all(|time| {
-                    self.times
-                        .iter()
-                        .any(|cmp| cmp.start <= time.start && cmp.end >= time.end)
-                }) {
-                    MeetingComparator::SubsetRight
-                } else {
-                    MeetingComparator::Intersecting
-                }
-            }
-        }
-    }
-
-    fn add(mut self, mut other: Self) {
-        match self.is_subset(&other) {
-            MeetingComparator::Equal => self.duration = self.duration + other.duration,
-            MeetingComparator::SubsetLeft => self.children.push(other),
-            MeetingComparator::SubsetRight => other.children.push(self),
-            MeetingComparator::Intersecting => {}
-        }
-    }
-}
-*/
 
 impl<
         #[cfg(all(not(feature = "rayon"), feature = "serde"))] N: Display
@@ -447,6 +358,7 @@ impl<
                     })
                 }
             })
+            .sorted_unstable_by_key(|meeting| meeting.size())
             .collect()
     }
 
@@ -469,97 +381,52 @@ impl<
     }
 
     pub fn pigeon_check(schedule: &MeetingSchedule<N>) -> Option<ValidationError<N>> {
-        let mut schedule_iter = schedule
-            .iter()
-            .sorted_unstable_by_key(|meeting| meeting.size());
+        let schedule = {
+            let mut ret = Vec::with_capacity(schedule.len());
 
-        // Pre-compute step:
-        // Merge duplicate meetings and add durations
-        let mut prev;
-        if let Some(next) = schedule_iter.next() {
-            prev = next.clone();
-        } else {
-            return None;
-        };
-
-        let mut combined_schedules = Vec::with_capacity(schedule.len());
-        for next in schedule_iter {
-            if next.availability == prev.availability {
-                prev.duration = next.duration + prev.duration;
-            } else {
-                combined_schedules.push(prev);
-                prev = next.clone();
-            }
-        }
-
-        combined_schedules.push(prev);
-
-        // For each schedule
-        // if it is a subset of any nodes currently in pigeons[],
-        // Iterate node, and add subset edges to each node appropriate
-        // If it does not intersect with any nodes, add it to pigeons[] as a root node
-        //
-        let mut child_edges: Vec<Vec<usize>> = vec![];
-        // To verify graph
-        // Depth first search
-        // For each node (a):
-        // Check if node is already in Visited[]
-        // The sum of its subsets' durations are added to the node's duration
-        // For each parent (b) of node (a):
-        // Find children of (b) intersecting with (a) in parent (c)
-        // Sum duration of each child in (c)
-        // Check that (c) can be scheduled
-        // Add all (c) to Visited[]
-
-        /*
-        let mut head = Vec::new();
-
-        // Head points to root of graph
-        for schedule in schedule_iter {
-            let mut branches = head
-                .iter_mut()
-                .filter(|graph| graph.is_subset(&schedule.availability))
-                .collect_vec();
-
-            if branches.is_empty() {
-                head.push(Graph {
-                    meetings: Vec::new(),
-                    duration: schedule.duration,
-                    times: schedule.availability,
-                });
-            }
-
-            while let Some(mut branch) = branches.pop() {
-                if branch.is_equal(&schedule.availability) {
-                    branch.duration = branch.duration + schedule.duration;
-                } else if branch.meetings.is_empty() {
-                    branch.meetings.push(Graph {
-                        meetings: Vec::new(),
-                        duration: schedule.duration,
-                        times: schedule.availability,
-                    });
-                } else {
-                    let mut next_children = branch
-                        .meetings
-                        .iter_mut()
-                        .filter(|graph| graph.is_subset(&schedule.availability))
-                        .collect_vec();
-
-                    if next_children.is_empty() {
-                        branch.meetings.push(Graph {
-                            meetings: Vec::new(),
-                            duration: schedule.duration,
-                            times: schedule.availability,
-                        })
-                    } else {
-                        branches.append(&mut next_children);
+            let mut curr = None;
+            for next in schedule.into_iter() {
+                match curr {
+                    None => {
+                        curr = Some(next);
+                    }
+                    Some(mut prev) => {
+                        if next.availability == prev.availability {
+                            prev.duration = prev.duration + prev.duration;
+                        } else {
+                            ret.push(prev);
+                            curr = Some(next);
+                        }
                     }
                 }
             }
-        }
-        */
+            if let Some(prev) = curr {
+                ret.push(prev);
+            }
 
-        None
+            ret
+        };
+
+        let mut subset_edges = vec![Vec::with_capacity(schedule.len()); schedule.len()];
+        let mut intersection_edges = vec![Vec::with_capacity(schedule.len()); schedule.len()];
+
+        schedule.iter().enumerate().tuple_combinations().for_each(
+            |((l_index, left), (r_index, right))| match left.set_cmp(right) {
+                SetOrder::Intersecting => {
+                    intersection_edges[l_index].push(r_index);
+                    intersection_edges[r_index].push(l_index);
+                }
+                SetOrder::SubsetL => {
+                    subset_edges[r_index].push(l_index);
+                }
+                SetOrder::SubsetR => {
+                    subset_edges[l_index].push(r_index);
+                }
+                SetOrder::NoIntersection => {}
+            },
+        );
+
+        todo!()
     }
 
     pub fn setup(&self) -> Result<MeetingSchedule<N>, ValidationError<N>> {
@@ -569,49 +436,10 @@ impl<
 
         let meeting_availability = self.meeting_availability();
 
-        let mut root = meeting_availability
-            .iter()
-            .flat_map(|m| m.availability.iter())
-            .time_merge();
-
-        let pigeon_holes = root.count_pigeons();
-
-        let mut pigeon_iter = meeting_availability.iter().map(|m| m.duration);
-
-        let pigeon_counter =
-            pigeon_iter.try_fold(<N>::zero(), |acc, n| match acc.checked_add(&n) {
-                Some(v) => ControlFlow::Continue(v),
-                None if acc.checked_add(&(n - <N>::one())).is_none() => ControlFlow::Break(true),
-                _ => ControlFlow::Break(false),
-            });
-        if let ControlFlow::Continue(pigeons) = pigeon_counter {
-            if let Some(pigeon_hole_value) = pigeon_holes {
-                if pigeons > pigeon_hole_value {
-                    return Err(ValidationError::PigeonholeError {
-                        pigeons,
-                        pigeon_holes: pigeon_hole_value,
-                    });
-                }
-            }
-        } else {
-            match pigeon_holes {
-                None if matches!(pigeon_counter, ControlFlow::Break(true))
-                    || pigeon_iter.next().is_some() =>
-                {
-                    return Err(ValidationError::PigeonholeError {
-                        pigeons: <N>::zero(),
-                        pigeon_holes: <N>::zero(),
-                    })
-                }
-                Some(p) => {
-                    return Err(ValidationError::PigeonholeError {
-                        pigeons: p,
-                        pigeon_holes: p,
-                    })
-                }
-                _ => {}
-            }
+        if let Some(error) = Self::pigeon_check(&meeting_availability) {
+            return Err(error);
         }
+
         Ok(meeting_availability)
     }
 

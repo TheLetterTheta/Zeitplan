@@ -25,6 +25,7 @@ The ~setup~ function does some initial checks to prepare the schedule for schedu
 
 ~setup~ does a check which can result in a ~ValidationError::PigeonHole~ error. This is when we can prove with a that there are not enough available times to schedule meetings in. This *first* takes times that the meetings can each be scheduled, and only accounts for those times.
 Just because we say that all of Friday is avaialble - if no meetings can be scheduled on Friday - it does not count towards the ~pigeon holes~.
+#+ATTR_ORG: :width 550
 
 **** TODO Add this check to Setup
 
@@ -67,6 +68,7 @@ A <-> E : intersects
 A <-> F : intersects
 #+end_src
 
+#+ATTR_ORG: :width 550
 #+RESULTS:
 [[file:Meeting_Graph.png]]
 
@@ -87,6 +89,9 @@ Find groups of intersections between ~[A, B, ..., I]~:
     ~I~ has subsets forming group ~[I, J, K, L]~
 Verify that each group (~[[A, B, ..., H], [I, J, K, L]]~) can be scheduled together.
 These groups can also be processed individually.
+
+****** IDEA I think more needs to be checked.. For each node: Get directly intersecting nodes, and verify that it can be scheduled also:
+    ~A~ has intersection with ~E~ and ~F~, and subsets ~[B, ..., D]~ so group ~[A, ..., F]~ and verify that they could be scheduled within itself.
 
 
 ***** TODO Improve the Pigeonhole check [0/4]
@@ -167,7 +172,7 @@ A <-> E : intersects
 A <-> F : intersects
 #+end_src
 
-#+ATTR_ORG: :width 200
+#+ATTR_ORG: :width 550
 #+RESULTS:
 [[file:Meeting_Graph_Removed.png]]
 
@@ -216,6 +221,7 @@ C <-> E : intersects
 B <-> E : intersects
 #+end_src
 
+#+ATTR_ORG: :width 550
 #+RESULTS:
 [[file:Meeting_Graph_Altered.png]]
 
@@ -244,7 +250,7 @@ node J
 node K
 node L
 
-D -[hidden]right-> A
+D -[hidden]down-> A
 
 A -down-> B : subset
 B -down-> C : subset
@@ -266,8 +272,10 @@ A <-> E : intersects
 A <-> F : intersects
 #+end_src
 
+#+ATTR_ORG: :width 550
 #+RESULTS:
 [[file:Meeting_Graph_Altered_Removed.png]]
+
 I think in this case, ~E~ can only be considered affected IIF ~D~ caused a time to be removed from ~E~. Otherwise, it had no affect on ~E~, and would not need to be checked.
 I believe the best route would be to process nodes that are subsets first, and don't have any subsets themselves. However, if we processed Node ~A~ first:
 
@@ -296,7 +304,7 @@ node J
 node K
 node L
 
-A -[hidden]right-> B
+A -[hidden]down-> B
 
 B -down-> C : subset
 C -down-> D : subset
@@ -315,5 +323,6 @@ K -down-> L : subset
 I -> L : subset
 #+end_src
 
+#+ATTR_ORG: :width 550
 #+RESULTS:
 [[file:Meeting_Graph_Backwards_Reverse.png]]

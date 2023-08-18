@@ -775,7 +775,7 @@ export class ZeitplanCdk extends Stack {
         path.join(__dirname, "../lambdas/create_user/main.zip")
       ),
       environment: {
-        DEFAULT_CREDITS: "20",
+        DEFAULT_CREDITS: "10",
         USER_TABLE_NAME: userTable.tableName,
       },
     });
