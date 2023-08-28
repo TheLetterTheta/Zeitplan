@@ -1,6 +1,6 @@
 set dotenv-load
 
 build:
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.cognitoClientId=$LAMBDA_COGNITO_CLIENT -X main.cognitoClientSecret=$LAMBDA_COGNITO_SECRET" -o main user_db_stream.go
-    zip main.zip main
-    rm main
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -ldflags "-X main.cognitoClientId=$LAMBDA_COGNITO_CLIENT -X main.cognitoClientSecret=$LAMBDA_COGNITO_SECRET" -o bootstrap user_db_stream.go
+    zip bootstrap.zip bootstrap
+    rm bootstrap

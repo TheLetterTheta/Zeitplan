@@ -158,7 +158,7 @@ view shared _ =
                     [ p []
                         [ text """
                     Currently, there are no associated costs to using Zeitplan. Each user when signing up
-                    will receive 20 credits to use to schedule their meetings with. Scheduling meetings may
+                    will receive 10 credits to use to schedule their meetings with. Scheduling meetings may
                     cost multiple credits based on the complexity of the schedule. This is due to the fact
                     that these computations are expensive to run.
                     """ ]

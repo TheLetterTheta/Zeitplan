@@ -1,5 +1,6 @@
 module Pages.Login exposing (Model, Msg, State, page)
 
+import Browser.Navigation
 import Decoders exposing (SignUpResult, authUserDecoder, signUpResultDecoder)
 import Effect exposing (Effect)
 import FontAwesome as Icon
@@ -7,15 +8,18 @@ import FontAwesome.Attributes exposing (fa10x, spin)
 import FontAwesome.Brands as Brands
 import FontAwesome.Solid as Solid exposing (spinner)
 import Gen.Params.Login exposing (Params)
+import Gen.Route
 import Html exposing (Html, button, div, form, h1, h2, header, input, label, p, section, span, text)
 import Html.Attributes exposing (class, classList, disabled, for, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode as Decode exposing (Decoder, string)
 import Json.Encode as Encode
 import Page
+import Process
 import Regex
 import Request
 import Shared exposing (AuthSignIn, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signInWithGoogle, signInWithGoogleError, signInWithGoogleSuccess, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
+import Task
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, footer, zeitplanNav)
 
@@ -104,6 +108,7 @@ type SignUpError
 
 type SignUpConfirmError
     = IncorrectCode
+    | InvalidParameter
     | SignUpConfirmOther String
 
 
@@ -141,6 +146,9 @@ stringToSignUpConfirmError error =
         case error of
             "CodeMismatchException" ->
                 IncorrectCode
+
+            "InvalidParameterException" ->
+                InvalidParameter
 
             other ->
                 SignUpConfirmOther other
@@ -366,8 +374,13 @@ update req msg model =
                 Ok (SignUpConfirmOther other) ->
                     ( { model | requestError = Just other }, Effect.none )
 
+                Ok InvalidParameter ->
+                    ( { model | requestError = Just "That is not a valid code" }, Effect.none )
+
                 _ ->
-                    ( { model | requestError = Just "Something went wrong!" }, Effect.none )
+                    ( { model | requestError = Just "Something went wrong! Please refresh the page, and login again." }
+                    , Effect.none
+                    )
 
         ResendConfirmationCode ->
             ( { model | loading = True }, Effect.fromCmd <| resendConfirmationCode model.authSignIn.username )

@@ -1,6 +1,6 @@
 set dotenv-load
 
 build:
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.stripeSecretKey=$STRIPE_SECRET_KEY -X main.endpointSecret=$STRIPE_WEBHOOK_SECRET" -o main stripe_webhook.go
-    zip main.zip main
-    rm main
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -ldflags "-X main.stripeSecretKey=$STRIPE_SECRET_KEY -X main.endpointSecret=$STRIPE_WEBHOOK_SECRET" -o bootstrap stripe_webhook.go
+    zip bootstrap.zip bootstrap
+    rm bootstrap

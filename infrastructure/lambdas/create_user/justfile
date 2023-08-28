@@ -1,4 +1,4 @@
 build:
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -o main create_user.go
-    zip main.zip main
-    rm main
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -o bootstrap create_user.go
+    zip bootstrap.zip bootstrap
+    rm bootstrap

@@ -42,7 +42,7 @@ import Request
 import Set exposing (Set)
 import Shared exposing (isError, saveKey)
 import Task
-import Time exposing (Posix, Zone)
+import Time exposing (Month(..), Posix, Zone)
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, tooltip, zeitplanNav)
 import ZeitplanApi.Mutation as Mutation
@@ -431,9 +431,56 @@ meetingTitleValidator =
     ifBlank identity "Must enter a title"
 
 
-formatTime : Zone -> Time.Posix -> String
-formatTime zone time =
+formatTime : Time.Posix -> Zone -> Time.Posix -> String
+formatTime now zone time =
     let
+        withinTheLastWeek =
+            Time.posixToMillis now - Time.posixToMillis time < (24 * 60 * 60 * 1000)
+
+        year =
+            Time.toYear zone time
+
+        month =
+            case Time.toMonth zone time of
+                Jan ->
+                    "01"
+
+                Feb ->
+                    "02"
+
+                Mar ->
+                    "03"
+
+                Apr ->
+                    "04"
+
+                May ->
+                    "05"
+
+                Jun ->
+                    "06"
+
+                Jul ->
+                    "07"
+
+                Aug ->
+                    "08"
+
+                Sep ->
+                    "09"
+
+                Oct ->
+                    "10"
+
+                Nov ->
+                    "11"
+
+                Dec ->
+                    "12"
+
+        dayOfMonth =
+            Time.toDay zone time
+
         day =
             case Time.toWeekday zone time of
                 Time.Mon ->
@@ -481,7 +528,11 @@ formatTime zone time =
         second =
             String.padLeft 2 '0' <| String.fromInt <| Time.toSecond zone time
     in
-    day ++ " " ++ hour ++ ":" ++ minute ++ ":" ++ second ++ " " ++ meridian
+    if withinTheLastWeek then
+        day ++ " " ++ hour ++ ":" ++ minute ++ ":" ++ second ++ " " ++ meridian
+
+    else
+        month ++ "/" ++ String.fromInt dayOfMonth ++ "/" ++ String.fromInt year ++ " " ++ hour ++ ":" ++ minute ++ ":" ++ second ++ " " ++ meridian
 
 
 durationToString : Int -> String
@@ -547,6 +598,7 @@ type alias Model =
     , schedulesNextToken : Maybe String
     , viewSchedule : Maybe (List ScheduleResult)
     , zone : Maybe Zone
+    , now : Maybe Posix
     , modal : Modal
     , loaded : Bool
     }
@@ -586,6 +638,7 @@ init shared user =
       , schedulesNextToken = Nothing
       , viewSchedule = Nothing
       , zone = Nothing
+      , now = Nothing
       , modal = CloseModal
       , loaded = False
       }
@@ -595,6 +648,7 @@ init shared user =
         , fromCmd <| Task.attempt (\_ -> NoOp) <| setViewportOf "participant-calendar" 0 310
         , fromCmd <| requestInitialLoad shared.graphQlEndpoint user.jwt
         , fromCmd <| Task.perform GetCurrentTimezone <| Time.here
+        , fromCmd <| Task.perform GetCurrentTime <| Time.now
         ]
     )
 
@@ -664,6 +718,7 @@ type Msg
     = SelectParticipant String
     | InitialDataLoaded (RemoteData (Graphql.Http.Error InitialQuery) InitialQuery)
     | GetCurrentTimezone Zone
+    | GetCurrentTime Posix
     | ChangeParticipantName String
     | SubmitNewParticipant
     | RequestDeleteParticipant String
@@ -730,6 +785,9 @@ update user msg model =
 
         GetCurrentTimezone zone ->
             ( { model | zone = Just zone }, Effect.none )
+
+        GetCurrentTime now ->
+            ( { model | now = Just now }, Effect.none )
 
         InitialDataLoaded remote ->
             case remote of
@@ -1629,7 +1687,7 @@ sliderView model =
                                                         Long val ->
                                                             String.toInt val
                                                                 |> Maybe.map Time.millisToPosix
-                                                                |> Maybe.map2 (\zone -> \time -> formatTime zone time) model.zone
+                                                                |> Maybe.map3 (\now -> \zone -> \time -> formatTime now zone time) model.now model.zone
                                                                 |> Maybe.withDefault ""
                                                 ]
                                             , td []
@@ -1841,7 +1899,7 @@ viewModalBody model =
                             )
                         |> groupBy (\row -> timeToDayInt row.time.start)
             in
-            div [ class "modal-content" ]
+            div [ class "modal-content p-6", style "width" "100%" ]
                 [ table [ class "table is-bordered is-fullwidth is-striped" ]
                     [ thead []
                         [ tr []

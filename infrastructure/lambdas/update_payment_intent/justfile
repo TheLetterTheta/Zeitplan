@@ -1,6 +1,6 @@
 set dotenv-load
 
 build:
-    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "-X main.stripeSecretKey=$STRIPE_SECRET_KEY" -o main update_payment_intent.go
-    zip main.zip main
-    rm main
+    GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -tags lambda.norpc -ldflags "-X main.stripeSecretKey=$STRIPE_SECRET_KEY" -o bootstrap update_payment_intent.go
+    zip bootstrap.zip bootstrap
+    rm bootstrap

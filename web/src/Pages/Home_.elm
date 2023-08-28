@@ -2,7 +2,8 @@ module Pages.Home_ exposing (Model, Msg, TabView, page)
 
 import Effect exposing (Effect)
 import Gen.Params.Home_ exposing (Params)
-import Html exposing (Html, a, br, div, em, h1, h2, li, p, section, strong, text, ul)
+import Gen.Route as Route
+import Html exposing (Html, a, br, button, div, em, h1, h2, li, p, section, strong, text, ul)
 import Html.Attributes exposing (class, classList, href, id, target)
 import Html.Events exposing (onClick)
 import Page
@@ -354,6 +355,13 @@ view shared model =
                             , li [ class "subtitle" ] [ text """
                             Have you ever asked yourself, "There has to be an easier way to plan all these things!"
                             """ ]
+                            ]
+                        ]
+                    , div [ class "is-flex" ]
+                        [ div [ class "my-6" ]
+                            [ h2 [ class "title" ] [ text "Ready to get started?" ]
+                            , button [ class "button is-link" ]
+                                [ a [ href (Route.toHref Route.Login) ] [ text "Create an account or Log in here!" ] ]
                             ]
                         ]
                     ]

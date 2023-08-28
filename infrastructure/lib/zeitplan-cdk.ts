@@ -193,6 +193,8 @@ export class ZeitplanCdk extends Stack {
       removalPolicy: RemovalPolicy.DESTROY,
       // stream: aws_dynamodb.StreamViewType.NEW_IMAGE,
     });
+    userTable.autoScaleReadCapacity({ maxCapacity: 10, minCapacity: 1 });
+    userTable.autoScaleWriteCapacity({ maxCapacity: 10, minCapacity: 1 });
 
     const calendarTable = new Table(this, "calendar-table", {
       partitionKey: {
@@ -206,6 +208,8 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-calendar",
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    calendarTable.autoScaleReadCapacity({ maxCapacity: 10, minCapacity: 1 });
+    calendarTable.autoScaleWriteCapacity({ maxCapacity: 10, minCapacity: 1 });
 
     const meetingTable = new Table(this, "meeting-table", {
       partitionKey: {
@@ -219,6 +223,8 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-meeting",
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    meetingTable.autoScaleReadCapacity({ maxCapacity: 10, minCapacity: 1 });
+    meetingTable.autoScaleWriteCapacity({ maxCapacity: 10, minCapacity: 1 });
 
     const paymentsTable = new Table(this, "payments-table", {
       partitionKey: {
@@ -228,6 +234,8 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-payment-order",
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    paymentsTable.autoScaleReadCapacity({ maxCapacity: 10, minCapacity: 1 });
+    paymentsTable.autoScaleWriteCapacity({ maxCapacity: 10, minCapacity: 1 });
 
     const scheduleTable = new Table(this, "schedule-table", {
       partitionKey: {
@@ -241,6 +249,8 @@ export class ZeitplanCdk extends Stack {
       tableName: "zeitplan-schedules",
       removalPolicy: RemovalPolicy.DESTROY,
     });
+    scheduleTable.autoScaleReadCapacity({ maxCapacity: 10, minCapacity: 1 });
+    scheduleTable.autoScaleWriteCapacity({ maxCapacity: 10, minCapacity: 1 });
 
     // GraphQL API
     // App Sync
@@ -770,12 +780,12 @@ export class ZeitplanCdk extends Stack {
       functionName: "Zeitplan-Create-User",
       description: "Trigger post user signup to create a new user",
       handler: "main",
-      runtime: Runtime.GO_1_X,
+      runtime: Runtime.PROVIDED_AL2,
       code: Code.fromAsset(
-        path.join(__dirname, "../lambdas/create_user/main.zip")
+        path.join(__dirname, "../lambdas/create_user/bootstrap.zip")
       ),
       environment: {
-        DEFAULT_CREDITS: "20",
+        DEFAULT_CREDITS: "10",
         USER_TABLE_NAME: userTable.tableName,
       },
     });
@@ -792,9 +802,9 @@ export class ZeitplanCdk extends Stack {
         description:
           "Integration with payment service to initiate a checkout session",
         handler: "main",
-        runtime: Runtime.GO_1_X,
+        runtime: Runtime.PROVIDED_AL2,
         code: Code.fromAsset(
-          path.join(__dirname, "../lambdas/create_payment_intent/main.zip")
+          path.join(__dirname, "../lambdas/create_payment_intent/bootstrap.zip")
         ),
         environment: {
           PAYMENT_TABLE_NAME: paymentsTable.tableName,
@@ -812,9 +822,9 @@ export class ZeitplanCdk extends Stack {
         description:
           "Update a payment intent with a different credit amount",
         handler: "main",
-        runtime: Runtime.GO_1_X,
+        runtime: Runtime.PROVIDED_AL2,
         code: Code.fromAsset(
-          path.join(__dirname, "../lambdas/update_payment_intent/main.zip")
+          path.join(__dirname, "../lambdas/update_payment_intent/bootstrap.zip")
         ),
         environment: {
           PAYMENT_TABLE_NAME: paymentsTable.tableName
@@ -832,9 +842,9 @@ export class ZeitplanCdk extends Stack {
         description:
           "Delete a payment intent",
         handler: "main",
-        runtime: Runtime.GO_1_X,
+        runtime: Runtime.PROVIDED_AL2,
         code: Code.fromAsset(
-          path.join(__dirname, "../lambdas/cancel_payment_intent/main.zip")
+          path.join(__dirname, "../lambdas/cancel_payment_intent/bootstrap.zip")
         ),
         environment: {
           PAYMENT_TABLE_NAME: paymentsTable.tableName
@@ -987,9 +997,9 @@ export class ZeitplanCdk extends Stack {
       functionName: "Zeitplan-Stripe-Webhook",
       description: "Stripe's webhook integration via HTTP request.",
       handler: "main",
-      runtime: Runtime.GO_1_X,
+      runtime: Runtime.PROVIDED_AL2,
       code: Code.fromAsset(
-        path.join(__dirname, "../lambdas/stripe_webhook/main.zip")
+        path.join(__dirname, "../lambdas/stripe_webhook/bootstrap.zip")
       ),
       environment: {
         PAYMENT_TABLE_NAME: paymentsTable.tableName,
@@ -1597,9 +1607,9 @@ export class ZeitplanCdk extends Stack {
         description:
           "Handler for DynamoDB Streams event to trigger AppSync mutation",
         handler: "main",
-        runtime: Runtime.GO_1_X,
+        runtime: Runtime.PROVIDED_AL2,
         code: Code.fromAsset(
-          path.join(__dirname, "../lambdas/user_db_stream/main.zip")
+          path.join(__dirname, "../lambdas/user_db_stream/bootstrap.zip")
         ),
         environment: {
           GQL_URL: graphQL.attrGraphQlUrl,
