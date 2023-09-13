@@ -5,6 +5,12 @@ port module Shared exposing
     , Model
     , Msg(..)
     , SaveValue
+    , forgotPassword
+    , forgotPasswordErr
+    , forgotPasswordOk
+    , forgotPasswordSubmit
+    , forgotPasswordSubmitErr
+    , forgotPasswordSubmitOk
     , init
     , isError
     , refreshToken
@@ -286,3 +292,21 @@ port signInWithGoogleSuccess : (Encode.Value -> msg) -> Sub msg
 
 
 port signInWithGoogleError : (Encode.Value -> msg) -> Sub msg
+
+
+port forgotPassword : String -> Cmd msg
+
+
+port forgotPasswordSubmit : { username : String, code : String, password : String } -> Cmd msg
+
+
+port forgotPasswordOk : (Encode.Value -> msg) -> Sub msg
+
+
+port forgotPasswordErr : (Encode.Value -> msg) -> Sub msg
+
+
+port forgotPasswordSubmitOk : (Encode.Value -> msg) -> Sub msg
+
+
+port forgotPasswordSubmitErr : (Encode.Value -> msg) -> Sub msg

@@ -1,16 +1,16 @@
 module Pages.Login exposing (Model, Msg, State, page)
 
 import Browser.Navigation
-import Decoders exposing (SignUpResult, authUserDecoder, signUpResultDecoder)
+import Decoders exposing (AuthUser, SignUpResult, authUserDecoder, signUpResultDecoder)
 import Effect exposing (Effect)
 import FontAwesome as Icon
-import FontAwesome.Attributes exposing (fa10x, spin)
+import FontAwesome.Attributes exposing (fa4x, spin)
 import FontAwesome.Brands as Brands
 import FontAwesome.Solid as Solid exposing (spinner)
 import Gen.Params.Login exposing (Params)
 import Gen.Route
-import Html exposing (Html, button, div, form, h1, h2, header, input, label, p, section, span, text)
-import Html.Attributes exposing (class, classList, disabled, for, placeholder, style, type_, value)
+import Html exposing (Html, button, div, form, h1, h2, header, hr, input, label, p, section, span, text)
+import Html.Attributes exposing (class, classList, disabled, for, id, placeholder, style, type_, value)
 import Html.Events exposing (onClick, onInput, onSubmit)
 import Json.Decode as Decode exposing (Decoder, string)
 import Json.Encode as Encode
@@ -18,7 +18,7 @@ import Page
 import Process
 import Regex
 import Request
-import Shared exposing (AuthSignIn, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signInWithGoogle, signInWithGoogleError, signInWithGoogleSuccess, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
+import Shared exposing (AuthSignIn, forgotPassword, forgotPasswordErr, forgotPasswordOk, forgotPasswordSubmit, forgotPasswordSubmitErr, forgotPasswordSubmitOk, isError, resendConfirmationCode, resendConfirmationCodeErr, resendConfirmationCodeOk, signIn, signInErr, signInOk, signInWithGoogle, signInWithGoogleError, signInWithGoogleSuccess, signUp, signUpConfirm, signUpConfirmErr, signUpConfirmOk, signUpErr, signUpOk)
 import Task
 import Validate exposing (Valid, Validator, fromValid, ifBlank, ifFalse, ifInvalidEmail, ifTrue, validate)
 import View exposing (View, footer, zeitplanNav)
@@ -27,7 +27,7 @@ import View exposing (View, footer, zeitplanNav)
 page : Shared.Model -> Request.With Params -> Page.With Model Msg
 page shared req =
     Page.advanced
-        { init = init
+        { init = init shared.user req
         , update = update req
         , view = view shared
         , subscriptions = subscriptions
@@ -42,7 +42,7 @@ validateUsername : Validator String String
 validateUsername =
     Validate.firstError
         [ ifBlank identity "Please enter a username"
-        , ifInvalidEmail identity (\_ -> "Username must be an email")
+        , ifInvalidEmail identity (\_ -> "Email must be an email")
         ]
 
 
@@ -154,6 +154,42 @@ stringToSignUpConfirmError error =
                 SignUpConfirmOther other
 
 
+type ForgotPasswordError
+    = ForgotUserNotFound
+    | LimitExceeded
+    | ForgotPasswordOther String
+
+
+stringToForgotPasswordError : String -> Decoder ForgotPasswordError
+stringToForgotPasswordError error =
+    Decode.succeed <|
+        case error of
+            "UserNotFoundException" ->
+                ForgotUserNotFound
+
+            "LimitExceededException" ->
+                LimitExceeded
+
+            other ->
+                ForgotPasswordOther other
+
+
+type ForgotPasswordSubmitError
+    = ForgotIncorrectCode
+    | ForgotOther String
+
+
+stringToForgotPasswordSubmitError : String -> Decoder ForgotPasswordSubmitError
+stringToForgotPasswordSubmitError error =
+    Decode.succeed <|
+        case error of
+            "CodeMismatchException" ->
+                ForgotIncorrectCode
+
+            other ->
+                ForgotOther other
+
+
 decodeAuthError : Decoder AuthError
 decodeAuthError =
     Decode.field "code" string |> Decode.andThen stringToAuthError
@@ -169,11 +205,23 @@ decodeSignUpConfirmError =
     Decode.field "code" string |> Decode.andThen stringToSignUpConfirmError
 
 
+decodeForgotPasswordError : Decoder ForgotPasswordError
+decodeForgotPasswordError =
+    Decode.field "code" string |> Decode.andThen stringToForgotPasswordError
+
+
+decodeForgotPasswordSubmitError : Decoder ForgotPasswordSubmitError
+decodeForgotPasswordSubmitError =
+    Decode.field "code" string |> Decode.andThen stringToForgotPasswordSubmitError
+
+
 type State
     = Login
     | SignUpStart
     | SignUpConfirm
     | Redirecting
+    | ForgotPassword
+    | ForgotPasswordCodeSubmit
 
 
 type alias Model =
@@ -191,9 +239,15 @@ type alias Model =
     }
 
 
-init : ( Model, Effect Msg )
-init =
-    ( Model Login (AuthSignIn "" "") "" "" Nothing Nothing Nothing Nothing False Nothing Nothing, Effect.none )
+init : Maybe AuthUser -> Request.With Params -> ( Model, Effect Msg )
+init user req =
+    ( Model Login (AuthSignIn "" "") "" "" Nothing Nothing Nothing Nothing False Nothing Nothing
+    , if user == Nothing then
+        Effect.none
+
+      else
+        Effect.fromCmd <| Request.pushRoute Gen.Route.Schedule req
+    )
 
 
 
@@ -219,6 +273,7 @@ type Msg
     | SignUpConfirmOk Encode.Value
     | SignUpConfirmErr Encode.Value
     | DismissRequestError
+    | DismissStatus
     | SharedMsg Shared.Msg
     | SetInput TextInput String
     | LoginWithGoogle
@@ -227,6 +282,12 @@ type Msg
     | ResendConfirmationCode
     | ResendConfirmationCodeOk Encode.Value
     | ResendConfirmationCodeErr Encode.Value
+    | SendForgotPassword
+    | ForgotPasswordOk Encode.Value
+    | ForgotPasswordErr Encode.Value
+    | SendForgotPasswordCode
+    | ForgotPasswordCodeOk Encode.Value
+    | ForgotPasswordCodeErr Encode.Value
 
 
 update : Request.With Params -> Msg -> Model -> ( Model, Effect Msg )
@@ -391,8 +452,58 @@ update req msg model =
         ResendConfirmationCodeErr _ ->
             ( { model | loading = False, requestError = Just "Something went wrong!" }, Effect.none )
 
+        SendForgotPassword ->
+            ( { model | loading = True }, Effect.fromCmd <| forgotPassword model.authSignIn.username )
+
+        ForgotPasswordOk _ ->
+            ( { model | state = ForgotPasswordCodeSubmit, loading = False, status = Just "A code has been emailed to your account" }, Effect.none )
+
+        ForgotPasswordErr error ->
+            case Decode.decodeValue decodeForgotPasswordError error of
+                Ok ForgotUserNotFound ->
+                    ( { model | requestError = Just "That account does not exist, try creating an account instead", state = SignUpStart, loading = False }, Effect.none )
+
+                Ok LimitExceeded ->
+                    ( { model | requestError = Just "There have been too many attempts to reset that account password", loading = False }, Effect.none )
+
+                Ok (ForgotPasswordOther _) ->
+                    ( { model | requestError = Just "That account can't be recovered. Please file an issue if you believe there to be an error", loading = False }, Effect.none )
+
+                _ ->
+                    ( { model | loading = False, requestError = Just "Something went wrong - please refresh and try again." }, Effect.none )
+
+        SendForgotPasswordCode ->
+            case
+                Maybe.map2
+                    (Result.map2 (\username -> \password -> { username = fromValid username, password = fromValid password }))
+                    model.validatedUsername
+                    model.validatedPassword
+            of
+                Just (Ok valid) ->
+                    ( { model | loading = True }, Effect.fromCmd <| forgotPasswordSubmit { username = valid.username, password = valid.password, code = model.confirmationCode } )
+
+                _ ->
+                    ( model, Effect.none )
+
+        ForgotPasswordCodeOk _ ->
+            ( { model | loading = False, state = Login, status = Just "Your password has been reset - please login with your new credentials" }, Effect.none )
+
+        ForgotPasswordCodeErr error ->
+            case Decode.decodeValue decodeForgotPasswordSubmitError error of
+                Ok ForgotIncorrectCode ->
+                    ( { model | loading = False, requestError = Just "The code does not match" }, Effect.none )
+
+                Ok (ForgotOther _) ->
+                    ( { model | loading = False, requestError = Just "Your password could not be reset - please verify the information below again" }, Effect.none )
+
+                _ ->
+                    ( { model | loading = False, requestError = Just "Something went wrong" }, Effect.none )
+
         DismissRequestError ->
             ( { model | requestError = Nothing }, Effect.none )
+
+        DismissStatus ->
+            ( { model | status = Nothing }, Effect.none )
 
         SharedMsg sharedMsg ->
             ( model, Effect.fromShared sharedMsg )
@@ -467,11 +578,41 @@ subscriptions _ =
         , signUpConfirmErr SignUpConfirmErr
         , resendConfirmationCodeOk ResendConfirmationCodeOk
         , resendConfirmationCodeErr ResendConfirmationCodeErr
+        , forgotPasswordOk ForgotPasswordOk
+        , forgotPasswordErr ForgotPasswordErr
+        , forgotPasswordSubmitOk ForgotPasswordCodeOk
+        , forgotPasswordSubmitErr ForgotPasswordCodeErr
         ]
 
 
 
 -- VIEW
+
+
+viewRequestError : Model -> Html Msg
+viewRequestError model =
+    case model.requestError of
+        Just message ->
+            div [ class "notification is-danger is-light" ]
+                [ button [ type_ "button", class "delete", onClick DismissRequestError ] []
+                , text message
+                ]
+
+        Nothing ->
+            text ""
+
+
+viewStatus : Model -> Html Msg
+viewStatus model =
+    case model.status of
+        Nothing ->
+            text ""
+
+        Just message ->
+            div [ class "notification is-success is-light" ]
+                [ button [ type_ "button", class "delete", onClick DismissStatus ] []
+                , text message
+                ]
 
 
 pageForm : Model -> Html Msg
@@ -490,32 +631,29 @@ pageForm model =
 
         Login ->
             form [ onSubmit LoginRequest ]
-                [ div [ class "card", style "width" "600px" ]
+                [ button [ class "button is-primary is-fullwidth is-large", type_ "button", onClick <| LoginWithGoogle ]
+                    [ span [ class "icon" ] [ Icon.view Brands.google ]
+                    , span [] [ text "Login with Google" ]
+                    ]
+                , div [ class "divider py-3" ] [ text "Or" ]
+                , div [ class "card", style "width" "600px" ]
                     [ header [ class "card-header" ]
                         [ h2 [ class "card-header-title is-size-4" ] [ text "Login" ]
                         , button
-                            [ class "card-header-icon", type_ "button", onClick <| LoginWithGoogle ]
-                            [ span [ class "icon" ] [ Icon.view Brands.google ]
-                            , span [] [ text "Google" ]
+                            [ class "card-header-icon", type_ "button", onClick <| ChangeState SignUpStart ]
+                            [ span [ class "mr-1" ] [ Icon.view Solid.userPlus ]
+                            , span [] [ text "Sign Up" ]
                             ]
                         ]
                     , div [ class "card-content" ]
-                        ((case model.requestError of
-                            Just message ->
-                                [ div [ class "notification is-danger is-light" ]
-                                    [ button [ type_ "button", class "delete", onClick DismissRequestError ] []
-                                    , text message
-                                    ]
-                                ]
-
-                            Nothing ->
-                                []
-                         )
-                            ++ [ div [ class "field" ]
-                                    ([ label [ class "label", for "username" ] [ text "Username" ]
-                                     , div [ class "control" ]
+                        (viewRequestError model
+                            :: viewStatus model
+                            :: [ div [ class "field" ]
+                                    [ label [ class "label", for "email" ] [ text "Email" ]
+                                    , div [ class "control" ]
                                         [ input
                                             [ value model.authSignIn.username
+                                            , id "email"
                                             , class "input"
                                             , classList
                                                 [ ( "is-danger"
@@ -528,21 +666,10 @@ pageForm model =
                                             ]
                                             []
                                         ]
-                                     ]
-                                        ++ (case model.validatedUsername of
-                                                Just (Err errors) ->
-                                                    errors
-                                                        |> List.head
-                                                        |> Maybe.map (\error -> [ p [ class "help is-danger" ] [ text error ] ])
-                                                        |> Maybe.withDefault []
-
-                                                _ ->
-                                                    []
-                                           )
-                                    )
+                                    ]
                                , div [ class "field" ]
-                                    ([ label [ class "label", for "password" ] [ text "Password" ]
-                                     , div [ class "control" ]
+                                    [ label [ class "label", for "password" ] [ text "Password" ]
+                                    , div [ class "control" ]
                                         [ input
                                             [ value model.authSignIn.password
                                             , class "input"
@@ -552,60 +679,50 @@ pageForm model =
                                                   )
                                                 ]
                                             , type_ "password"
+                                            , id "password"
                                             , onInput <| SetInput Password
                                             ]
                                             []
                                         ]
-                                     ]
-                                        ++ (case model.validatedPassword of
-                                                Just (Err errors) ->
-                                                    errors
-                                                        |> List.head
-                                                        |> Maybe.map (\error -> [ p [ class "help is-danger" ] [ text error ] ])
-                                                        |> Maybe.withDefault []
-
-                                                _ ->
-                                                    []
-                                           )
-                                    )
+                                    ]
                                ]
                         )
                     , div [ class "card-footer p-3 buttons" ]
-                        [ button
-                            [ class "button is-primary"
-                            , type_ "submit"
-                            , disabled <|
-                                Maybe.withDefault False <|
-                                    Maybe.map2 (\u -> \p -> isError u || isError p)
-                                        model.validatedUsername
-                                        model.validatedPassword
+                        [ div [ class "is-flex is-flex-grow-1 is-justify-content-space-between" ]
+                            [ div []
+                                [ button
+                                    [ class "button is-primary"
+                                    , type_ "submit"
+                                    , disabled <|
+                                        Maybe.withDefault False <|
+                                            Maybe.map2 (\u -> \p -> isError u || isError p)
+                                                model.validatedUsername
+                                                model.validatedPassword
+                                    ]
+                                    [ text "Log In" ]
+                                ]
+                            , button [ class "button is-text is-light", type_ "button", onClick <| ChangeState ForgotPassword ] [ text "Forgot Password?" ]
                             ]
-                            [ text "Log In" ]
-                        , button [ class "button is-text is-light", type_ "button", onClick <| ChangeState SignUpStart ] [ text "Or create an account" ]
                         ]
                     ]
                 ]
 
         SignUpStart ->
             form [ onSubmit SignUpRequest ]
-                [ div [ class "card", style "width" "600px" ]
+                [ button [ class "button is-primary is-fullwidth is-large", type_ "button", onClick <| LoginWithGoogle ]
+                    [ span [ class "icon" ] [ Icon.view Brands.google ]
+                    , span [] [ text "Login with Google" ]
+                    ]
+                , div [ class "divider py-3" ] [ text "Or" ]
+                , div [ class "card", style "width" "600px" ]
                     [ header [ class "card-header" ]
                         [ h1 [ class "card-header-title is-size-4" ] [ text "Create an account" ]
                         ]
                     , div [ class "card-content" ]
-                        ((case model.requestError of
-                            Just message ->
-                                [ div [ class "notification is-danger is-light" ]
-                                    [ button [ type_ "button", class "delete", onClick DismissRequestError ] []
-                                    , text message
-                                    ]
-                                ]
-
-                            Nothing ->
-                                []
-                         )
-                            ++ [ div [ class "field" ]
-                                    ([ label [ class "label", for "username" ] [ text "Username" ]
+                        (viewRequestError model
+                            :: viewStatus model
+                            :: [ div [ class "field" ]
+                                    ([ label [ class "label", for "email" ] [ text "Email" ]
                                      , div [ class "control" ]
                                         [ input
                                             [ value model.authSignIn.username
@@ -616,6 +733,7 @@ pageForm model =
                                                   )
                                                 ]
                                             , type_ "email"
+                                            , id "email"
                                             , placeholder "Enter your email address..."
                                             , onInput <| SetInput Username
                                             ]
@@ -639,6 +757,7 @@ pageForm model =
                                         [ input
                                             [ value model.authSignIn.password
                                             , class "input"
+                                            , id "password"
                                             , classList
                                                 [ ( "is-danger"
                                                   , Maybe.map isError model.validatedPassword |> Maybe.withDefault False
@@ -662,11 +781,12 @@ pageForm model =
                                            )
                                     )
                                , div [ class "field" ]
-                                    ([ label [ class "label", for "confirmPassword" ] [ text "Confirm Password" ]
+                                    ([ label [ class "label", for "confirm-password" ] [ text "Confirm Password" ]
                                      , div [ class "control" ]
                                         [ input
                                             [ value model.confirmPassword
                                             , class "input"
+                                            , id "confirm-password"
                                             , classList
                                                 [ ( "is-danger"
                                                   , Maybe.map isError model.validatedConfirmPassword |> Maybe.withDefault False
@@ -691,7 +811,7 @@ pageForm model =
                                     )
                                ]
                         )
-                    , div [ class "card-footer p-3 buttons" ]
+                    , div [ class "card-footer p-3 buttons is-justify-content-space-between" ]
                         [ button
                             [ class "button is-primary"
                             , type_ "submit"
@@ -715,23 +835,15 @@ pageForm model =
                         [ h1 [ class "card-header-title is-size-4" ] [ text "Confirm your account" ]
                         ]
                     , div [ class "card-content" ]
-                        ((case model.requestError of
-                            Just message ->
-                                [ div [ class "notification is-danger is-light" ]
-                                    [ button [ type_ "button", class "delete", onClick DismissRequestError ] []
-                                    , text message
-                                    ]
-                                ]
-
-                            Nothing ->
-                                []
-                         )
-                            ++ [ div [ class "field" ]
-                                    [ label [ class "label", for "username" ] [ text "Confirmation Code" ]
+                        (viewRequestError model
+                            :: viewStatus model
+                            :: [ div [ class "field" ]
+                                    [ label [ class "label", for "code" ] [ text "Confirmation Code" ]
                                     , div [ class "control" ]
                                         [ input
                                             [ value model.confirmationCode
                                             , class "input"
+                                            , id "code"
                                             , type_ "text"
                                             , placeholder "Enter the code sent to your email"
                                             , onInput <| SetInput ConfirmationCode
@@ -753,6 +865,159 @@ pageForm model =
                     ]
                 ]
 
+        ForgotPassword ->
+            form [ onSubmit SendForgotPassword ]
+                [ div [ class "card", style "width" "600px" ]
+                    [ header [ class "card-header" ]
+                        [ h1 [ class "card-header-title is-size-4" ] [ text "Forgot Password" ] ]
+                    , div [ class "card-content" ]
+                        (viewRequestError model
+                            :: viewStatus model
+                            :: [ div [ class "field" ]
+                                    [ label [ class "label", for "email" ] [ text "Email" ]
+                                    , div [ class "control" ]
+                                        [ input
+                                            [ value model.authSignIn.username
+                                            , class "input"
+                                            , id "email"
+                                            , type_ "email"
+                                            , placeholder "Enter your account email address"
+                                            , onInput <| SetInput Username
+                                            ]
+                                            []
+                                        ]
+                                    ]
+                               ]
+                        )
+                    , div [ class "card-footer is-justify-content-space-between p-3 buttons" ]
+                        [ button
+                            [ class "button is-primary"
+                            , type_ "submit"
+                            , disabled <|
+                                Maybe.withDefault True <|
+                                    Maybe.map isError model.validatedUsername
+                            ]
+                            [ text "Send reset code" ]
+                        , button [ class "button is-text is-light", type_ "button", onClick <| ChangeState Login ] [ text "Back to Login" ]
+                        ]
+                    ]
+                ]
+
+        ForgotPasswordCodeSubmit ->
+            form [ onSubmit SendForgotPasswordCode ]
+                [ div [ class "card", style "width" "600px" ]
+                    [ header [ class "card-header" ]
+                        [ h1 [ class "card-header-title is-size-4" ] [ text "Forgot Password Reset" ] ]
+                    , div [ class "card-content" ]
+                        (viewRequestError model
+                            :: viewStatus model
+                            :: [ div [ class "field" ]
+                                    [ label [ class "label", for "email" ] [ text "Email" ]
+                                    , div [ class "control" ]
+                                        [ input
+                                            [ value model.authSignIn.username
+                                            , class "input"
+                                            , id "email"
+                                            , type_ "email"
+                                            , placeholder "Enter your account email address"
+                                            , disabled True
+                                            ]
+                                            []
+                                        ]
+                                    ]
+                               , div [ class "field" ]
+                                    [ label [ class "label", for "code" ] [ text "Verification Code" ]
+                                    , div [ class "control" ]
+                                        [ input
+                                            [ value model.confirmationCode
+                                            , class "input"
+                                            , id "code"
+                                            , type_ "text"
+                                            , placeholder "Enter the verification code sent to your email"
+                                            , onInput <| SetInput ConfirmationCode
+                                            ]
+                                            []
+                                        ]
+                                    ]
+                               , div [ class "field" ]
+                                    [ label [ class "label", for "password" ] [ text "New Password" ]
+                                    , div [ class "control" ]
+                                        ([ input
+                                            [ value model.authSignIn.password
+                                            , class "input"
+                                            , id "password"
+                                            , type_ "password"
+                                            , classList
+                                                [ ( "is-danger"
+                                                  , Maybe.map isError model.validatedPassword |> Maybe.withDefault False
+                                                  )
+                                                ]
+                                            , placeholder "Enter your new password"
+                                            , onInput <| SetInput Password
+                                            ]
+                                            []
+                                         ]
+                                            ++ (case model.validatedPassword of
+                                                    Just (Err errors) ->
+                                                        errors
+                                                            |> List.head
+                                                            |> Maybe.map (\error -> [ p [ class "help is-danger" ] [ text error ] ])
+                                                            |> Maybe.withDefault []
+
+                                                    _ ->
+                                                        []
+                                               )
+                                        )
+                                    ]
+                               , div [ class "field" ]
+                                    [ label [ class "label", for "confirm-password" ] [ text "Confirm New Password" ]
+                                    , div [ class "control" ]
+                                        ([ input
+                                            [ value model.confirmPassword
+                                            , class "input"
+                                            , id "confirm-password"
+                                            , classList
+                                                [ ( "is-danger"
+                                                  , Maybe.map isError model.validatedConfirmPassword |> Maybe.withDefault False
+                                                  )
+                                                ]
+                                            , type_ "password"
+                                            , placeholder "Re-enter your password"
+                                            , onInput <| SetInput ConfirmPassword
+                                            ]
+                                            []
+                                         ]
+                                            ++ (case model.validatedConfirmPassword of
+                                                    Just (Err errors) ->
+                                                        errors
+                                                            |> List.head
+                                                            |> Maybe.map (\error -> [ p [ class "help is-danger" ] [ text error ] ])
+                                                            |> Maybe.withDefault []
+
+                                                    _ ->
+                                                        []
+                                               )
+                                        )
+                                    ]
+                               ]
+                        )
+                    , div [ class "card-footer is-justify-content-space-between p-3 buttons" ]
+                        [ button
+                            [ class "button is-primary"
+                            , disabled <|
+                                Maybe.withDefault True <|
+                                    Maybe.map3 (\u -> \p -> \c -> isError u || isError p || isError c || String.length model.confirmationCode < 1)
+                                        model.validatedUsername
+                                        model.validatedPassword
+                                        model.validatedConfirmPassword
+                            , type_ "submit"
+                            ]
+                            [ text "Reset Password" ]
+                        , button [ class "button is-text is-light", type_ "button", onClick <| ChangeState Login ] [ text "Back to Login" ]
+                        ]
+                    ]
+                ]
+
 
 view : Shared.Model -> Model -> View Msg
 view shared model =
@@ -766,13 +1031,26 @@ view shared model =
         , section [ class "section is-large" ]
             [ div [ class "columns is-centered" ]
                 [ div [ class "column is-narrow" ]
-                    [ if model.loading then
-                        div [ class "loading" ]
-                            [ Icon.view spinner ]
+                    (if model.loading then
+                        [ div [ style "display" "grid", style "place-items" "center" ]
+                            [ span
+                                [ style "grid-column" "1"
+                                , style "grid-row" "1"
+                                , style "z-index" "2"
+                                ]
+                                [ Icon.view <| Icon.styled [ spin, fa4x ] spinner ]
+                            , div
+                                [ style "grid-column" "1"
+                                , style "grid-row" "1"
+                                , class "loading ignore-pointer-events is-clipped"
+                                ]
+                                [ pageForm model ]
+                            ]
+                        ]
 
-                      else
-                        pageForm model
-                    ]
+                     else
+                        [ pageForm model ]
+                    )
                 ]
             ]
         , footer
