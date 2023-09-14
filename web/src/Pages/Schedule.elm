@@ -31,7 +31,7 @@ import Graphql.Operation exposing (RootMutation, RootQuery)
 import Graphql.OptionalArgument exposing (OptionalArgument(..))
 import Graphql.SelectionSet as SelectionSet exposing (SelectionSet, with)
 import Html exposing (Html, a, aside, button, code, datalist, div, figure, footer, form, h2, h3, h4, header, img, input, label, li, option, p, section, select, span, table, tbody, td, text, tfoot, th, thead, tr, ul)
-import Html.Attributes exposing (attribute, checked, class, classList, colspan, disabled, for, href, id, list, name, placeholder, rowspan, selected, style, type_, value)
+import Html.Attributes exposing (attribute, checked, class, classList, colspan, disabled, for, href, id, list, name, placeholder, rowspan, selected, style, type_, value, width)
 import Html.Events exposing (onCheck, onClick, onInput, onSubmit, stopPropagationOn)
 import Json.Decode as Decode
 import Json.Encode as Encode
@@ -435,7 +435,7 @@ formatTime : Time.Posix -> Zone -> Time.Posix -> String
 formatTime now zone time =
     let
         withinTheLastWeek =
-            Time.posixToMillis now - Time.posixToMillis time < (24 * 60 * 60 * 1000)
+            Time.posixToMillis now - Time.posixToMillis time < (7 * 24 * 60 * 60 * 1000)
 
         year =
             Time.toYear zone time
@@ -644,7 +644,7 @@ init shared user =
       }
     , Effect.batch
         [ Effect.map (\a -> CalendarMsg ParticipantCalendar a) participantEffects
-        , Effect.map (\a -> CalendarMsg ParticipantCalendar a) availableEffects
+        , Effect.map (\a -> CalendarMsg AvailableCalendar a) availableEffects
         , fromCmd <| Task.attempt (\_ -> NoOp) <| setViewportOf "participant-calendar" 0 310
         , fromCmd <| requestInitialLoad shared.graphQlEndpoint user.jwt
         , fromCmd <| Task.perform GetCurrentTimezone <| Time.here
@@ -1898,55 +1898,105 @@ viewModalBody model =
                                     |> Maybe.map (\val -> { meeting = val, time = row.time })
                             )
                         |> groupBy (\row -> timeToDayInt row.time.start)
-            in
-            div [ class "modal-content p-6", style "width" "100%" ]
-                [ table [ class "table is-bordered is-fullwidth is-striped" ]
-                    [ thead []
-                        [ tr []
-                            [ th [ class "table_day-header" ] [ text "Day" ]
-                            , th [ class "table_time-header" ] [ text "Time" ]
-                            , th [ class "table_meeting-header" ] [ text "Meeting" ]
+
+                meetingsMissing =
+                    results
+                        |> List.all
+                            (\{ id } ->
+                                String.toInt id
+                                    |> Maybe.map (\key -> Dict.member key model.meetings)
+                                    |> Maybe.withDefault True
+                            )
+                        |> not
+
+                noneExist =
+                    results
+                        |> List.any
+                            (\{ id } ->
+                                String.toInt id
+                                    |> Maybe.map (\key -> Dict.member key model.meetings)
+                                    |> Maybe.withDefault True
+                            )
+                        |> not
+
+                tableResults =
+                    table [ class "table is-bordered is-fullwidth is-striped" ]
+                        [ thead []
+                            [ tr []
+                                [ th [ class "table_day-header", width 150 ] [ text "Day" ]
+                                , th [ class "table_time-header", width 200 ] [ text "Time" ]
+                                , th [ class "table_meeting-header" ]
+                                    [ div [ class "is-flex" ]
+                                        [ span [ class "is-flex-grow-1" ] [ text "Meeting" ]
+                                        , button [ class "is-flex-shrink-1 delete", onClick <| SetModal CloseModal ] []
+                                        ]
+                                    ]
+                                ]
                             ]
-                        ]
-                    , tbody []
-                        (dayDict
-                            |> Dict.map
-                                (\day ->
-                                    \meetings ->
-                                        tr [ style "display" "none" ] []
-                                            :: tr []
-                                                [ td
-                                                    [ class "table_day-row"
-                                                    , rowspan <| 1 + List.length meetings
+                        , tbody []
+                            (dayDict
+                                |> Dict.map
+                                    (\day ->
+                                        \meetings ->
+                                            tr [ style "display" "none" ] []
+                                                :: tr []
+                                                    [ td
+                                                        [ class "table_day-row"
+                                                        , rowspan <| 1 + List.length meetings
+                                                        ]
+                                                        [ text <|
+                                                            Maybe.withDefault "" <|
+                                                                Maybe.map dayString <|
+                                                                    Array.get day days
+                                                        ]
                                                     ]
-                                                    [ text <|
-                                                        Maybe.withDefault "" <|
-                                                            Maybe.map dayString <|
-                                                                Array.get day days
-                                                    ]
-                                                ]
-                                            :: (meetings
-                                                    |> List.sortBy (\{ time } -> time.start)
-                                                    |> List.map
-                                                        (\{ meeting, time } ->
-                                                            tr []
-                                                                [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
-                                                                , td [ class "table_meeting-row content" ]
-                                                                    [ code [] [ text meeting.title ]
-                                                                    , text <| " (" ++ durationToString meeting.duration ++ ")"
-                                                                    , div [ class "tags are-small" ] <|
-                                                                        List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
-                                                                            Set.toList meeting.participants
+                                                :: (meetings
+                                                        |> List.sortBy (\{ time } -> time.start)
+                                                        |> List.map
+                                                            (\{ meeting, time } ->
+                                                                tr []
+                                                                    [ td [ class "table_time-row" ] [ text <| timeSlotToString time.start ++ " - " ++ timeSlotToString time.end ]
+                                                                    , td [ class "table_meeting-row content" ]
+                                                                        [ code [] [ text meeting.title ]
+                                                                        , text <| " (" ++ durationToString meeting.duration ++ ")"
+                                                                        , div [ class "tags are-small" ] <|
+                                                                            List.map (\name -> span [ class "tag is-dark" ] [ text name ]) <|
+                                                                                Set.toList meeting.participants
+                                                                        ]
                                                                     ]
-                                                                ]
-                                                        )
-                                               )
-                                )
-                            |> Dict.values
-                            |> List.concat
-                        )
+                                                            )
+                                                   )
+                                    )
+                                |> Dict.values
+                                |> List.concat
+                            )
+                        ]
+            in
+            div [ class "modal-content container", style "display" "grid", style "place-items" "center" ]
+                (if noneExist then
+                    [ div [ class "message is-danger" ]
+                        [ div [ class "message-header" ]
+                            [ text "Meetings Deleted"
+                            , button [ class "delete", onClick <| SetModal CloseModal ] []
+                            ]
+                        , div [ class "message-body" ] [ text "None of the meetings exist anymore!" ]
+                        ]
                     ]
-                ]
+
+                 else if meetingsMissing then
+                    [ div [ class "message is-danger" ]
+                        [ div [ class "message-header" ]
+                            [ text "Missing Meetings"
+                            , button [ class "delete", onClick <| SetModal CloseModal ] []
+                            ]
+                        , div [ class "message-body" ] [ text "This result was run with meetings that have been deleted!" ]
+                        ]
+                    , tableResults
+                    ]
+
+                 else
+                    [ tableResults ]
+                )
 
         InitiateScheduleModal remote ->
             case remote of

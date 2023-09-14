@@ -189,7 +189,7 @@ async function run() {
 
   app.ports.signUpConfirm.subscribe(({ username, code }) => {
     Auth.confirmSignUp(username, code)
-      .then((_) => Auth.currentAuthenticatedUser())
+      .then((_) => Auth.currentAuthenticatedUser({ bypassCache: true }))
       .then(async (user) => {
         return Auth.currentSession()
           .then((token) => token.getAccessToken())
@@ -200,7 +200,13 @@ async function run() {
           }));
       })
       .then(app.ports.signUpConfirmOk.send)
-      .catch(app.ports.signUpConfirmErr.send);
+      .catch((e) => {
+        if ( e.code === undefined || e.code === null ) {
+          window.location.reload();
+        }
+
+        app.ports.signUpConfirmErr.send(e);
+      });
   });
 
   app.ports.resendConfirmationCode.subscribe((username: string) => {
@@ -229,19 +235,21 @@ async function run() {
   app.ports.signInWithGoogle.subscribe(() => {
     Auth.federatedSignIn({ provider: CognitoHostedUIIdentityProvider.Google })
       .then(app.ports.signInWithGoogleSuccess.send)
-      .catch((e) => {
-        console.error(e);
-        app.ports.signInWithGoogleError.send(e)
-      })
+      .catch(app.ports.signInWithGoogleError.send);
   });
 
-  /*
-   app.ports.resendConfirmationCode.subscribe( username => {
-       submitResendConfirmationCode(username)
-        .then(app.ports.resendConfirmationCodeOk.send)
-        .catch(app.ports.resendConfirmationCodeErr.send)
-   });
-   */
+  app.ports.forgotPassword.subscribe((username: string) => {
+    Auth.forgotPassword(username)
+      .then(app.ports.forgotPasswordOk.send)
+      .catch(app.ports.forgotPasswordErr.send);
+  });
+
+  app.ports.forgotPasswordSubmit.subscribe(({ username, code, password }: { username: string, code: string, password: string }) => {
+    Auth.forgotPasswordSubmit(username, code, password)
+      .then(app.ports.forgotPasswordSubmitOk.send)
+      .catch(app.ports.forgotPasswordSubmitErr.send)
+  });
+
 }
 
 run();

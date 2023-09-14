@@ -78,14 +78,15 @@ func HandleRequest(ctx context.Context, req events.CognitoEventUserPoolsPostConf
 	}
 
 	input := &dynamodb.PutItemInput{
-		Item:      result,
-		TableName: aws.String(tableName),
+		Item:                result,
+		TableName:           aws.String(tableName),
+		ConditionExpression: aws.String("attribute_not_exists(userId)"),
 	}
 
 	_, err = client.PutItem(ctx, input)
 	if err != nil {
 		fmt.Println("Failed to write to db")
-		return req, err
+		// Do not return the error - this could be a password reset attempt
 	}
 
 	return req, nil

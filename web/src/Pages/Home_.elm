@@ -328,8 +328,10 @@ view shared model =
         , section [ class "hero is-fullheight-with-navbar is-dark" ]
             [ div [ class "hero-head" ]
                 [ div [ class "section is-medium" ]
-                    [ h1 [ class "is-1 title" ] [ text "Zeitplan" ]
-                    , p [ class "subtitle" ] [ text "A different kind of scheduler" ]
+                    [ div [ class "container" ]
+                        [ h1 [ class "is-1 title" ] [ text "Zeitplan" ]
+                        , p [ class "subtitle" ] [ text "A different kind of scheduler" ]
+                        ]
                     ]
                 ]
             , div [ class "hero-body" ]
@@ -403,18 +405,20 @@ view shared model =
                     ]
                 ]
             ]
-        , case model.sectionTwo of
-            Overview ->
-                overviewSection
+        , div [ class "container" ]
+            [ case model.sectionTwo of
+                Overview ->
+                    overviewSection
 
-            SetupParticipants ->
-                participantSection
+                SetupParticipants ->
+                    participantSection
 
-            PreplanMeetings ->
-                meetingsSection
+                PreplanMeetings ->
+                    meetingsSection
 
-            PlanSchedule ->
-                scheduleSection
+                PlanSchedule ->
+                    scheduleSection
+            ]
         , footer
         ]
     }

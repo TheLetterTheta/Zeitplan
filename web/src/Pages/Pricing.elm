@@ -132,10 +132,12 @@ view shared _ =
             }
             |> Html.map SharedMsg
         , div [ class "is-small section" ]
-            [ div [ class "hero is-dark" ]
-                [ div [ class "hero-body" ]
-                    [ h1 [ class "is-1 title" ] [ text "Pricing" ]
-                    , h2 [ class "subtitle" ] [ text "Because nothing in life is free" ]
+            [ div [ class "container" ]
+                [ div [ class "hero is-dark" ]
+                    [ div [ class "hero-body" ]
+                        [ h1 [ class "is-1 title" ] [ text "Pricing" ]
+                        , h2 [ class "subtitle" ] [ text "Because nothing in life is free" ]
+                        ]
                     ]
                 ]
             ]
